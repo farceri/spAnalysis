@@ -99,9 +99,9 @@ def fitPhiPDF(dirName, figureName, numBins):
     ax2.set_ylabel("$Distribution,$ $P(\\varphi_l)$", fontsize=16)
     fig1.tight_layout()
     fig2.tight_layout()
-    figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pfitPhiFreeEnergy-" + figureName
+    figure1Name = "/home/francesco/Pictures/soft/mips/pfitPhiFreeEnergy-" + figureName
     fig1.savefig(figure1Name + ".png", transparent=True, format = "png")
-    figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pfitPhiPDF-" + figureName
+    figure2Name = "/home/francesco/Pictures/soft/mips/pfitPhiPDF-" + figureName
     fig2.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -146,7 +146,7 @@ def fitPhiPDF2(dirName, figureName, numBins):
     ax[1].set_xlabel("$Local$ $density,$ $\\varphi_l$", fontsize=16)
     fig.tight_layout()
     plt.subplots_adjust(hspace=0)
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pfitPhiPDF-F-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pfitPhiPDF-F-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -178,9 +178,9 @@ def plotSPDensityVSWindowSize(dirName, figureName, weight=False):
     cb.set_label(label=label, fontsize=18, labelpad=25, rotation='horizontal')
     fig.tight_layout()
     if(weight == 'weight'):
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pWeightedWindow-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pWeightedWindow-" + figureName
     else:
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pWindow-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pWindow-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -211,7 +211,7 @@ def plotSPLocalDensity(dirName, figureName, fixed='phi', which='30'):
     ax.set_ylabel("$PDF(\\varphi_l)$", fontsize=18)
     ax.set_xlim(-0.05, 1.05)
     if(fixed=="phi"):
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pLocalPhi-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pLocalPhi-vsDr-" + figureName
         colorBar = cm.ScalarMappable(cmap=colorList)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes('right', size='5%', pad=0.05)
@@ -224,7 +224,7 @@ def plotSPLocalDensity(dirName, figureName, fixed='phi', which='30'):
         cb.set_label(label="$\\tau_p$", fontsize=16, labelpad=-20, rotation='horizontal')
     else:
         ax.legend(loc='upper right', fontsize=12)
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pLocalPhi-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pLocalPhi-vsPhi-" + figureName
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -259,7 +259,7 @@ def plotSPCompareLocalDensity(dirName, figureName, which='30'):
         cb.set_label(label="$\\tau_p$", fontsize=16, labelpad=20, rotation='horizontal')
     ax[2].set_xlabel("$Local$ $density,$ $\\varphi_l$", fontsize=18)
     ax[2].set_xlim(-0.05, 1.05)
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pCompareLocalPhi-vsDr-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pCompareLocalPhi-vsDr-" + figureName
     fig.tight_layout()
     fig.subplots_adjust(hspace=0)
     fig.savefig(figureName + ".png", transparent=True, format = "png")
@@ -303,16 +303,16 @@ def plotSPClusterLengthscale(dirName, figureName, fixed=False, which='10'):
     if(fixed=="iod"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterLength-vsPhi-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterLength-vsPhi-" + figureName + "-iod" + which
         ax.plot(np.linspace(phi[0], phi[-1], 50), np.ones(50), color='k', lw=1.2, ls='--')
     elif(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterLength-vsDr-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterLength-vsDr-" + figureName + "-iod" + which
     else:
         x = damping
         xlabel = "$Damping,$ $\\gamma$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterLength-vsDamping-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterLength-vsDamping-" + figureName + "-Dr" + which
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Cluster$ $lengthscale,$ $L_{cluster} / L_{box}$", fontsize=18)
@@ -376,16 +376,16 @@ def plotSPClusterPairCorr(dirName, figureName, fixed=False, which='10'):
     if(fixed=="iod"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterLength-vsPhi-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterLength-vsPhi-" + figureName + "-iod" + which
         ax.plot(np.linspace(phi[0], phi[-1], 50), np.ones(50), color='k', lw=1.2, ls='--')
     elif(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterLength-vsDr-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterLength-vsDr-" + figureName + "-iod" + which
     else:
         x = damping
         xlabel = "$Damping,$ $\\gamma$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterLength-vsDamping-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterLength-vsDamping-" + figureName + "-Dr" + which
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Inter-particle$ $distance,$ $d / \\sigma$", fontsize=18)
@@ -448,18 +448,18 @@ def plotSPClusterFluctuations(dirName, figureName, fixed=False, which='10'):
     if(fixed=="iod"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterNum-vsPhi-" + figureName + "-iod" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterSize-vsPhi-" + figureName + "-iod" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pClusterNum-vsPhi-" + figureName + "-iod" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pClusterSize-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         x = 1/Dr
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterNum-vsDr-" + figureName + "-iod" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterSize-vsDr-" + figureName + "-iod" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pClusterNum-vsDr-" + figureName + "-iod" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pClusterSize-vsDr-" + figureName + "-iod" + which
     else:
         x = damping
         xlabel = "$Damping,$ $\\gamma$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterNum-vsDamping-" + figureName + "-Dr" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterSize-vsDamping-" + figureName + "-Dr" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pClusterNum-vsDamping-" + figureName + "-Dr" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pClusterSize-vsDamping-" + figureName + "-Dr" + which
     ax1.tick_params(axis='both', labelsize=14)
     ax2.tick_params(axis='both', labelsize=14)
     ax1.set_xlabel(xlabel, fontsize=18)
@@ -514,7 +514,7 @@ def plotSPNumberDensityFluctuations(dirName, figureName, fixed='Dr', which='1e-0
     ax.set_xlabel("$Number$ $of$ $particles,$ $\\langle N_{sub} \\rangle$", fontsize=18)
     if(fixed=="Dr"):
         ax.legend(fontsize=10, loc='lower left', ncol=3)
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pNumberPhiVar-vsPhi-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         colorBar = cm.ScalarMappable(cmap=colorList)
         divider = make_axes_locatable(ax)
@@ -526,7 +526,7 @@ def plotSPNumberDensityFluctuations(dirName, figureName, fixed='Dr', which='1e-0
         ticklabels = ['$10^{-3}$', '$10^{1}$', '$10^3$']
         cb.set_ticklabels(ticklabels)
         cb.set_label(label="$\\tau_p$", fontsize=16, labelpad=-5, rotation='horizontal')
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pNumberPhiVar-vsDr-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsDr-" + figureName + "-iod" + which
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -575,13 +575,13 @@ def plotSPClusterDistribution(dirName, figureName, fixed=False, which='10', numB
     # make color bar for legend
     if(fixed=="iod"):
         label = "$\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pNumberPhiVar-vsPhi-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         label = "$D_r$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pNumberPhiVar-vsDr-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsDr-" + figureName + "-iod" + which
     else:
         label = "$m/\\gamma$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pNumberPhiVar-vsDamping-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsDamping-" + figureName + "-Dr" + which
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Number$ $of$ $particles$ $in$ $cluster,$ $N_c$", fontsize=18)
     ax.set_ylabel("$Distribution,$ $P(N_c)$", fontsize=18)
@@ -635,13 +635,13 @@ def plotSPClusterSizeVSTime(dirName, figureName, fixed=False, which='10'):
     cb = plt.colorbar(colorBar)
     if(fixed=="iod"):
         label = "$\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterTime-vsPhi-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterTime-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         label = "$D_r$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterTime-vsDr-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterTime-vsDr-" + figureName + "-iod" + which
     else:
         label = "$m/\\gamma$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterTime-vsDamping-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterTime-vsDamping-" + figureName + "-Dr" + which
     cb.set_ticks(np.arange(0.5/labelList.shape[0],1,1/labelList.shape[0])+4/labelList.shape[0])
     cb.ax.tick_params(labelsize=12)
     ticklabels = labelList[4:]
@@ -695,12 +695,12 @@ def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="Dr"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterShape-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterShape-vsPhi-" + figureName
         ax.plot(x, phi, color='k', lw=1.2, ls='--')
     elif(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterShape-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterShape-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Shape$ $parameter$", fontsize=18)
@@ -724,7 +724,7 @@ def plotClusterShapeVSTime(dirName, figureName):
     ax.legend(fontsize=12, loc='best')
     #ax.set_ylim(50, 700)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterShapeVSTime-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pClusterShapeVSTime-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -758,11 +758,11 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="Dr"):
         #x = phi
         #xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pMxingTime-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pMxingTime-vsPhi-" + figureName
     elif(fixed=="phi"):
         #x = taup
         #xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pMixingTime-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pMixingTime-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(fontsize=11, loc='best')
     ax.set_xlabel("$Elapsed$ $time,$ $\\Delta t$", fontsize=18)
@@ -805,7 +805,7 @@ def plotClusterPressureVSTime(dirName, figureName, bound=False, prop=False):
     #ax.set_ylim(50, 700)
     plt.tight_layout()
     fig.subplots_adjust(wspace=0)
-    #figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterPressure-" + figureName
+    #figureName = "/home/francesco/Pictures/soft/mips/pClusterPressure-" + figureName
     #fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -838,11 +838,11 @@ def plotSPPressureProfile(dirName, figureName, shift=0, which='pressure'):
     if(which=="pressure"):
         ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=18)
         ax.set_ylim(np.min(data[:,4])-0.2, np.max(data[:,8])+0.6)
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pProfile-" + figureName + ".png"
+        figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
     elif(which=="delta"):
         ax.set_ylabel("$\\Delta p^\ast = p_{xx} - p_{yy} \\sigma^2$", fontsize=18)
         ax.set_ylim(np.min(data[:,6] - data[:,7])-0.2, np.max(data[:,6] - data[:,7])+0.6)
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/deltaProfile-" + figureName + ".png"
+        figureName = "/home/francesco/Pictures/soft/mips/deltaProfile-" + figureName + ".png"
     ax.legend(fontsize=13, loc='upper right', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
@@ -888,7 +888,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="Dr"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterVoro-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterVoro-vsPhi-" + figureName
         ax.plot(x, x, color='k', lw=1.2, ls='--')
         # interpolate to find upper bound
         fluid = fluidDensity[fluidDensity[:,0]>0,0][10:]
@@ -921,7 +921,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
     elif(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterVoro-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterVoro-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Area$ $fraction$", fontsize=18)
@@ -973,13 +973,13 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pSurfaceTension-vsDr-" + figureName + "-phi" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsDr-" + figureName + "-phi" + which
         ax.set_xscale('log')
         #ax.set_yscale('log')
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pSurfaceTension-vsPhi-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsPhi-" + figureName + "-Dr" + which
     ax.errorbar(x[tension[:,0]>0], tension[tension[:,0]>0,0], tension[tension[:,0]>0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Surface$ $tension,$ $\\gamma$", fontsize=18, labelpad=15)
@@ -999,7 +999,7 @@ def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
     ax.legend(fontsize=12, loc='best')
     #ax.set_ylim(50, 700)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pSurfaceTensionVSTime-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTensionVSTime-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1048,12 +1048,12 @@ def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pVelMagnitude-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pVelMagnitude-vsDr-" + figureName
         ax.set_xscale('log')
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pVelMagnitude-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pVelMagnitude-vsPhi-" + figureName
     ax.errorbar(x[vmIn[:,0,0]>0], vmIn[vmIn[:,0,0]>0,0,0], vmIn[vmIn[:,0,0]>0,0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Steric$')
     ax.errorbar(x[vmIn[:,1,0]>0], vmIn[vmIn[:,1,0]>0,1,0], vmIn[vmIn[:,1,0]>0,1,1], lw=1.2, color='r', marker='v', markersize=8, fillstyle='none', capsize=3, label='$Thermal$')
     ax.errorbar(x[vmIn[:,2,0]>0], vmIn[vmIn[:,2,0]>0,2,0], vmIn[vmIn[:,2,0]>0,2,1], lw=1.2, color=[1,0.5,0], marker='s', markersize=8, fillstyle='none', capsize=3, label='$Active$')
@@ -1112,13 +1112,13 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pTotPressure-vsDr-" + figureName + "-phi" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pTotPressure-vsDr-" + figureName + "-phi" + which
         ax.set_xscale('log')
         ax.set_yscale('log')
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pTotPressure-vsPhi-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pTotPressure-vsPhi-" + figureName + "-Dr" + which
     ax.tick_params(axis='both', labelsize=14)
     # pressure components
     ax.errorbar(x[p[:,0,0]>0], p[p[:,0,0]>0,0,0], p[p[:,0,0]>0,0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Steric$')
@@ -1227,8 +1227,8 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pGasFluid-vsDr-" + figureName
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pPressures-vsDr-" + figureName
+        figure1Name = "/home/francesco/Pictures/soft/mips/pGasFluid-vsDr-" + figureName
+        figure2Name = "/home/francesco/Pictures/soft/mips/pPressures-vsDr-" + figureName
         ax1.set_xscale('log')
         ax2.set_xscale('log')
         ax1.set_yscale('log')
@@ -1236,8 +1236,8 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pGasFLuid-vsPhi-" + figureName + "-Dr" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pPressures-vsPhi-" + figureName + "-Dr" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pGasFLuid-vsPhi-" + figureName + "-Dr" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pPressures-vsPhi-" + figureName + "-Dr" + which
         ax1.set_yscale('log')
         ax2.set_yscale('log')
     ax1.tick_params(axis='both', labelsize=14)
@@ -1296,7 +1296,7 @@ def plotSPClusterTradeoff(dirName, figureName, which='gasFluid'):
             taupc[d] = data[1]
     ax.plot(taupc[taupc>0], phi[taupc>0], color='k', lw=1, marker='o', fillstyle='none')
     np.savetxt(dirName + os.sep + which + "Tradeoff.dat", np.column_stack((phi[taupc>0], taupc[taupc>0])))
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterTradeoff-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pClusterTradeoff-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_ylabel("$Density$", fontsize=18)
@@ -1360,7 +1360,7 @@ def plotSPPhaseDiagram(dirName, numBins, figureName, which='16', log=False):
     cb.set_ticklabels(ticklabels)
     cb.set_label(label=label, fontsize=18, labelpad=10, rotation='horizontal')
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pPhaseDiagram-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pPhaseDiagram-" + figureName
     if(log=='log'):
         figureName += "-" + log
     fig.savefig(figureName + ".png", transparent=True, format = "png")
@@ -1400,7 +1400,7 @@ def plotSPPhaseDiagramDeltaPressure(dirName, numBins, figureName, which='16'):
     axp.set_xlabel("$Persistence$ $time,$ $\\tau_p \\sigma$", fontsize=18)
     axp.legend(fontsize=10, loc='best', ncol=2)
     figp.tight_layout()
-    figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pDeltaPressureVSPhi-" + figureName
+    figure1Name = "/home/francesco/Pictures/soft/mips/pDeltaPressureVSPhi-" + figureName
     figp.savefig(figure1Name + ".png", transparent=True, format = "png")
     # assign color based on deltaPhi
     fig, ax = plt.subplots(figsize=(7.5,6), dpi = 120)
@@ -1439,7 +1439,7 @@ def plotSPPhaseDiagramDeltaPressure(dirName, numBins, figureName, which='16'):
     cb.set_ticklabels(ticklabels)
     cb.set_label(label=label, fontsize=18, labelpad=10, rotation='horizontal')
     fig.tight_layout()
-    figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pDeltaPressurePhaseDiagram-" + figureName
+    figure2Name = "/home/francesco/Pictures/soft/mips/pDeltaPressurePhaseDiagram-" + figureName
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1474,13 +1474,13 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pSurfaceTension-vsDr-" + figureName + "-phi" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsDr-" + figureName + "-phi" + which
         ax.set_xscale('log')
         #ax.set_yscale('log')
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pSurfaceTension-vsPhi-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsPhi-" + figureName + "-Dr" + which
     ax.errorbar(x[tension[:,0]>0], tension[tension[:,0]>0,0], tension[tension[:,0]>0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Surface$ $tension,$ $\\gamma$", fontsize=18, labelpad=15)
@@ -1500,7 +1500,7 @@ def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
     ax.legend(fontsize=12, loc='best')
     #ax.set_ylim(50, 700)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pSurfaceTensionVSTime-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTensionVSTime-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1529,7 +1529,7 @@ def plotSPDeltaPVSPhi(dirName, figureName, which='2e-04'):
     ax.set_xlabel('$Fluid$ $radius,$ $R_c$', fontsize=18)
     ax.set_ylabel('$Pressure$ $difference,$ $\\Delta p \\sigma^2$', fontsize=18)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pDeltaP-vsPhi-" + figureName + "-Dr" + which
+    figureName = "/home/francesco/Pictures/soft/mips/pDeltaP-vsPhi-" + figureName + "-Dr" + which
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1560,7 +1560,7 @@ def plotSPDeltaPVSSystemSize(dirName, figureName, which='1.5e-04'):
     ax.set_xlabel('$Fluid$ $radius,$ $R_c$', fontsize=18)
     ax.set_ylabel('$Surface$ $tension,$ $\\gamma \\sigma$', fontsize=18)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pDeltaP-vsSystemSize-" + figureName + "-Dr" + which
+    figureName = "/home/francesco/Pictures/soft/mips/pDeltaP-vsSystemSize-" + figureName + "-Dr" + which
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1597,7 +1597,7 @@ def plotSPMIPSBoundsVSSystemSize(dirName, figureName, which='up'):
     ax.set_xticks(numParticles)
     ax.set_xticklabels(dirList)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pBounds-vsSystemSize-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pBounds-vsSystemSize-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1623,7 +1623,7 @@ def plotSPClusterTensionVSSystemSize(dirName, figureName):
     ax.set_xticks(numParticles)
     ax.set_xticklabels(dirList)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pClusterTension-vsSystemSize-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pClusterTension-vsSystemSize-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1668,7 +1668,7 @@ def plotSPClusterSystemSize(dirName, figureName, which = "tension"):
     #ax.set_ylim(0.00082,)
     #ax.set_ylabel("$Cluster$ $density,$ $\\langle \\varphi_c \\rangle$", fontsize=18)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pCluster-vsSystemSize-" + figureName + "-Dr" + which
+    figureName = "/home/francesco/Pictures/soft/mips/pCluster-vsSystemSize-" + figureName + "-Dr" + which
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1690,7 +1690,7 @@ def plotSPDynamicsVSSystemSize(dirName, figureName):
     ax.set_xscale('log')
     ax.legend(fontsize=12, loc='upper right')
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pDynamics-vsSystemSize-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pDynamics-vsSystemSize-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1748,11 +1748,11 @@ def plotSPDropletProfile(dirName, figureName, shift=0, which='pressure'):
     if(which=="pressure"):
         ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=18)
         ax.set_ylim(np.min(data[:,4])-0.2, np.max(data[:,1])+0.4)
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pProfile-" + figureName + ".png"
+        figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
     elif(which=="delta"):
         ax.set_ylabel("$\\Delta p^\ast = p_{xx} - p_{yy} \\sigma^2$", fontsize=18)
         ax.set_ylim(np.min(data[:,2] - data[:,3])-0.2, np.max(data[:,2] - data[:,3])+0.6)
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/deltaProfile-" + figureName + ".png"
+        figureName = "/home/francesco/Pictures/soft/mips/deltaProfile-" + figureName + ".png"
     ax.legend(fontsize=13, loc='upper right', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
@@ -1801,8 +1801,8 @@ def plotSPDropletPressure(dirName, figureName, fixed='temp', which='0.0023'):
         xlabel = "$Temperature,$ $T$"
         loc1 = 'lower right'
         loc2 = 'upper left'
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pDropletPressure-vsT-" + figureName + "-phi" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pTotalDropletPressure-vsT-" + figureName + "-phi" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pDropletPressure-vsT-" + figureName + "-phi" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pTotalDropletPressure-vsT-" + figureName + "-phi" + which
         ax1.set_xscale('log')
         ax1.set_yscale('log')
         ax2.set_xscale('log')
@@ -1812,8 +1812,8 @@ def plotSPDropletPressure(dirName, figureName, fixed='temp', which='0.0023'):
         xlabel = "$Density,$ $\\varphi$"
         loc1 = 'lower right'
         loc2 = 'upper left'
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pDropletPressure-vsPhi-" + figureName + "-T" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pTotalDropletPressure-vsPhi-" + figureName + "-T" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pDropletPressure-vsPhi-" + figureName + "-T" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pTotalDropletPressure-vsPhi-" + figureName + "-T" + which
         #ax1.set_yscale('log')
     ax1.tick_params(axis='both', labelsize=14)
     ax2.tick_params(axis='both', labelsize=14)
@@ -1861,7 +1861,7 @@ def plotSPDropletTensionVSSystemSize(dirName, figureName):
     ax.set_xticks(numParticles)
     ax.set_xticklabels(dirList)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pDropletTension-vsSystemSize-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pDropletTension-vsSystemSize-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
