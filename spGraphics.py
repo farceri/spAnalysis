@@ -16,9 +16,9 @@ import scipy.stats as st
 import itertools
 import sys
 import os
-import spCorrelation as spCorr
 import utils
 import visuals
+import spCorrelation as spCorr
 
 def curvePL(x, a, b):
     return (a*x)**b
