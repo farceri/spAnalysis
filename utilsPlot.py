@@ -89,53 +89,6 @@ def plotCorrelation(x, y, ylabel, xlabel = "$Distance,$ $r$", logy = False, logx
     if(show == True):
         plt.pause(0.5)
 
-def getStepList(numFrames, firstStep, stepFreq):
-    maxStep = int(firstStep + stepFreq * numFrames)
-    stepList = np.arange(firstStep, maxStep, stepFreq, dtype=int)
-    if(stepList.shape[0] < numFrames):
-        numFrames = stepList.shape[0]
-    else:
-        stepList = stepList[-numFrames:]
-    return stepList
-
-def getDirLabelColorMarker(dirName, sampleName, index, fixed):
-    DrList = np.array(["1", "1e-01", "1e-02"])
-    f0List = np.array(["1", "40", "80"])
-    dirList = []
-    labelList = []
-    dirList.append(dirName + os.sep + "langevin/T" + sampleName)
-    labelList.append("thermal")
-    if(fixed == "f0"):
-        for i in range(DrList.shape[0]):
-            dirList.append(dirName + os.sep + "active-langevin/Dr" + DrList[i] + "-f0" + f0List[index] + "/T" + sampleName)
-            labelList.append("$D_r =$" + DrList[i] + "$, f_0=$" + f0List[index])
-            if(index==0):
-                color='r'
-            elif(index==1):
-                color='g'
-            else:
-                color='b'
-        colorList = ['k', color, color, color]
-        markerList = ['o', 'v', 's', 'd']
-    elif(fixed == "Dr"):
-        for i in range(f0List.shape[0]):
-            dirList.append(dirName + os.sep + "active-langevin/Dr" + DrList[index] + "-f0" + f0List[i] + "/T" + sampleName)
-            labelList.append("$D_r =$" + DrList[index] + "$, f_0=$" + f0List[i])
-            if(index==0):
-                marker='v'
-            elif(index==1):
-                marker='s'
-            else:
-                marker='d'
-        colorList = ['k', 'r', 'g', 'b']
-        markerList = ['o', marker, marker, marker]
-    else:
-        print("specify which parameter to be kept fixed")
-        colorList = []
-        markerList = []
-    dirList = np.array(dirList, dtype=str)
-    return dirList, labelList, colorList, markerList
-
 
 if __name__ == '__main__':
     print("library for plotting utilities")

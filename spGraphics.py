@@ -17,9 +17,46 @@ import itertools
 import sys
 import os
 import spCorrelation as spCorr
-import utilsCorr as ucorr
-import utilsPlot as uplot
+import utils
 import visuals
+
+def getDirLabelColorMarker(dirName, sampleName, index, fixed):
+    DrList = np.array(["1", "1e-01", "1e-02"])
+    f0List = np.array(["1", "40", "80"])
+    dirList = []
+    labelList = []
+    dirList.append(dirName + os.sep + "langevin/T" + sampleName)
+    labelList.append("thermal")
+    if(fixed == "f0"):
+        for i in range(DrList.shape[0]):
+            dirList.append(dirName + os.sep + "active-langevin/Dr" + DrList[i] + "-f0" + f0List[index] + "/T" + sampleName)
+            labelList.append("$D_r =$" + DrList[i] + "$, f_0=$" + f0List[index])
+            if(index==0):
+                color='r'
+            elif(index==1):
+                color='g'
+            else:
+                color='b'
+        colorList = ['k', color, color, color]
+        markerList = ['o', 'v', 's', 'd']
+    elif(fixed == "Dr"):
+        for i in range(f0List.shape[0]):
+            dirList.append(dirName + os.sep + "active-langevin/Dr" + DrList[index] + "-f0" + f0List[i] + "/T" + sampleName)
+            labelList.append("$D_r =$" + DrList[index] + "$, f_0=$" + f0List[i])
+            if(index==0):
+                marker='v'
+            elif(index==1):
+                marker='s'
+            else:
+                marker='d'
+        colorList = ['k', 'r', 'g', 'b']
+        markerList = ['o', marker, marker, marker]
+    else:
+        print("specify which parameter to be kept fixed")
+        colorList = []
+        markerList = []
+    dirList = np.array(dirList, dtype=str)
+    return dirList, labelList, colorList, markerList
 
 def plotSPCorr(ax, x, y, ylabel, color, legendLabel = None, logx = True, logy = False, linestyle = 'solid', alpha=1):
     ax.plot(x, y, linewidth=1., color=color, linestyle = linestyle, label=legendLabel, alpha=alpha)
@@ -32,7 +69,7 @@ def plotSPCorr(ax, x, y, ylabel, color, legendLabel = None, logx = True, logy = 
 
 ########################## nve and langevin comparison #########################
 def plotEnergy(dirName, figureName):
-    numParticles = int(ucorr.readFromParams(dirName, "numParticles"))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
     energy = np.loadtxt(dirName + os.sep + "energy.dat")
     print("temperature:", np.mean(energy[:,4]), ", energy ratio:", np.mean(energy[:,2]/energy[:,3]))
     fig = plt.figure(figsize = (7, 5), dpi = 120)
@@ -55,13 +92,13 @@ def plotEnergy(dirName, figureName):
 def compareEnergy(dirName1, dirName2, figureName):
     fig, ax = plt.subplots(1, 2, sharey = True, figsize = (12, 5), dpi = 120)
     # first sample
-    numParticles = int(ucorr.readFromParams(dirName1, "numParticles"))
+    numParticles = int(utils.readFromParams(dirName1, "numParticles"))
     energy = np.loadtxt(dirName1 + os.sep + "energy.dat")
     ax[0].plot(energy[:,0], energy[:,2]/numParticles, linewidth=1.5, color='k')
     ax[0].plot(energy[:,0], energy[:,3]/numParticles, linewidth=1.5, color='r', linestyle='--')
     ax[0].plot(energy[:,0], (energy[:,2] + energy[:,3])/numParticles, linewidth=1.5, color='b', linestyle='dotted')
     # second sample
-    numParticles = int(ucorr.readFromParams(dirName2, "numParticles"))
+    numParticles = int(utils.readFromParams(dirName2, "numParticles"))
     energy = np.loadtxt(dirName2 + os.sep + "energy.dat")
     ax[1].plot(energy[:,0], energy[:,2]/numParticles, linewidth=1.5, color='k')
     ax[1].plot(energy[:,0], energy[:,3]/numParticles, linewidth=1.5, color='r', linestyle='--')
@@ -88,7 +125,7 @@ def plotEnergyVSSystemSize(dirName, whichDir, figureName):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d] + "-2d/" + whichDir
         data = np.loadtxt(dirSample + "/energy.dat")
-        num[d] = int(ucorr.readFromParams(dirSample, "numParticles"))
+        num[d] = int(utils.readFromParams(dirSample, "numParticles"))
         mean[d,0] = np.mean(data[:,2]/num[d])
         error[d,0] = np.std(data[:,2]/num[d])
         mean[d,1] = np.mean(data[:,3]/num[d])
@@ -259,7 +296,7 @@ def plotDropletPressureVSTime(dirName, figureName):
 
 ########################## nve and langevin comparison #########################
 def plotClusterPressureVSTime(dirName, figureName, bound=False, prop=False):
-    #numParticles = int(ucorr.readFromParams(dirName, "numParticles"))
+    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
     pressure = np.loadtxt(dirName + os.sep + "clusterPressure.dat")
     fig, ax = plt.subplots(1, 2, sharey=True, figsize = (11, 5), dpi = 120)
     if(bound == "bound"):
@@ -333,7 +370,7 @@ def plotSimplexDensity(dirName, figureName, pad = 1, logy=False):
     plt.show()
 
 def plotParticleForces(dirName, index0, index1, index2, dim):
-    dirList, timeList = ucorr.getOrderedDirectories(dirName)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
     force0 = []
     force1 = []
     force2 = []
@@ -355,7 +392,7 @@ def plotParticleForces(dirName, index0, index1, index2, dim):
     plt.show()
 
 def plotActiveEnergy(dirName, figureName):
-    numParticles = int(ucorr.readFromParams(dirName, "numParticles"))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
     energy = np.loadtxt(dirName + os.sep + "energy.dat")
     fig = plt.figure(figsize = (7, 5), dpi = 120)
     ax = fig.gca()
@@ -532,7 +569,7 @@ def plotSPFourierCorr(dirName, fileName, figureName, dyn = "nve", fixed = "temp"
             dirSample = dirName + os.sep + dirList[d] + "/dynamics/"
         if(os.path.exists(dirSample + fileName + "FourierEnergy.dat")):
             minRad = np.min(np.loadtxt(dirSample + "/particleRad.dat"))
-            timeStep = ucorr.readFromParams(dirSample, "dt")
+            timeStep = utils.readFromParams(dirSample, "dt")
             data = np.loadtxt(dirSample + fileName + "FourierEnergy.dat")
             color = colorList((dirList.shape[0]-d)/dirList.shape[0])
             qmax = 2*np.pi/minRad
@@ -644,12 +681,12 @@ def plotSPCollision(dirName, figureName, scaled, dyn = "nve", fixed = "temp", wh
             #ax.semilogy(data[:,0], data[:,1], color=color, lw=1, marker='o', markersize=4, label=labelList[d], fillstyle='none')
             ax.loglog(data[:,0], data[:,1], color=color, lw=1, marker='o', markersize=4, label=labelList[d], fillstyle='none')
             if(fixed == "temp"):
-                phi.append(ucorr.readFromParams(dirSample, "phi"))
+                phi.append(utils.readFromParams(dirSample, "phi"))
             elif(fixed == "phi"):
                 Temp.append(np.mean(np.loadtxt(dirSample + "/energy.dat")[:,4]))
             elif(fixed == "f0"):
                 if(d < dirList.shape[0]-1):
-                    taup.append(1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma')))
+                    taup.append(1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma')))
                     Dr.append(float(dirList[d]))
             else:
                 damping.append(np.sqrt(iod[d])/meanRad)
@@ -723,8 +760,8 @@ def plotSPVelCorr(dirName, figureName, scaled=False, dyn = "nve", fixed = "temp"
             dirSample = dirName + os.sep + dirList[d] + "/dynamics/"
         if(os.path.exists(dirSample + "blockVelCorr.dat")):
             meanRad = np.mean(np.loadtxt(dirSample + "particleRad.dat"))
-            phi = ucorr.readFromParams(dirSample, "phi")
-            timeStep = ucorr.readFromParams(dirSample, "dt")
+            phi = utils.readFromParams(dirSample, "phi")
+            timeStep = utils.readFromParams(dirSample, "dt")
             Temp = np.mean(np.loadtxt(dirSample + "/energy.dat")[:,4])
             data = np.loadtxt(dirSample + "/blockVelCorr.dat")[1:]
             tmax = timeStep*data.shape[0]
@@ -935,13 +972,13 @@ def plotSPTimescales(dirName, figureName, fixed=False, which='1000'):
         elif(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
             meanRad = np.mean(np.loadtxt(dirSample + "particleRad.dat"))
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr1e-03-f0200/dynamics/"
             meanRad = np.mean(np.loadtxt(dirSample + "particleRad.dat"))
             damping[d] = np.sqrt(iod[d])/meanRad
         if(os.path.exists(dirSample + "logDirCorr.dat")):
-            tauDr[d] = 1/ucorr.readFromDynParams(dirSample, "Dr")
+            tauDr[d] = 1/utils.readFromDynParams(dirSample, "Dr")
             data = np.loadtxt(dirSample + "/logDirCorr.dat")
             #data[:,1] /= data[0,1]
             ax[0].semilogx(data[:,0], data[:,1], color=colorList(d/dirList.shape[0]), lw=1, label=labelList[d])
@@ -1044,7 +1081,7 @@ def plotSPVelCorrVSDrf0(dirName, figureName, scaled=False, fixed="Dr", which="10
         if(os.path.exists(dirSample + "logVelCorr.dat")):
             data = np.loadtxt(dirSample + "logVelCorr.dat")[1:]
             #data[:,1] /= data[0,1]
-            timeStep = ucorr.readFromParams(dirSample, "dt")
+            timeStep = utils.readFromParams(dirSample, "dt")
             Temp[d,0] = np.mean(np.loadtxt(dirSample + "energy.dat")[:,4])
             Temp[d,1] = np.std(np.loadtxt(dirSample + "energy.dat")[:,4])
             failed = False
@@ -1190,7 +1227,7 @@ def plotSPPairCorrVSDrf0(dirName, figureName, fixed="Dr", which="100", iod='1000
     Temp = np.zeros((dirList.shape[0],2))
     Pressure = np.zeros((dirList.shape[0],7))
     meanRad = np.mean(np.loadtxt(dirName + os.sep + "../../particleRad.dat"))
-    numParticles = ucorr.readFromParams(dirName + os.sep + "../../", "numParticles")
+    numParticles = utils.readFromParams(dirName + os.sep + "../../", "numParticles")
     boxSize = np.loadtxt(dirName + os.sep + "../../boxSize.dat")
     volume = boxSize[0]*boxSize[1]
     density = numParticles/volume
@@ -1304,7 +1341,7 @@ def plotSPVelSpaceCorrVSDrf0(dirName, figureName, fixed='Dr', which='200', iod='
         labelList = np.array(['$f_0 = 1000$', '$f_0 = 700$', '$f_0 = 500$', '$f_0 = 300$', '$f_0 = 200$', '$f_0 = 100$', '$f_0 = 50$', '$f_0 = 30$', '$f_0 = 20$', '$f_0 = 10$', '$NVT$'])
         f0 = np.array([1000, 700, 500, 300, 200, 100, 50, 30, 20, 10, 0])
     colorList = cm.get_cmap('plasma', dirList.shape[0])#winter
-    phi = ucorr.readFromParams(dirName + dirList[-1], "phi")
+    phi = utils.readFromParams(dirName + dirList[-1], "phi")
     Temp = np.zeros((dirList.shape[0]+1,2))
     meanRad = np.mean(np.loadtxt(dirName + os.sep + "../particleRad.dat"))
     damping = np.sqrt(float(iod))/meanRad
@@ -1317,7 +1354,7 @@ def plotSPVelSpaceCorrVSDrf0(dirName, figureName, fixed='Dr', which='200', iod='
         else:
             if(fixed=="f0"):
                 dirSample = dirName + "/Dr" + dirList[d] + "-f0" + f0 + "/dynamics/"
-                taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+                taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             elif(fixed=="Dr"):
                 dirSample = dirName + "/Dr" + Dr + "-f0" + dirList[d] + "/dynamics/"
             color = colorList((dirList.shape[0]-d)/dirList.shape[0])
@@ -1414,15 +1451,15 @@ def plotSPCollisionPersistence(dirName, figureName, fixed=False, which='10'):
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics-col/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics-col/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics-col/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         if(os.path.exists(dirSample + "/contactCollision.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             if(os.path.exists(dirSample + "/inClusterCollision.dat")):
                 collision = np.loadtxt(dirSample + "/outClusterCollisionIntervals.dat")
                 print('cluster')
@@ -1507,13 +1544,13 @@ def plotSPVelTimeCorr(dirName, figureName, fixed=False, which='10', fit=False):
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         color = colorList(d/dirList.shape[0])
         if(os.path.exists(dirSample + "../dynamics-col/contactCollision.dat")):
             # collision time distribution
@@ -1625,13 +1662,13 @@ def plotSPVelSpaceCorr(dirName, figureName, fixed=False, which='10'):
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         if(os.path.exists(dirSample + "spaceVelCorrInCluster.dat")):
             meanRad = np.mean(np.loadtxt(dirSample + "/particleRad.dat"))
             data = np.loadtxt(dirSample + "/spaceVelCorrInCluster.dat")
@@ -1650,7 +1687,7 @@ def plotSPVelSpaceCorr(dirName, figureName, fixed=False, which='10'):
                 failed = True
             if(failed == False and d < 12):
                 corrlength[d,0] = 1/popt[0]
-                corrlength[d,1] = ucorr.computeTau(data, index=1, threshold=np.exp(-1)*data[1,1], normalized=False)
+                corrlength[d,1] = utils.computeTau(data, index=1, threshold=np.exp(-1)*data[1,1], normalized=False)
                 ax.plot(data[1:,0], curveCvv(data[1:,0], *popt), color=colorList((dirList.shape[0]-d)/dirList.shape[0]), lw=0.9, linestyle='--')
             #data = data[data[:,0]<80,:]
             data[:,1] /= data[0,1]
@@ -1719,16 +1756,16 @@ def plotSPVelPhiPDF(dirName, figureName, fixed=False, which='1.5e-04'):
     for d in range(dirList.shape[0]):
         if(fixed=="Dr"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
         if(os.path.exists(dirSample + "velPDFInCluster.dat")):
             if(d==0):
-                damping[d] = ucorr.readFromDynParams(dirSample, "damping")
-                f0 = ucorr.readFromDynParams(dirSample, "f0")
+                damping[d] = utils.readFromDynParams(dirSample, "damping")
+                f0 = utils.readFromDynParams(dirSample, "f0")
                 ax[1].plot(np.ones(50)*f0/(2*damping[d]), np.linspace(-1,20,50), color='k', ls='dashed', lw=1)
             data = np.loadtxt(dirSample + "/velPDFInCluster.dat")
             ax[1].plot(data[:,0], data[:,1], color=colorList(d/dirList.shape[0]), lw=1.2)#, label=labelList[d])
@@ -1783,8 +1820,8 @@ def plotSPVelPDF(dirName, figureName):
     if(os.path.exists(dirName + "velPDFOutCluster.dat")):
         data = np.loadtxt(dirName + "/velPDFOutCluster.dat")
         ax.plot(data[:,0], data[:,1], color='g', lw=1.2, ls='--', label="$Gas$")
-        damping = ucorr.readFromDynParams(dirName, "damping")
-        f0 = ucorr.readFromDynParams(dirName, "f0")
+        damping = utils.readFromDynParams(dirName, "damping")
+        f0 = utils.readFromDynParams(dirName, "f0")
         ax.plot(np.ones(50)*f0/(2*damping), np.linspace(-1,20,50), color='k', ls='dashed', lw=1)
         print("active speed: ", f0/(2*damping))
     #ax.set_ylim(-0.8,17.2)
@@ -1938,9 +1975,9 @@ def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
         elif(fixed=="Dr"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         if(os.path.exists(dirSample + "clusterVelMagnitude.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "clusterVelMagnitude.dat")
             # dense steric
             vmIn[d,0,0] = np.mean(data[:,1])
@@ -1993,7 +2030,7 @@ def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
     #    ax.plot(np.ones(100)*taupc, np.linspace(np.min(force), np.max(vel), 100), ls='--', color='k')
     #    ax.plot(t, forceInter, lw=2, color='g')
     #    ax.plot(t, velInter, lw=2, color='r')
-    #    phi = ucorr.readFromParams(dirName, "phi")
+    #    phi = utils.readFromParams(dirName, "phi")
     #    np.savetxt(dirName + "iod" + which + "/active-langevin/forceVelTradeoff.dat", np.array([phi, taupc]))
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
@@ -2007,7 +2044,7 @@ def plotSPDropletPressure(dirName, figureName, fixed='temp', which='0.0023'):
     fig1, ax1 = plt.subplots(figsize = (7,4), dpi = 120)
     fig2, ax2 = plt.subplots(figsize = (7,4), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         dirList = np.array(['0.0023', '0.02', '0.2'])
         temp = np.zeros(dirList.shape[0])
     elif(fixed=="temp"):
@@ -2024,7 +2061,7 @@ def plotSPDropletPressure(dirName, figureName, fixed='temp', which='0.0023'):
             temp[d] = np.mean(np.loadtxt(dirSample + "energy.dat")[:,4])
         elif(fixed=="temp"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin-u/T" + which + "-u0.035/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         if(os.path.exists(dirSample + "/pressure.dat")):
             data = np.loadtxt(dirSample + "/pressure.dat")
             # border
@@ -2087,7 +2124,7 @@ def plotSPDropletPressure(dirName, figureName, fixed='temp', which='0.0023'):
 def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
@@ -2109,12 +2146,12 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
         elif(fixed=="Dr"):
             #dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
-            #phi[d] = ucorr.readFromParams(dirSample, "phi")
+            #phi[d] = utils.readFromParams(dirSample, "phi")
             #phi[d] = np.loadtxt(dirSample + 'localDelaunayDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
             if(d==0):
-                numParticles = ucorr.readFromParams(dirSample, "numParticles")
+                numParticles = utils.readFromParams(dirSample, "numParticles")
         if(os.path.exists(dirSample + "delaunayDensity.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "delaunayDensity.dat")
             fluidDensity[d,0] = np.mean(data[:,1])
             fluidDensity[d,1] = np.std(data[:,1])
@@ -2181,7 +2218,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
 def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
@@ -2202,13 +2239,13 @@ def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
         elif(fixed=="Dr"):
             #dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
-            #phi[d] = ucorr.readFromParams(dirSample, "phi")
+            #phi[d] = utils.readFromParams(dirSample, "phi")
             phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
-            #print(phi[d], ucorr.readFromParams(dirSample, "phi"))
+            #print(phi[d], utils.readFromParams(dirSample, "phi"))
             if(d==0):
-                numParticles = ucorr.readFromParams(dirSample, "numParticles")
+                numParticles = utils.readFromParams(dirSample, "numParticles")
         if(os.path.exists(dirSample + "shapeParameter.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "shapeParameter.dat")
             meanShape[d,0] = np.mean(data[:,1])
             errorShape[d,0] = np.std(data[:,1])
@@ -2237,7 +2274,7 @@ def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
     plt.show()
 
 def plotClusterShapeVSTime(dirName, figureName):
-    #numParticles = int(ucorr.readFromParams(dirName, "numParticles"))
+    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
     shape = np.loadtxt(dirName + os.sep + "shapeParam.dat")
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
     ax.plot(shape[:,0], shape[:,3], linewidth=1.2, color='k', ls='solid')
@@ -2253,7 +2290,7 @@ def plotClusterShapeVSTime(dirName, figureName):
     plt.show()
 
 def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
-    #numParticles = int(ucorr.readFromParams(dirName, "numParticles"))
+    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
     data = np.loadtxt(dirName + os.sep + "surfaceWork.dat")
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
     ax.plot(data[1:,0], (data[1:,3] - data[:-1,3]) / (data[1:,4] - data[:-1,4]), linewidth=1.2, color='k')
@@ -2271,7 +2308,7 @@ def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
 def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
     fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
@@ -2287,7 +2324,7 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
     for d in range(dirList.shape[0]):
         if(fixed=="phi"):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
-            taup[d] = 1/(ucorr.readFromParams(dirSample, "Dr") * ucorr.readFromParams(dirSample, "sigma"))
+            taup[d] = 1/(utils.readFromParams(dirSample, "Dr") * utils.readFromParams(dirSample, "sigma"))
         elif(fixed=="Dr"):
             dirSample = dirName + os.sep + "0." + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
             phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
@@ -2316,7 +2353,7 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
 def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
@@ -2336,7 +2373,7 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/short/"
             #phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]
         if(os.path.exists(dirSample + "logMixingTime.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "logMixingTime.dat")
             ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', capsize=3, label="$\\varphi=$" + dirList[d])
     ax.set_xscale('log')
@@ -2359,7 +2396,7 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
 def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
     fig, ax = plt.subplots(figsize = (7,4), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
@@ -2378,11 +2415,11 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
         elif(fixed=="Dr"):
             #dirSample = dirName + os.sep + "thermal" + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
             dirSample = dirName + os.sep + "0." + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
-            #phi[d] = ucorr.readFromParams(dirSample, "phi")
+            #phi[d] = utils.readFromParams(dirSample, "phi")
             phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
-            #print(phi[d], ucorr.readFromParams(dirSample, "phi"))
+            #print(phi[d], utils.readFromParams(dirSample, "phi"))
         if(os.path.exists(dirSample + "/pressure.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "/pressure.dat")
             sigma = np.mean(np.loadtxt(dirSample + "/particleRad.dat"))
             # steric
@@ -2426,7 +2463,7 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     fig1, ax1 = plt.subplots(figsize = (7,4), dpi = 120)
     fig2, ax2 = plt.subplots(figsize = (7,4), dpi = 120)
     if(fixed=="phi"):
-        phi = ucorr.readFromParams(dirName, "phi")
+        phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
@@ -2454,7 +2491,7 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
             else:
                 phi[d] = spCorr.averageLocalVoronoiDensity(dirSample)
         if(os.path.exists(dirSample + "/delaunayPressure.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "/delaunayPressure.dat")
             # dense steric
             pIn[d,0,0] = np.mean(data[:,2])
@@ -2613,7 +2650,7 @@ def plotSPPhaseDiagram(dirName, numBins, figureName, which='16', log=False):
                 data = np.loadtxt(deltaFile)
                 meanPhi[i,j] = data[0]
                 deltaPhi[i,j] = data[1]
-                taup[i,j] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+                taup[i,j] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
     # assign color based on deltaPhi
     colorId = np.zeros((phi.shape[0], Dr.shape[0]))
     min = np.min(deltaPhi)
@@ -2675,7 +2712,7 @@ def plotSPPhaseDiagramDeltaPressure(dirName, numBins, figureName, which='16'):
                 data = np.loadtxt(fileName2)
                 deltaPressure[i,j,0] = np.mean(data[:,2] + data[:,3] + data[:,4] - data[:,5] - data[:,6] - data[:,7])
                 deltaPressure[i,j,1] = np.std(data[:,2] + data[:,3] + data[:,4] - data[:,5] - data[:,6] - data[:,7])
-                taup[i,j] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+                taup[i,j] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         if(float(phi[i]) < 89 and float(phi[i]) > 28):
             if(deltaPressure[i,j,0] < 0):
                 axp.errorbar(taup[i,deltaPressure[i,:,0]!=0], -deltaPressure[i,deltaPressure[i,:,0]!=0,0], deltaPressure[i,deltaPressure[i,:,0]!=0,1], marker='o', capsize=3, color=colorList(i/phi.shape[0]), lw=1.2, label=labelList[i])
@@ -2771,7 +2808,7 @@ def plotSPDeltaPVSSystemSize(dirName, figureName, which='1.5e-04'):
         dirSample = dirName + os.sep + dirList[d] + "-2d/thermal45/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
         if(os.path.exists(dirSample + "/clusterPressure.dat")):
             data = np.loadtxt(dirSample + "/clusterPressure.dat")
-            sigma = ucorr.readFromDynParams(dirSample, "sigma")
+            sigma = utils.readFromDynParams(dirSample, "sigma")
             # delta pressure
             deltap[d,0] = np.mean(data[:,2] + data[:,3] + data[:,4] - data[:,5] - data[:,6] - data[:,7])
             deltap[d,1] = np.std(data[:,2] + data[:,3] + data[:,4] - data[:,5] - data[:,6] - data[:,7])
@@ -2883,7 +2920,7 @@ def plotSPPressureProfile(dirName, figureName, shift=0, which='pressure'):
     fig, ax = plt.subplots(figsize = (8,4), dpi = 120)
     if(os.path.exists(dirName + "/pressureProfile.dat")):
         data = np.loadtxt(dirName + "/pressureProfile.dat")
-        sigma = float(ucorr.readFromDynParams(dirName, 'sigma'))
+        sigma = float(utils.readFromDynParams(dirName, 'sigma'))
         data[:,1] = np.roll(data[:,1], shift)
         data[:,2] = np.roll(data[:,2], shift)
         data[:,3] = np.roll(data[:,3], shift)
@@ -2972,9 +3009,9 @@ def plotSPClusterMixing(dirName, figureName, fixed='Dr', which='1e-03'):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "-f0200/dynamics/short/"
         if(os.path.exists(dirSample + "clusterMixing-block.dat")):
             data = np.loadtxt(dirSample + "clusterMixing-block.dat")
-            timeStep = ucorr.readFromParams(dirSample, "dt")
+            timeStep = utils.readFromParams(dirSample, "dt")
             sigma = np.mean(np.loadtxt(dirSample + "particleRad.dat"))
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
             ax.plot(data[:,0]*timeStep/sigma, data[:,1], lw=1.2, color=colorList(d/dirList.shape[0]), marker='o', markersize=4, fillstyle='none')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Simulation$ $time,$ $t/\\sigma$", fontsize=18)
@@ -3019,15 +3056,15 @@ def plotSPClusterLengthscale(dirName, figureName, fixed=False, which='10'):
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         if(os.path.exists(dirSample + "clusterRad.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
-            lp[d] = ucorr.readFromDynParams(dirSample, "f0") * taup[d] / ucorr.readFromDynParams(dirSample, "damping")
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+            lp[d] = utils.readFromDynParams(dirSample, "f0") * taup[d] / utils.readFromDynParams(dirSample, "damping")
             data = 2*np.loadtxt(dirSample + "clusterRad.dat")
             clusterLength[d,0] = np.mean(data)
             clusterLength[d,1] = np.std(data)
@@ -3080,15 +3117,15 @@ def plotSPClusterPairCorr(dirName, figureName, fixed=False, which='10'):
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         if(os.path.exists(dirSample + "pairCorrCluster.dat")):
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
-            lp[d] = ucorr.readFromDynParams(dirSample, "f0") * taup[d] / ucorr.readFromDynParams(dirSample, "damping")
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+            lp[d] = utils.readFromDynParams(dirSample, "f0") * taup[d] / utils.readFromDynParams(dirSample, "damping")
             data = np.loadtxt(dirSample + "pairCorrCluster.dat")[20:]
             interDistance[d,0] = data[np.argmax(data[:,1]),0]
             interDistance[d,1] = data[np.argmax(data[:,2]),0]
@@ -3158,14 +3195,14 @@ def plotSPClusterFluctuations(dirName, figureName, fixed=False, which='10'):
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         #if(os.path.exists(dirSample + "dbAllClustersSize.dat")):
         #    data = np.loadtxt(dirSample + "dbAllClustersSize.dat")
         #    clusterSize[d,0] = np.mean(data)
@@ -3227,10 +3264,10 @@ def plotSPNumberDensityFluctuations(dirName, figureName, fixed='Dr', which='1e-0
     for d in range(dirList.shape[0]):
         if(fixed=="Dr"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         if(os.path.exists(dirSample + "averageLocalNumberDensity.dat")):
             if(d<8):
                 data = np.loadtxt(dirSample + "averageLocalNumberDensity.dat")
@@ -3283,13 +3320,13 @@ def plotSPClusterDistribution(dirName, figureName, fixed=False, which='10', numB
     for d in range(dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         if(os.path.exists(dirSample + "clusterNumbers.dat")):
             clusterNumber = np.loadtxt(dirSample + "clusterNumbers.dat")
             clusterNumber = clusterNumber[:-100]
@@ -3349,13 +3386,13 @@ def plotSPClusterSizeVSTime(dirName, figureName, fixed=False, which='10'):
     for d in range(4,dirList.shape[0]):
         if(fixed=="iod"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod" + which + "/active-langevin/Dr1e-03-f0200/dynamics/"
-            phi[d] = ucorr.readFromParams(dirSample, "phi")
+            phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
             dirSample = dirName + os.sep + "iod" + which + "/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            Dr[d] = ucorr.readFromDynParams(dirSample, "Dr")
+            Dr[d] = utils.readFromDynParams(dirSample, "Dr")
         else:
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "-f0200/dynamics/"
-            damping[d] = ucorr.readFromDynParams(dirSample, "damping")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")
         if(os.path.exists(dirSample + "clusterFluctuations.dat")):
             data = np.loadtxt(dirSample + "clusterFluctuations.dat")
             data = data[np.argwhere(data[:,0]%100000==0)[:,0]]
@@ -3480,7 +3517,7 @@ def plotSPLocalDensity(dirName, figureName, fixed='phi', which='30'):
     for d in range(dirList.shape[0]):
         if(fixed=="phi"):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         elif(fixed=="Dr"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr1e-03-f0200/dynamics/"
         if(os.path.exists(dirSample + "/localVoroDensity-N" + which + ".dat")):
@@ -3524,7 +3561,7 @@ def plotSPCompareLocalDensity(dirName, figureName, which='30'):
         divider = make_axes_locatable(ax[i])
         for d in range(dirList.shape[0]):
             dirSample = dirName + os.sep + phiList[i] + "/langevin/T0.001/iod10/active-langevin/Dr" + dirList[d] + "-f0200/dynamics/"
-            taup[d] = 1/(ucorr.readFromDynParams(dirSample, 'Dr')*ucorr.readFromDynParams(dirSample, 'sigma'))
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             if(os.path.exists(dirSample + "/localVoroDensity-N" + which + ".dat")):
                 if(d<1):
                     data = np.loadtxt(dirSample + os.sep + "localVoroDensity-N" + which + ".dat")
@@ -3584,14 +3621,14 @@ def plotSPCompression(dirName, figureName):
         for dir in os.listdir(dirName):
             dirSample = dirName + os.sep + dir
             if(os.path.isdir(dirSample)):
-                phi.append(ucorr.readFromParams(dirSample, "phi"))
-                p = ucorr.readFromParams(dirSample, "pressure")
+                phi.append(utils.readFromParams(dirSample, "phi"))
+                p = utils.readFromParams(dirSample, "pressure")
                 if(p == None):
-                    p = ucorr.computePressure(dirSample)
+                    p = utils.computePressure(dirSample)
                 pressure.append(p)
-                z = ucorr.readFromParams(dirSample, "numContacts")
+                z = utils.readFromParams(dirSample, "numContacts")
                 if(z == None):
-                    z = ucorr.computeNumberOfContacts(dirSample)
+                    z = utils.computeNumberOfContacts(dirSample)
                 numContacts.append(z)
         pressure = np.array(pressure)
         numContacts = np.array(numContacts)
@@ -3640,7 +3677,7 @@ def plotSPPSI6P2Compression(dirName, figureName):
     p2 = []
     for dir in os.listdir(dirName):
         if(os.path.isdir(dirName + os.sep + dir)):
-            phi.append(ucorr.readFromParams(dirName + os.sep + dir, "phi"))
+            phi.append(utils.readFromParams(dirName + os.sep + dir, "phi"))
             boxSize = np.loadtxt(dirName + os.sep + dir + "/boxSize.dat")
             nv = np.loadtxt(dirName + os.sep + dir + "/numVertexInParticleList.dat", dtype=int)
             psi6 = spCorr.computeHexaticOrder(dirName + os.sep + dir, boxSize)
@@ -3703,8 +3740,8 @@ def plotCompressionSet(dirName, figureName):
         phi = []
         for dir in os.listdir(dirName + dataSetList[i]):
             if(os.path.isdir(dirName + dataSetList[i] + os.sep + dir)):
-                phi.append(ucorr.readFromParams(dirName + dataSetList[i] + os.sep + dir, "phi"))
-                pressure.append(ucorr.readFromParams(dirName + dataSetList[i] + os.sep + dir, "pressure"))
+                phi.append(utils.readFromParams(dirName + dataSetList[i] + os.sep + dir, "phi"))
+                pressure.append(utils.readFromParams(dirName + dataSetList[i] + os.sep + dir, "pressure"))
         pressure = np.array(pressure)
         phi = np.array(phi)
         pressure = pressure[np.argsort(phi)]
@@ -3744,7 +3781,7 @@ def plotSPHOPDynamics(dirName, figureName):
     plt.show()
 
 def plotSPPSI6P2Dynamics(dirName, figureName, numFrames = 20, firstStep = 1e07, stepFreq = 1e04):
-    stepList = uplot.getStepList(numFrames, firstStep, stepFreq)
+    stepList = utils.getStepList(numFrames, firstStep, stepFreq)
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     nv = np.loadtxt(dirName + os.sep + "numVertexInParticleList.dat", dtype=int)
     numParticles = nv.shape[0]
@@ -3779,7 +3816,7 @@ def plotSPHOPVSphi(dirName, figureName):
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     for i in range(dataSetList.shape[0]):
-        phi.append(ucorr.readFromParams(dirName + os.sep + dataSetList[i], "phi"))
+        phi.append(utils.readFromParams(dirName + os.sep + dataSetList[i], "phi"))
         psi6 = spCorr.computeHexaticOrder(dirName + os.sep + dataSetList[i])
         hop.append(np.mean(psi6))
         err.append(np.sqrt(np.var(psi6)/psi6.shape[0]))
@@ -3822,7 +3859,7 @@ def plotSPDynamics(dirName, figureName):
     fig, ax = plt.subplots(figsize = (7, 5), dpi = 120)
     # plot brownian dynamics
     data = np.loadtxt(dirName + "/corr-log-q1.dat")
-    timeStep = ucorr.readFromParams(dirName, "dt")
+    timeStep = utils.readFromParams(dirName, "dt")
     ax.semilogx(data[1:,0]*timeStep, data[1:,2], color='b', linestyle='--', linewidth=1.2, marker="$T$", markersize = 10, markeredgewidth = 0.2)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Time$ $interval,$ $\\Delta t$", fontsize=18)
@@ -3841,9 +3878,9 @@ def plotSPDynamicsVSActivity(dirName, sampleName, figureName, q="1"):
     fig1, ax1 = plt.subplots(figsize = (7, 5), dpi = 120)
     fig2, ax2 = plt.subplots(figsize = (7, 5), dpi = 120)
     thermalData = np.loadtxt(dirName + "../langevin/T" + sampleName + "/dynamics/corr-log-q" + q + ".dat")
-    timeStep = ucorr.readFromParams(dirName + "../langevin/T" + sampleName + "/dynamics/", "dt")
+    timeStep = utils.readFromParams(dirName + "../langevin/T" + sampleName + "/dynamics/", "dt")
     diff = np.mean(thermalData[-5:,1]/(4 * thermalData[-5:,0] * timeStep))
-    tau = timeStep*ucorr.computeTau(thermalData)
+    tau = timeStep*utils.computeTau(thermalData)
     Pe = 0
     #ax2.plot(Pe, tau, color='k', marker='o')
     #ax2.semilogy(Pe, diff, color='k', marker='o')
@@ -3855,9 +3892,9 @@ def plotSPDynamicsVSActivity(dirName, sampleName, figureName, q="1"):
             dirSample = dirName + "/Dr" + DrList[i] + "-f0" + f0List[j] + "/T" + sampleName + "/dynamics"
             if(os.path.exists(dirSample + os.sep + "corr-log-q" + q + ".dat")):
                 data = np.loadtxt(dirSample + os.sep + "corr-log-q" + q + ".dat")
-                timeStep = ucorr.readFromParams(dirSample, "dt")
+                timeStep = utils.readFromParams(dirSample, "dt")
                 diff.append(np.mean(data[-5:,1]/(4 * data[-5:,0] * timeStep)))
-                tau.append(timeStep*ucorr.computeTau(data))
+                tau.append(timeStep*utils.computeTau(data))
                 Pe.append(((float(f0List[j])/damping) / float(DrList[i])) / meanRad)
                 #ax1.semilogx(data[:,0]*timeStep, data[:,2], marker=markerList[i], color=colorList[j], markersize=6, markeredgewidth=1, fillstyle='none')
                 ax1.loglog(data[:,0]*timeStep, data[:,5], marker=markerList[i], color=colorList[j], markersize=6, markeredgewidth=1, fillstyle='none')
@@ -3904,8 +3941,8 @@ def plotSPDynamicsVSTemp(dirName, figureName, q="1"):
     for i in range(dataSetList.shape[0]):
         if(os.path.exists(dirName + "/T" + dataSetList[i] + "/dynamics/corr-log-q" + q + ".dat")):
             data = np.loadtxt(dirName + "/T" + dataSetList[i] + "/dynamics/corr-log-q" + q + ".dat")
-            timeStep = ucorr.readFromParams(dirName + "/T" + dataSetList[i] + "/dynamics/", "dt")
-            #T.append(ucorr.readFromParams(dirName + "/T" + dataSetList[i] + "/dynamics/", "temperature"))
+            timeStep = utils.readFromParams(dirName + "/T" + dataSetList[i] + "/dynamics/", "dt")
+            #T.append(utils.readFromParams(dirName + "/T" + dataSetList[i] + "/dynamics/", "temperature"))
             energy = np.loadtxt(dirName + "/T" + dataSetList[i] + "/dynamics/energy.dat")
             if(energy[-1,3] < energy[-1,4]):
                 T.append(np.mean(energy[:,3]))
@@ -3913,8 +3950,8 @@ def plotSPDynamicsVSTemp(dirName, figureName, q="1"):
                 T.append(np.mean(energy[:,4]))
             print(T[-1], dataSetList[i])
             diff.append(np.mean(data[-10:,1]/(4 * data[-10:,0] * timeStep)))
-            tau.append(timeStep*ucorr.computeTau(data))
-            deltaChi.append(timeStep*ucorr.computeDeltaChi(data))
+            tau.append(timeStep*utils.computeTau(data))
+            deltaChi.append(timeStep*utils.computeDeltaChi(data))
             #print("T: ", T[-1], " diffusity: ", Deff[-1], " relation time: ", tau[-1], " tmax:", data[-1,0]*timeStep)
             #plotSPCorr(ax, data[:,0]*timeStep, data[:,1], "$MSD(\\Delta t)$", color = colorList(i/dataSetList.shape[0]), logy = True)
             #plotSPCorr(ax, data[:,0]*timeStep, data[:,1]/data[:,0]*timeStep, "$\\frac{MSD(\\Delta t)}{\\Delta t}$", color = colorList(i/dataSetList.shape[0]), logy = True)
@@ -4030,15 +4067,15 @@ def compareSPDynamicsVSTemp(dirName1, dirName2, figureName, q="1"):
                 dirSample = dirList[d] + "/T" + dataSetList[i] + "/dynamics/"
             if(os.path.exists(dirSample + "corr-log-q" + q + ".dat")):
                 data = np.loadtxt(dirSample + "corr-log-q" + q + ".dat")
-                timeStep = ucorr.readFromParams(dirSample, "dt")
+                timeStep = utils.readFromParams(dirSample, "dt")
                 if(d == 0):
-                    T.append(ucorr.readFromParams(dirSample, "temperature"))
+                    T.append(utils.readFromParams(dirSample, "temperature"))
                 else:
                     energy = np.loadtxt(dirSample + "energy.dat")
                     T.append(np.mean(energy[:,4]))
                 diff.append(data[-1,1]/(4 * data[-1,0] * timeStep))
-                tau.append(timeStep*ucorr.computeTau(data))
-                deltaChi.append(timeStep*ucorr.computeDeltaChi(data))
+                tau.append(timeStep*utils.computeTau(data))
+                deltaChi.append(timeStep*utils.computeDeltaChi(data))
                 #plotSPCorr(ax, data[:,0]*timeStep, data[:,1], "$MSD(\\Delta t)$", color = colorList[d], logy = True)
                 #plotSPCorr(ax, data[:,0]*timeStep, data[:,1]/data[:,0]*timeStep, "$\\frac{MSD(\\Delta t)}{\\Delta t}$", color = colorList[d], logy = True)
                 plotSPCorr(ax, data[1:,0]*timeStep, data[1:,2], "$ISF(\\Delta t)$", color = colorList[d])
@@ -4071,10 +4108,10 @@ def plotSPDynamicsVSAttraction(dirName, figureName, q="1"):
     for i in range(dataSetList.shape[0]):
         if(os.path.exists(dirName + "/T10-u" + dataSetList[i] + "/dynamics/corr-log-q" + q + ".dat")):
             data = np.loadtxt(dirName + "/T10-u" + dataSetList[i] + "/dynamics/corr-log-q" + q + ".dat")
-            timeStep = ucorr.readFromParams(dirName + "/T10-u" + dataSetList[i] + "/dynamics/", "dt")
+            timeStep = utils.readFromParams(dirName + "/T10-u" + dataSetList[i] + "/dynamics/", "dt")
             diff.append(data[-1,1]/(4 * data[-1,0] * timeStep))
-            tau.append(timeStep*ucorr.computeTau(data))
-            deltaChi.append(timeStep*ucorr.computeDeltaChi(data))
+            tau.append(timeStep*utils.computeTau(data))
+            deltaChi.append(timeStep*utils.computeDeltaChi(data))
             #plotSPCorr(ax, data[:,0]*timeStep, data[:,1], "$MSD(\\Delta t)$", color = colorList(i/dataSetList.shape[0]), logy = True)
             #plotSPCorr(ax, data[:,0]*timeStep, data[:,1]/data[:,0]*timeStep, "$\\frac{MSD(\\Delta t)}{\\Delta t}$", color = colorList(i/dataSetList.shape[0]), logy = True)
             plotSPCorr(ax, data[1:,0]*timeStep, data[1:,4], "$ISF(\\Delta t)$", color = colorList(i/dataSetList.shape[0]))
@@ -4111,10 +4148,10 @@ def plotSPDynamicsVSPhi(dirName, sampleName, figureName):
     for i in range(dataSetList.shape[0]):
         if(os.path.exists(dirName + dataSetList[i] + dirDyn + "/T" + sampleName + "/dynamics/corr-log-q1.dat")):
             data = np.loadtxt(dirName + dataSetList[i] + dirDyn  + "/T" + sampleName + "/dynamics/corr-log-q1.dat")
-            timeStep = ucorr.readFromParams(dirName + dataSetList[i] + dirDyn + "/T" + sampleName + "/dynamics", "dt")
-            phi.append(ucorr.readFromParams(dirName + dataSetList[i] + dirDyn + "/T" + sampleName + "/dynamics", "phi"))
+            timeStep = utils.readFromParams(dirName + dataSetList[i] + dirDyn + "/T" + sampleName + "/dynamics", "dt")
+            phi.append(utils.readFromParams(dirName + dataSetList[i] + dirDyn + "/T" + sampleName + "/dynamics", "phi"))
             Deff.append(data[-1,1]/(4 * data[-1,0] * timeStep))
-            tau.append(timeStep*ucorr.computeTau(data))
+            tau.append(timeStep*utils.computeTau(data))
             print("phi: ", phi[-1], " Deff: ", Deff[-1], " tau: ", tau[-1])
             legendlabel = "$\\varphi=$" + str(np.format_float_positional(phi[-1],4))
             #plotSPCorr(ax, data[1:,0]*timeStep, data[1:,1], "$MSD(\\Delta t)$", color = colorList((dataSetList.shape[0]-i)/dataSetList.shape[0]), legendLabel = legendlabel, logy = True)
@@ -4155,7 +4192,7 @@ def plotSPTauVSTemp(dirName, figureName):
     for i in range(dataSetList.shape[0]):
         if(os.path.exists(dirName + dataSetList[i] + "/relaxationData.dat")):
             data = np.loadtxt(dirName + dataSetList[i] + "/relaxationData.dat")
-            phi = ucorr.readFromParams(dirName + dataSetList[i], "phi")
+            phi = utils.readFromParams(dirName + dataSetList[i], "phi")
             #ax.loglog(1/data[:,0], np.log(data[:,2]), linewidth=1.5, color=colorList((dataSetList.shape[0]-i)/dataSetList.shape[0]), marker='o')
             ax.loglog(np.abs(phi - phi0)**(2/mu)/data[:,0], np.abs(phi0 - phi)**(delta) * np.log(np.sqrt(data[:,0])*data[:,2]), linewidth=1.5, color=colorList((dataSetList.shape[0]-i)/dataSetList.shape[0]), marker='o')
     ax.set_xlim(7.6e-04, 4.2e02)
@@ -4200,10 +4237,10 @@ def plotSPDynamicsVSQ(dirName, figureName):
     for i in range(qList.shape[0]):
         if(os.path.exists(dirName + "/corr-log-q" + qList[i] + ".dat")):
             data = np.loadtxt(dirName + "/corr-log-q" + qList[i] + ".dat")
-            timeStep = ucorr.readFromParams(dirName, "dt")
+            timeStep = utils.readFromParams(dirName, "dt")
             legendlabel = "$q=2\\pi/($" + qList[i] + "$\\times d)$"
             plotSPCorr(ax, data[1:,0]*timeStep, data[1:,2], "$ISF(\\Delta t)$", color = colorList((qList.shape[0]-i)/qList.shape[0]), legendLabel = legendlabel)
-            tau.append(timeStep*ucorr.computeTau(data))
+            tau.append(timeStep*utils.computeTau(data))
             diff.append(np.mean(data[-5:,1]/4*data[-5:,0]))
             q.append(np.pi/(float(qList[i])*pRad * q0))
     ax.set_xlabel("$Time$ $interval,$ $\\Delta t$", fontsize=18)
@@ -4242,8 +4279,8 @@ def plotSPBetaVSActivity(dirName, sampleName, figureName, start):
             for i in range(qList.shape[0]):
                 if(os.path.exists(dirSample + "/dynamics/corr-log-q" + qList[i] + ".dat")):
                     data = np.loadtxt(dirSample + "/dynamics/corr-log-q" + qList[i] + ".dat")
-                    timeStep = ucorr.readFromParams(dirSample, "dt")
-                    tau.append(timeStep*ucorr.computeTau(data, 2))
+                    timeStep = utils.readFromParams(dirSample, "dt")
+                    tau.append(timeStep*utils.computeTau(data, 2))
                     q.append(np.pi/(float(qList[i])*pRad * q0))
             tau = np.array(tau)
             q = np.array(q)
@@ -4258,7 +4295,7 @@ def plotSPBetaVSActivity(dirName, sampleName, figureName, start):
     beta = beta[np.argsort(Pe)]
     std = std[np.argsort(Pe)]
     Pe = np.sort(Pe)
-    uplot.plotErrorBar(ax, Pe, beta, std, "$Pe$", "$\\beta$", logx = True, logy = False)
+    utils.plotErrorBar(ax, Pe, beta, std, "$Pe$", "$\\beta$", logx = True, logy = False)
     ax.set_ylim(-2.18, -1.12)
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/pcompareBeta-" + figureName
@@ -4273,7 +4310,7 @@ def compareSPDynamicsVSQ(dirName, sampleName, figureName, index = 0, fixed = "f0
     fig, ax = plt.subplots(figsize = (7, 5), dpi = 120)
     DrList = np.array(["1", "1e-01", "1e-02"])
     f0List = np.array(["1", "40", "80"])
-    dirList, labelList, colorList, markerList = uplot.getDirLabelColorMarker(dirName, sampleName, index, fixed)
+    dirList, labelList, colorList, markerList = getDirLabelColorMarker(dirName, sampleName, index, fixed)
     Pe = []
     for Dr in DrList:
         for f0 in f0List:
@@ -4285,8 +4322,8 @@ def compareSPDynamicsVSQ(dirName, sampleName, figureName, index = 0, fixed = "f0
         for i in range(qList.shape[0]):
             if(os.path.exists(dirList[d] + "/dynamics/corr-log-q" + qList[i] + ".dat")):
                 data = np.loadtxt(dirList[d] + "/dynamics/corr-log-q" + qList[i] + ".dat")
-                timeStep = ucorr.readFromParams(dirList[d], "dt")
-                tau.append(timeStep*ucorr.computeTau(data, 2))
+                timeStep = utils.readFromParams(dirList[d], "dt")
+                tau.append(timeStep*utils.computeTau(data, 2))
                 diff.append(np.mean(data[-5:,1]/(4*data[-5:,0])))
                 q.append(np.pi/(float(qList[i])*pRad * q0))
         tau = np.array(tau)
@@ -4313,7 +4350,7 @@ def plotSPPairCorrVSActivity(dirName, sampleName, figureName, start, end, index=
     #fig2, ax2 = plt.subplots(figsize = (7, 5), dpi = 120)
     DrList = np.array(["1", "1e-01", "1e-02"])
     f0List = np.array(["1", "40", "80"])
-    dirList, labelList, colorList, markerList = uplot.getDirLabelColorMarker(dirName, sampleName, index, fixed)
+    dirList, labelList, colorList, markerList = getDirLabelColorMarker(dirName, sampleName, index, fixed)
     for d in range(dirList.shape[0]):
         if(os.path.exists(dirList[d] + "/dynamics/pairCorr.dat")):
             pc = np.loadtxt(dirList[d] + os.sep + "dynamics/pairCorr.dat")
@@ -4344,7 +4381,7 @@ def plotSPVelCorrVSActivity(dirName, sampleName, figureName, index=0, fixed="f0"
     fig, ax = plt.subplots(2, 1, figsize = (6, 7), dpi = 120)
     DrList = np.array(["1", "1e-01", "1e-02"])
     f0List = np.array(["1", "40", "80"])
-    dirList, labelList, colorList, markerList = uplot.getDirLabelColorMarker(dirName, sampleName, index, fixed)
+    dirList, labelList, colorList, markerList = getDirLabelColorMarker(dirName, sampleName, index, fixed)
     for d in range(dirList.shape[0]):
         if(os.path.exists(dirList[d] + "/dynamics/corr-vel-space.dat")):
             vsf = np.loadtxt(dirList[d] + os.sep + "dynamics/velocitySF.dat")
@@ -4380,7 +4417,7 @@ def plotSPVelCorrVSQ(dirName, figureName):
     for i in range(qList.shape[0]):
         if(os.path.exists(dirName + "/velTimeCorr-d" + qList[i] + ".dat")):
             data = np.loadtxt(dirName + "/velTimeCorr-d" + qList[i] + ".dat")
-            timeStep = ucorr.readFromParams(dirName, "dt")
+            timeStep = utils.readFromParams(dirName, "dt")
             legendlabel = "$q=2\\pi/($" + qList[i] + "$\\; \\sigma)$"
             plotSPCorr(ax, data[:,0]*timeStep, data[:,4], "$ISF_v(\\Delta t)$", color = colorList((qList.shape[0]-i)/qList.shape[0]), legendLabel = legendlabel)
     ax.set_xlabel("$Time$ $interval,$ $\\Delta t$", fontsize=18)
@@ -4473,7 +4510,7 @@ def plotSPDensityVarVSTime(dirName, sampleName, numBins, figureName):
                 if(float(dir[1:])%1e04 == 0):
                     localDensity = spCorr.computeLocalDensity(dirSample + os.sep + dir, numBins)
                     var.append(np.std(localDensity)/np.mean(localDensity))
-                    phi.append(ucorr.readFromParams(dirSample + os.sep + dir, "phi"))
+                    phi.append(utils.readFromParams(dirSample + os.sep + dir, "phi"))
                     step.append(int(dir[1:]))
         var = np.array(var)
         phi = np.array(phi)
@@ -4537,7 +4574,7 @@ def plotSPLocalDensityPDFvsTemp(dirName1, dirName2, sampleName, numBins, figureN
             if(os.path.exists(dirSample + "localDensity-N" + numBins + ".dat")):
                 data = np.loadtxt(dirSample + "localDensity-N" + numBins + ".dat")
                 if(d == 0):
-                    T.append(ucorr.readFromParams(dirSample, "temperature"))
+                    T.append(utils.readFromParams(dirSample, "temperature"))
                 else:
                     energy = np.loadtxt(dirSample + "energy.dat")
                     T.append(np.mean(energy[:,4]))
@@ -4592,9 +4629,9 @@ def plotSPFDTSusceptibility(dirName, figureName, Dr, driving):
     #fig0, ax0 = plt.subplots(dpi = 120)
     fig, ax = plt.subplots(1, 2, figsize = (12.5, 5), dpi = 120)
     corr = np.loadtxt(dirName + os.sep + "dynamics/corr-log-q1.dat")
-    timeStep = ucorr.readFromParams(dirName + os.sep + "dynamics/", "dt")
+    timeStep = utils.readFromParams(dirName + os.sep + "dynamics/", "dt")
     #plotSPCorr(ax0, corr[1:,0]*timeStep, corr[1:,1]/(corr[1:,0]*timeStep), "$MSD(\\Delta t) / \\Delta t$", color = 'k', logy = True)
-    timeStep = ucorr.readFromParams(dirName + os.sep + "dynamics", "dt")
+    timeStep = utils.readFromParams(dirName + os.sep + "dynamics", "dt")
     diff = np.mean(corr[corr[:,0]*timeStep>tmeasure,1]/(2*corr[corr[:,0]*timeStep>tmeasure,0]*timeStep))
     for i in range(fextStr.shape[0]):
         sus = np.loadtxt(dirName + os.sep + "dynamics-fext" + fextStr[i] + "/susceptibility.dat")
@@ -4646,10 +4683,10 @@ def plotSPFDTdata(dirName, firstIndex, mass, figureName):
             dirSample = dirName + "/Dr" + DrList[i] + "/Dr" + DrList[i] + "-f0" + f0List[j] + "/dynamics-mass1e06"
             if(os.path.exists(dirSample)):
                 data = np.loadtxt(dirSample + os.sep + "../dynamics/corr-log-q1.dat")
-                timeStep = ucorr.readFromParams(dirSample + os.sep + "../dynamics", "dt")
+                timeStep = utils.readFromParams(dirSample + os.sep + "../dynamics", "dt")
                 diff.append(np.mean(data[-10:,1]/(4 * data[-10:,0] * timeStep)))
-                tau.append(timeStep*ucorr.computeTau(data))
-                deltaChi.append(ucorr.computeDeltaChi(data))
+                tau.append(timeStep*utils.computeTau(data))
+                deltaChi.append(utils.computeDeltaChi(data))
                 Dr.append(float(DrList[i]))
                 f0.append(float(f0List[j]))
                 Pe.append(((float(f0List[j])/damping) / float(DrList[i])) / (2 * meanRad))
@@ -4710,10 +4747,10 @@ def plotSPFDTvsTemp(dirName, figureName, q="1", index=3):
                 dirSample = dirName + "/Dr" + Dr + "-f0" + f0 + "/T" + T + "/"
                 if(os.path.exists(dirSample + "dynamics/corr-log-q" + q + ".dat")):
                     data = np.loadtxt(dirSample + "dynamics/corr-log-q" + q + ".dat")
-                    timeStep = ucorr.readFromParams(dirSample + "dynamics", "dt")
+                    timeStep = utils.readFromParams(dirSample + "dynamics", "dt")
                     diff.append(np.mean(data[-5:,1]/(4 * data[-5:,0] * timeStep)))
-                    tau.append(timeStep*ucorr.computeTau(data))
-                    deltaChi.append(ucorr.computeDeltaChi(data))
+                    tau.append(timeStep*utils.computeTau(data))
+                    deltaChi.append(utils.computeDeltaChi(data))
                     energy = np.loadtxt(dirSample + "dynamics/energy.dat")
                     Pe.append(float(f0)/ (damping * float(Dr) * 2 * meanRad))
                     #Temp.append(np.mean(energy[:,4]))
@@ -4756,7 +4793,7 @@ def plotSPFDTvsTemp(dirName, figureName, q="1", index=3):
 def plotTempDensityHeatMap(dirName, numBins):
     fig, ax = plt.subplots(1, 2, figsize = (12, 5), dpi = 120)
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    numParticles = int(ucorr.readFromParams(dirName, "numParticles"))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
     visuals.setBigBoxAxes(boxSize, ax[0])
     visuals.setBigBoxAxes(boxSize, ax[1])
     xbin = np.linspace(0, boxSize[0], numBins+1)
@@ -4772,8 +4809,8 @@ def plotTempDensityHeatMap(dirName, numBins):
     pPos = np.array(np.loadtxt(dirName + os.sep + "particlePos.dat"))
     pPos[:,0] -= np.floor(pPos[:,0]/boxSize[0]) * boxSize[0]
     pPos[:,1] -= np.floor(pPos[:,1]/boxSize[1]) * boxSize[1]
-    ucorr.computeLocalTempGrid(pPos, pVel, xbin, ybin, localTemp)
-    ucorr.computeLocalAreaGrid(pPos, pRad, xbin, ybin, localArea)
+    utils.computeLocalTempGrid(pPos, pVel, xbin, ybin, localTemp)
+    utils.computeLocalAreaGrid(pPos, pRad, xbin, ybin, localArea)
     #localTemp /= Temp
     localArea /= localSquare
     c = ax[0].pcolormesh(xedges, yedges, localArea, cmap='Greys', vmin=np.min(localArea), vmax=np.max(localArea))
