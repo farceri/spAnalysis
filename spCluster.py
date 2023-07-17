@@ -336,7 +336,7 @@ def averageParticleVelSpaceCorrCluster(dirName, dirSpacing=1000000):
     uplot.plotCorrelation(binCenter, velCorrInCluster[:,2], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'k')
     #plt.show()
 
-######################### Cluster Velocity Correlation #########################
+################################## Velocity field ##############################
 def computeVelocityField(dirName, numBins=100, plot=False, figureName=None, read=False):
     sep = utils.getDirSep(dirName, 'boxSize')
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
@@ -784,10 +784,10 @@ def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
     velOutCluster = np.empty(0)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "denseList!.dat")):
-            denseList = np.loadtxt(dirSample + os.sep + "denseList.dat")
+        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
+            denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
         else:
-            denseList,_ = computeVoronoiCluster(dirSample)
+            denseList,_ = computeDelaunayCluster(dirSample)
         vel = np.loadtxt(dirSample + os.sep + "particleVel.dat")
         velNorm = np.linalg.norm(vel, axis=1)
         velInCluster = np.append(velInCluster, velNorm[denseList==1].flatten())
@@ -801,7 +801,7 @@ def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
     data = velInCluster# / np.sqrt(2*Temp)
     pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
-    print("Variance of the velocity in cluster: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    print("Variance of the velocity inside the cluster: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
     if(plot == "plot"):
         uplot.plotCorrelation(edges, pdf, "$Velocity$ $distribution,$ $P(v)$", xlabel = "$Velocity,$ $v$", color='b')
     np.savetxt(dirName + os.sep + "velPDFInCluster.dat", np.column_stack((edges, pdf)))
@@ -814,12 +814,13 @@ def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
     data = velOutCluster# / np.sqrt(2*Temp)
     pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
-    print("Variance of the velocity out cluster: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    print("Variance of the velocity outside the cluster: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
     if(plot == "plot"):
         uplot.plotCorrelation(edges, pdf, "$Velocity$ $distribution,$ $P(v)$", xlabel = "$Velocity,$ $v$", color='g')
     np.savetxt(dirName + os.sep + "velPDFOutCluster.dat", np.column_stack((edges, pdf)))
     if(plot == "plot"):
-        plt.pause(0.5)
+        #plt.pause(0.5)
+        plt.show()
 
 ################################################################################
 ############################## Clustering algorithms ###########################
@@ -975,6 +976,29 @@ def averageDBClusterSize(dirName, dirSpacing, eps=0.03, min_samples=10, plot=Fal
     np.savetxt(dirName + "dbAllClustersSize.dat", allClustersSize)
     print("area of all particles in a cluster: ", np.mean(allClustersSize), " += ", np.std(allClustersSize))
     print("typical cluster size: ", np.mean(clusterSize), " += ", np.std(clusterSize))
+
+def getDBClusterLabels(pos, boxSize, eps, min_samples, contacts, contactFilter=False):
+    numParticles = pos.shape[0]
+    distance = computeDistances(pos, boxSize)
+    db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
+    labels = db.labels_
+    if(contactFilter == 'contact'):
+        connectLabel = np.zeros(numParticles)
+        for i in range(numParticles):
+            if(np.sum(contacts[i]!=-1)>1):
+                    for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                        if(np.sum(contacts[c]!=-1)>1):
+                            # this is at least a three particle cluster
+                            connectLabel[i] = 1
+        labels[connectLabel==0] = -1
+    return labels
+
+def getNoClusterLabel(labels, contacts):
+    noLabels = np.zeros(labels.shape[0])
+    for i in range(labels.shape[0]):
+        if(labels[i] != -1 and np.sum(contacts[i]) < 2):
+            noLabels[i] = 1
+    return noLabels
 
 ########################## Cluster border calculation ##########################
 def computeDBClusterBorder(dirName, plot='plot'):
@@ -1425,7 +1449,7 @@ def checkDelaunay(dirName):
     checkDelaunayInclusivity(delaunay.simplices, pos, rad, boxSize)
 
 ############################## Delaunay clustering #############################
-def computeDelaunayCluster(dirName, threshold=0.84, filter='filter', plot=False):
+def computeDelaunayCluster(dirName, threshold=0.78, filter='filter', plot=False):
     sep = utils.getDirSep(dirName, "boxSize")
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
@@ -2982,6 +3006,12 @@ if __name__ == '__main__':
 
     elif(whichCorr == "averagevccluster"):
         averageParticleVelSpaceCorrCluster(dirName)
+
+    elif(whichCorr == "vfield"):
+        numBins = int(sys.argv[3])
+        plot = sys.argv[4]
+        figureName = sys.argv[5]
+        computeVelocityField(dirName, numBins=numBins, plot=plot, figureName=figureName)
 
     elif(whichCorr == "vfcluster"):
         numBins = int(sys.argv[3])

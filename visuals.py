@@ -17,7 +17,7 @@ import itertools
 import sys
 import os
 import utils
-import spCorrelation as spCorr
+import spCluster as cluster
 
 def setAxes3D(ax):
     ax.set_xticklabels([])
@@ -154,21 +154,21 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
         if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
-            denseList,_ = spCorr.computeDelaunayCluster(dirName, threshold, filter=filter)
+            denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
         #if(os.path.exists(dirName + os.sep + "denseList!.dat")):
         #    denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
         #else:
-        #    denseList,_ = spCorr.computeVoronoiCluster(dirName, threshold, filter=filter)
+        #    denseList,_ = cluster.computeVoronoiCluster(dirName, threshold, filter=filter)
         colorId = getDenseColorList(denseList)
     elif(border==True):
         if(os.path.exists(dirName + os.sep + "delaunayBorderList!.dat")):
             borderList = np.loadtxt(dirName + os.sep + "delaunayBorderList.dat")
         else:
-            borderList,_ = spCorr.computeDelaunayBorder(dirName, threshold, filter=filter)
+            borderList,_ = cluster.computeDelaunayBorder(dirName, threshold, filter=filter)
         #if(os.path.exists(dirName + os.sep + "borderList!.dat")):
         #    borderList = np.loadtxt(dirName + os.sep + "borderList!.dat")
         #else:
-        #    borderList,_ = spCorr.computeVoronoiBorder(dirName, threshold, filter=filter)
+        #    borderList,_ = cluster.computeVoronoiBorder(dirName, threshold, filter=filter)
         colorId = getDenseColorList(borderList)
     elif(ekmap==True):
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
@@ -303,9 +303,9 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
         pressure = np.loadtxt(dirName + os.sep + "particleStress.dat")
     else:
         if(droplet == 'droplet'):
-            pressure = spCorr.computeDropletParticleStress(dirName, l1)
+            pressure = cluster.computeDropletParticleStress(dirName, l1)
         else:
-            pressure = spCorr.computeParticleStress(dirName)
+            pressure = cluster.computeParticleStress(dirName)
     colorId, colorList = getPressureColorList(pressure, which)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -368,7 +368,7 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
         if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
-            denseList,_ = spCorr.computeDelaunayCluster(dirName, threshold, filter=filter)
+            denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
         colorId = getDenseColorList(denseList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -384,14 +384,14 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
 
-def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.84, filter=True, alpha=0.7):
+def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.84, filter=True, alpha=0.8):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0.1, -0.3)
+    pos = utils.shiftPositions(pos, boxSize, 0, -0.4)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -405,7 +405,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.84, filt
         if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
-            denseList,_ = spCorr.computeDelaunayCluster(dirName, threshold, filter=filter)
+            denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
         colorId = getDenseColorList(denseList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -414,7 +414,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.84, filt
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
     delaunay = Delaunay(newPos)
     insideIndex = utils.getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
-    plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.2, color='k')
+    plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.3, color='k')
     #plt.plot(pos[:,0], pos[:,1], 'o', markersize=0.2, markeredgecolor='k', color='r')
     #plt.plot(pos[14730,0], pos[14730,1], '*', markersize=10, markeredgecolor='k', color='b')
     #plt.plot(pos[595,0], pos[595,1], '*', markersize=10, markeredgecolor='k', color='r')
@@ -547,7 +547,7 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
     if(os.path.exists(dirName + os.sep + "t" + str(stepList[0]) + "/denseList!.dat")):
         denseList = np.loadtxt(dirName + os.sep + "t" + str(stepList[0]) + "/denseList.dat")
     else:
-        denseList,_ = spCorr.computeVoronoiCluster(dirName + os.sep + "t" + str(stepList[0]))
+        denseList,_ = cluster.computeVoronoiCluster(dirName + os.sep + "t" + str(stepList[0]))
     # the first configuration gets two frames for better visualization
     makeSoftParticleClusterFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, denseList)
     for i in stepList:
@@ -574,15 +574,15 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
             pressure = np.loadtxt(dirName + os.sep + "particleStress.dat")
         else:
             if(droplet == 'droplet'):
-                pressure = spCorr.computeDropletParticleStress(dirName, l1)
+                pressure = cluster.computeDropletParticleStress(dirName, l1)
             else:
-                pressure = spCorr.computeParticleStress(dirName)
+                pressure = cluster.computeParticleStress(dirName)
         plotSoftParticlePressureMap(axFrame, pos, pressure, rad)
     elif(cluster == "cluster"):
         if(os.path.exists(dirName + os.sep + "clusterLabels.dat")):
             clusterList = np.loadtxt(dirName + os.sep + "clusterLabels.dat")[:,0]
         else:
-            clusterList,_,_ = spCorr.searchClusters(dirName, numParticles=rad.shape[0])
+            clusterList,_,_ = cluster.searchClusters(dirName, numParticles=rad.shape[0])
         plotSoftParticleCluster(axFrame, pos, rad, clusterList)
     else:
         if(npt == "npt"):
@@ -640,7 +640,7 @@ def makeVelFieldFrame(dirName, numBins, bins, boxSize, numParticles, figFrame, f
     gcfFrame.clear()
     axFrame = figFrame.gca()
     setGridAxes(bins, axFrame)
-    grid, field = spCorr.computeVelocityField(dirName, numBins, plot=False, boxSize=boxSize, numParticles=numParticles)
+    grid, field = cluster.computeVelocityField(dirName, numBins, plot=False, boxSize=boxSize, numParticles=numParticles)
     axFrame.quiver(grid[:,0], grid[:,1], field[:,0], field[:,1], facecolor='k', width=0.002, scale=3)
     plt.tight_layout()
     axFrame.remove()

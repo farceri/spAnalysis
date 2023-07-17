@@ -7,7 +7,7 @@ import numpy as np
 from scipy.fft import fft, fftfreq, fft2
 from sklearn.cluster import DBSCAN
 from scipy.spatial import Delaunay
-import spCorrelation as spCorr
+import spCluster as cluster
 import os
 
 ############################## general utilities ###############################
@@ -518,11 +518,11 @@ def readDenseListPair(dirName, index1, index2):
     if(os.path.exists(dirName + os.sep + "t" + str(index1) + os.sep + "delaunayList!.dat")):
         denseList1 = np.loadtxt(dirName + os.sep + "t" + str(index1) + os.sep + "delaunayList.dat")
     else:
-        denseList1,_ = spCorr.computeDelaunayCluster(dirName + os.sep + "t" + str(index1))
+        denseList1,_ = cluster.computeDelaunayCluster(dirName + os.sep + "t" + str(index1))
     if(os.path.exists(dirName + os.sep + "t" + str(index2) + os.sep + "delaunayList!.dat")):
         denseList2 = np.loadtxt(dirName + os.sep + "t" + str(index2) + os.sep + "delaunayList.dat")
     else:
-        denseList2,_ = spCorr.computeDelaunayCluster(dirName + os.sep + "t" + str(index2))
+        denseList2,_ = cluster.computeDelaunayCluster(dirName + os.sep + "t" + str(index2))
     return denseList1, denseList2
 
 ############################### Packing tools ##################################
@@ -619,6 +619,33 @@ def getMOD2PIAngles(fileName):
     angle = np.array(np.loadtxt(fileName), dtype=np.float64)
     return np.mod(angle, 2*np.pi)
 
+def sortBorderPos(borderPos, borderList, boxSize, checkNumber=5):
+    borderAngle = np.zeros(borderPos.shape[0])
+    centerOfMass = np.mean(borderPos, axis=0)
+    for i in range(borderPos.shape[0]):
+        delta = pbcDistance(borderPos[i], centerOfMass, boxSize)
+        borderAngle[i] = np.arctan2(delta[1], delta[0])
+    borderPos = borderPos[np.argsort(borderAngle)]
+    # swap nearest neighbor if necessary
+    for i in range(borderPos.shape[0]-1):
+        # check distances with the next three border particles
+        distances = []
+        for j in range(checkNumber):
+            nextIndex = i+j+1
+            if(nextIndex > borderPos.shape[0]-1):
+                nextIndex -= borderPos.shape[0]
+            distances.append(np.linalg.norm(pbcDistance(borderPos[i], borderPos[nextIndex], boxSize)))
+        minIndex = np.argmin(distances)
+        swapIndex = i+minIndex+1
+        if(swapIndex > borderPos.shape[0]-1):
+            swapIndex -= borderPos.shape[0]
+        if(minIndex != 0):
+            # pair swap
+            tempPos = borderPos[i+1]
+            borderPos[i+1] = borderPos[swapIndex]
+            borderPos[swapIndex] = tempPos
+    return borderPos
+
 def increaseDensity(dirName, dirSave, targetDensity):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
@@ -699,56 +726,43 @@ def initializeDroplet(dirName, dirSave):
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     np.savetxt(dirSave + '/particlePos.dat', pos)
 
-############################ Clustering analysis ###############################
-def sortBorderPos(borderPos, borderList, boxSize, checkNumber=5):
-    borderAngle = np.zeros(borderPos.shape[0])
-    centerOfMass = np.mean(borderPos, axis=0)
-    for i in range(borderPos.shape[0]):
-        delta = pbcDistance(borderPos[i], centerOfMass, boxSize)
-        borderAngle[i] = np.arctan2(delta[1], delta[0])
-    borderPos = borderPos[np.argsort(borderAngle)]
-    # swap nearest neighbor if necessary
-    for i in range(borderPos.shape[0]-1):
-        # check distances with the next three border particles
-        distances = []
-        for j in range(checkNumber):
-            nextIndex = i+j+1
-            if(nextIndex > borderPos.shape[0]-1):
-                nextIndex -= borderPos.shape[0]
-            distances.append(np.linalg.norm(pbcDistance(borderPos[i], borderPos[nextIndex], boxSize)))
-        minIndex = np.argmin(distances)
-        swapIndex = i+minIndex+1
-        if(swapIndex > borderPos.shape[0]-1):
-            swapIndex -= borderPos.shape[0]
-        if(minIndex != 0):
-            # pair swap
-            tempPos = borderPos[i+1]
-            borderPos[i+1] = borderPos[swapIndex]
-            borderPos[swapIndex] = tempPos
-    return borderPos
-
-def getDBClusterLabels(pos, boxSize, eps, min_samples, contacts, contactFilter=False):
-    numParticles = pos.shape[0]
-    distance = computeDistances(pos, boxSize)
-    db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
-    labels = db.labels_
-    if(contactFilter == 'contact'):
-        connectLabel = np.zeros(numParticles)
-        for i in range(numParticles):
-            if(np.sum(contacts[i]!=-1)>1):
-                    for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                        if(np.sum(contacts[c]!=-1)>1):
-                            # this is at least a three particle cluster
-                            connectLabel[i] = 1
-        labels[connectLabel==0] = -1
-    return labels
-
-def getNoClusterLabel(labels, contacts):
-    noLabels = np.zeros(labels.shape[0])
-    for i in range(labels.shape[0]):
-        if(labels[i] != -1 and np.sum(contacts[i]) < 2):
-            noLabels[i] = 1
-    return noLabels
+def removeParticles(dirName, numRemove):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    density = np.sum(np.pi*rad**2)
+    print("Current density: ", density)
+    # remove particles in the gas at random
+    if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+        denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
+    else:
+        denseList,_ = cluster.computeDelaunayCluster(dirName, 0.7, filter=False)
+    gasIndices = np.argwhere(denseList==0)[:,0]
+    maxRemove = gasIndices.shape[0]
+    print("Maximum number of removable particles:", maxRemove)
+    if(numRemove < maxRemove):
+        random = np.random.randint(0, maxRemove, numRemove)
+        removeIndices = gasIndices[random]
+        rad = np.delete(rad, removeIndices)
+        pos = np.delete(pos, removeIndices, axis=0)
+        vel = np.delete(vel, removeIndices)
+        angle = np.delete(angle, removeIndices)
+        # save to new directory
+        dirSave = dirName + os.sep + str(numRemove) + "removed"
+        if(os.path.isdir(dirSave)==False):
+            os.mkdir(dirSave)
+        np.savetxt(dirSave + '/boxSize.dat', boxSize)
+        np.savetxt(dirSave + '/particleRad.dat', rad)
+        np.savetxt(dirSave + '/particlePos.dat', pos)
+        np.savetxt(dirSave + '/particleVel.dat', vel)
+        np.savetxt(dirSave + '/particleAngles.dat', angle)
+        density = np.sum(np.pi*rad**2)
+        print("Density after removing " + str(numRemove) + " particles: ", density)
+    else:
+        print("Please remove a number of particles smaller than", maxRemove)
 
 ############################### Delaunay analysis ##############################
 def augmentPacking(pos, rad, fraction=0.05):
