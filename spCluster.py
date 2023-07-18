@@ -784,10 +784,10 @@ def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
     velOutCluster = np.empty(0)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
+        if(os.path.exists(dirSample + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
         else:
-            denseList,_ = computeDelaunayCluster(dirSample)
+            denseList,_ = computeDelaunayCluster(dirSample, threshold=0.78, filter=False)
         vel = np.loadtxt(dirSample + os.sep + "particleVel.dat")
         velNorm = np.linalg.norm(vel, axis=1)
         velInCluster = np.append(velInCluster, velNorm[denseList==1].flatten())
@@ -1449,7 +1449,7 @@ def checkDelaunay(dirName):
     checkDelaunayInclusivity(delaunay.simplices, pos, rad, boxSize)
 
 ############################## Delaunay clustering #############################
-def computeDelaunayCluster(dirName, threshold=0.78, filter='filter', plot=False):
+def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False):
     sep = utils.getDirSep(dirName, "boxSize")
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
@@ -1472,11 +1472,15 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter='filter', plot=False)
             denseSimplexList[i] = 1
     # if all the simplices touching a particle are dense then the particle is dense
     for i in range(numParticles):
-        count = 0
         indices = np.argwhere(simplices==i)[:,0]
+        #count = 0
+        #maxCount = indices.shape[0]
         for sIndex in indices:
             if(denseSimplexList[sIndex] == 1):
                 denseList[i] = 1
+        #        count += 1
+        #if(count > maxCount-4):
+        #    denseList[i] = 1
     #print("Number of dense particles: ", denseList[denseList==1].shape[0])
     if(filter=='filter'):
         connectList = np.zeros(numParticles)
@@ -1515,15 +1519,15 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter='filter', plot=False)
                     rattlerList[i] = 1
         denseList[rattlerList==1] = 1
         #print("Number of dense particles after contact filter: ", denseList[denseList==1].shape[0])
-    # need to update denseSimplexList after the applied filters
-    for sIndex in range(simplices.shape[0]):
-        indexCount = 0
-        for pIndex in range(simplices[sIndex].shape[0]):
-            indexCount += denseList[simplices[sIndex][pIndex]]
-        if(indexCount==3):
-            denseSimplexList[sIndex] = 1
-        else:
-            denseSimplexList[sIndex] = 0
+        # need to update denseSimplexList after the applied filters
+        for sIndex in range(simplices.shape[0]):
+            indexCount = 0
+            for pIndex in range(simplices[sIndex].shape[0]):
+                indexCount += denseList[simplices[sIndex][pIndex]]
+            if(indexCount==3):
+                denseSimplexList[sIndex] = 1
+            else:
+                denseSimplexList[sIndex] = 0
     np.savetxt(dirName + "/delaunayList.dat", denseList)
     np.savetxt(dirName + "/denseSimplexList.dat", denseSimplexList)
     np.savetxt(dirName + "/simplexDensity.dat", simplexDensity)
@@ -1645,75 +1649,6 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
         plt.pause(0.5)
         #plt.show()
-
-########################## Compute delaunay density ############################
-def computeConsecutiveDelaunayDensity(dirName, plot=False, dirSpacing=1):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    sep = utils.getDirSep(dirName, "boxSize")
-    boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    delaunayDensity = np.zeros((dirList.shape[0],3))
-    # first load previous density lists to compare consecutive data
-    dirSample = dirName + os.sep + dirList[0]
-    if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
-        denseSimplexList0 = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-        simplexDensity0 = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
-        simplexArea0 = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-    else:
-        _, simplexDensity0 = computeDelaunayCluster(dirSample)
-        denseSimplexList0 = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-        simplexArea0 = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-    for d in range(1, dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
-            denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-            simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
-            simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-        else:
-            _, simplexDensity = computeDelaunayCluster(dirSample)
-            denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-            simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-        if(denseSimplexList0.shape[0] == denseSimplexList.shape[0]):
-            occupiedArea = simplexDensity * simplexArea
-            fluidArea = 0
-            occupiedFluidArea = 0
-            gasArea = 0
-            occupiedGasArea = 0
-            for i in range(simplexDensity.shape[0]):
-                if(denseSimplexList[i]==1 and denseSimplexList0[i]==1):
-                    fluidArea += simplexArea[i]
-                    occupiedFluidArea += occupiedArea[i]
-                else:
-                    gasArea += simplexArea[i]
-                    occupiedGasArea += occupiedArea[i]
-            if(fluidArea > 0):
-                delaunayDensity[d,0] = occupiedFluidArea / fluidArea
-            else:
-                delaunayDensity[d,0] = 0
-            if(gasArea > 0):
-                delaunayDensity[d,1] = occupiedGasArea / gasArea
-            else:
-                delaunayDensity[d,1] = 0
-            delaunayDensity[d,2] = (occupiedFluidArea + occupiedGasArea) / (fluidArea + gasArea)
-        denseSimplexList0 = denseSimplexList
-        simplexDensity0 = simplexDensity
-        simplexArea0 = simplexArea
-    np.savetxt(dirName + os.sep + "delaunayDensity-con.dat", np.column_stack((timeList, delaunayDensity)))
-    print("Density in the fluid: ", np.mean(delaunayDensity[:,0]), " +- ", np.std(delaunayDensity[:,0]))
-    print("Density in the gas: ", np.mean(delaunayDensity[:,1]), " +- ", np.std(delaunayDensity[:,1]))
-    print("Density in the whole system: ", np.mean(delaunayDensity[:,2]), " +- ", np.std(delaunayDensity[:,2]))
-    if(plot=='plot'):
-        uplot.plotCorrelation(timeList, delaunayDensity[:,0], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='b')
-        uplot.plotCorrelation(timeList, delaunayDensity[:,1], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='g')
-        uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
-        #plt.pause(0.5)
-        plt.show()
 
 ######################## Compute delaunay cluster border #######################
 def computeDelaunayBorder(dirName, threshold=0.85, filter='filter'):
@@ -3136,10 +3071,6 @@ if __name__ == '__main__':
     elif(whichCorr == "deldensity"):
         plot = sys.argv[3]
         computeClusterDelaunayDensity(dirName, plot)
-
-    elif(whichCorr == "delcondensity"):
-        plot = sys.argv[3]
-        computeConsecutiveDelaunayDensity(dirName, plot)
 
     elif(whichCorr == "delshape"):
         plot = sys.argv[3]

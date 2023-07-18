@@ -140,9 +140,8 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
-    pos = utils.shiftPositions(pos, boxSize, 0, 0.2)
-    #pos = utils.shiftPositions(pos, boxSize, 0.6, -0.35)
     pos = utils.centerPositions(pos, rad, boxSize)
+    pos = utils.shiftPositions(pos, boxSize, 0, 0.1)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -558,7 +557,8 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
 
 def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = False, firstIndex = 10, npt = False, quiver = False, cluster = False, pmap = False, droplet = False, l1=0.035):
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, 0.2)
+    #pos = utils.shiftPositions(pos, boxSize, -0.5, -0.1)
+    pos = utils.centerPositions(pos, rad, boxSize)
     gcfFrame = plt.gcf()
     gcfFrame.clear()
     axFrame = figFrame.gca()

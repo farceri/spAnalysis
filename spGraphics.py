@@ -1697,9 +1697,9 @@ def plotSPDynamicsVSActivity(dirName, sampleName, figureName, q="1"):
     #ax2.set_ylabel("$Relaxation$ $time,$ $\\tau$", fontsize=18)
     #ax2.set_ylabel("$Relaxation$ $interval,$ $\\Delta_\\chi$", fontsize=18)
     fig1.tight_layout()
-    fig1.savefig("/home/francesco/Pictures/soft/corrFunctions/pchi-Drf0-" + figureName + ".png", transparent=True, format = "png")
+    fig1.savefig("/home/francesco/Pictures/soft/pchi-Drf0-" + figureName + ".png", transparent=True, format = "png")
     fig2.tight_layout()
-    fig2.savefig("/home/francesco/Pictures/soft/corrFunctions/pdiff-Drf0-" + figureName + ".png", transparent=True, format = "png")
+    fig2.savefig("/home/francesco/Pictures/soft/pdiff-Drf0-" + figureName + ".png", transparent=True, format = "png")
     plt.show()
 
 def plotSPDynamicsVSTemp(dirName, figureName, q="1"):

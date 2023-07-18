@@ -25,9 +25,9 @@ def plotSimplexDensity(dirName, figureName, pad = 1, logy=False):
     if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
-        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.84, filter=True)
+        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter=False)
     denseSimplexList = np.loadtxt(dirName + os.sep + 'denseSimplexList.dat')
-    #simplexDensity = simplexDensity[denseSimplexList==1]
+    simplexDensity = simplexDensity[denseSimplexList==1]
     fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
     ax[0].plot(np.arange(1, simplexDensity.shape[0]+1, 1), np.sort(simplexDensity), color='k', marker='.', markersize=8, lw=0.8, fillstyle='none')
     ax[0].tick_params(axis='both', labelsize=12)
@@ -55,7 +55,7 @@ def plotSimplexDensity(dirName, figureName, pad = 1, logy=False):
     ax[1].set_xlabel('$\\varphi^{Simplex}$', fontsize=16)
     fig.tight_layout()
     fig.subplots_adjust(wspace=0.3)
-    plt.savefig("/home/francesco/Pictures/soft/DelaunayDensityPDF" + figureName + ".png", transparent=True, format="png")
+    plt.savefig("/home/francesco/Pictures/soft/mips/simplexPDF" + figureName + ".png", transparent=True, format="png")
     plt.show()
 
 def fitPhiPDF(dirName, figureName, numBins):
@@ -844,18 +844,18 @@ def plotSPCollisionPersistence(dirName, figureName, fixed=False, which='10'):
     if(fixed=="iod"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pCollision-vsPhi-" + figureName + "-iod" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pTaus-vsPhi-" + figureName + "-iod" + which
+        figure1Name = "/home/francesco/Pictures/soft/cluster/pCollision-vsPhi-" + figureName + "-iod" + which
+        figure2Name = "/home/francesco/Pictures/soft/cluster/pTaus-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         x = Dr
         xlabel = "$Rotational$ $diffusion,$ $D_r$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pCollision-vsDr-" + figureName + "-iod" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pTaus-vsDr-" + figureName + "-iod" + which
+        figure1Name = "/home/francesco/Pictures/soft/cluster/pCollision-vsDr-" + figureName + "-iod" + which
+        figure2Name = "/home/francesco/Pictures/soft/cluster/pTaus-vsDr-" + figureName + "-iod" + which
     else:
         x = damping
         xlabel = "$Damping,$ $\\gamma$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pCollision-vsDamping-" + figureName + "-Dr" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pTaus-vsDamping-" + figureName + "-Dr" + which
+        figure1Name = "/home/francesco/Pictures/soft/cluster/pCollision-vsDamping-" + figureName + "-Dr" + which
+        figure2Name = "/home/francesco/Pictures/soft/cluster/pTaus-vsDamping-" + figureName + "-Dr" + which
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
     fig, ax = plt.subplots(figsize = (6.5, 3.5), dpi = 120)
     ax.tick_params(axis='both', labelsize=12)
@@ -933,18 +933,18 @@ def plotSPVelSpaceCorr(dirName, figureName, fixed=False, which='10'):
     if(fixed=="iod"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pSpaceVelCorr-vsPhi-" + figureName + "-iod" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pSpaceDiff-vsPhi-" + figureName + "-iod" + which
+        figure1Name = "/home/francesco/Pictures/soft/cluster/pSpaceVelCorr-vsPhi-" + figureName + "-iod" + which
+        figure2Name = "/home/francesco/Pictures/soft/cluster/pSpaceDiff-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         x = 1/Dr
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pSpaceVelCorr-vsDr-" + figureName + "-iod" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pSpaceDiff-vsDr-" + figureName + "-iod" + which
+        figure1Name = "/home/francesco/Pictures/soft/cluster/pSpaceVelCorr-vsDr-" + figureName + "-iod" + which
+        figure2Name = "/home/francesco/Pictures/soft/cluster/pSpaceDiff-vsDr-" + figureName + "-iod" + which
     else:
         x = damping
         xlabel = "$Damping,$ $\\gamma$"
-        figure1Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pSpaceVelCorr-vsDamping-" + figureName + "-Dr" + which
-        figure2Name = "/home/francesco/Pictures/soft/nve-nvt-nva/pSpaceDiff-vsDamping-" + figureName + "-Dr" + which
+        figure1Name = "/home/francesco/Pictures/soft/cluster/pSpaceVelCorr-vsDamping-" + figureName + "-Dr" + which
+        figure2Name = "/home/francesco/Pictures/soft/cluster/pSpaceDiff-vsDamping-" + figureName + "-Dr" + which
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
     fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
     ax.plot(x, diff[:,0], color='k', lw=1.2, marker='s', markersize=8, fillstyle='none', label="$\\sqrt{\\int | C_{vv}^{\\parallel}(r) |^2 dr}$")
@@ -1031,15 +1031,15 @@ def plotSPVelPhiPDF(dirName, figureName, fixed=False, which='1.5e-04'):
     if(fixed=="Dr"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pVelPhiPDF-vsPhi-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/cluster/pVelPhiPDF-vsPhi-" + figureName + "-iod" + which
     elif(fixed=="phi"):
         x = 1/Dr
         xlabel = "$Persistent$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pVelPhiPDF-vsDr-" + figureName + "-iod" + which
+        figureName = "/home/francesco/Pictures/soft/cluster/pVelPhiPDF-vsDr-" + figureName + "-iod" + which
     else:
         x = damping
         xlabel = "$Damping,$ $\\gamma$"
-        figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pVelPhiPDF-vsDamping-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/cluster/pVelPhiPDF-vsDamping-" + figureName + "-Dr" + which
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1064,7 +1064,7 @@ def plotSPVelPDF(dirName, figureName):
     ax.set_xlabel("$Speed,$ $|\\vec{v}|$", fontsize=16)
     ax.set_ylabel("$Distribution,$ $P(|\\vec{v}|)$", fontsize=16)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pVelPDF-" + figureName
+    figureName = "/home/francesco/Pictures/soft/cluster/pVelPDF-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1087,7 +1087,7 @@ def plotSPPressurePDF(dirName, figureName):
     ax.set_xlabel("$Pressure,$ $p$", fontsize=16)
     ax.set_ylabel("$Distribution,$ $P(p)$", fontsize=16)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/nve-nvt-nva/pPressurePDF-" + figureName
+    figureName = "/home/francesco/Pictures/soft/cluster/pPressurePDF-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1262,6 +1262,28 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed!="Dr"):
         ax.set_xscale('log')
     #ax.set_xlim(5.8e-06, 2.8e03)
+    fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterDensityVSTime(dirName, figureName, which=False):
+    fig, ax = plt.subplots(figsize=(7,7), dpi = 120)
+    data = np.loadtxt(dirName + "delaunayDensity.dat")
+    dt = utils.readFromParams(dirName, 'dt')
+    if(which == 'fluid'):
+        figureName = figureName + '-' + which
+        ax.plot(data[:,0]*dt, data[:,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', label='$Fluid$')
+    elif(which == 'gas'):
+        figureName = figureName + '-' + which
+        ax.plot(data[:,0]*dt, data[:,2], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', label='$Gas$')
+    else:
+        ax.plot(data[:,0]*dt, data[:,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', label='$Fluid$')
+        ax.plot(data[:,0]*dt, data[:,2], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', label='$Gas$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $time,$ $t$", fontsize=18)
+    ax.set_ylabel("$Area$ $fraction$", fontsize=18)
+    ax.legend(fontsize=14, loc='best')
+    figureName = "/home/francesco/Pictures/soft/mips/pFraction-vsTime-" + figureName
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -2337,6 +2359,11 @@ if __name__ == '__main__':
         fixed = sys.argv[4]
         which = sys.argv[5]
         plotSPClusterDensity(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "phitime"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterDensityVSTime(dirName, figureName, which)
 
     elif(whichPlot == "gammatime"):
         figureName = sys.argv[3]
