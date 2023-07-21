@@ -416,7 +416,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
+        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)

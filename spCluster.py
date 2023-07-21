@@ -1456,11 +1456,11 @@ def computeAugmentedDelaunayCluster(dirName, threshold1=0.78, threshold2=0.45, s
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
-    newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
+    newPos, newRad, newIndices = utils.augmentPacking(pos, rad, 0.05)
     simplices = Delaunay(newPos).simplices
     simplices = np.unique(np.sort(simplices, axis=1), axis=0)
     insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
-    simplexDensity, _ = utils.computeDelaunayDensity(simplices, newPos, newRad, boxSize*1.2)
+    simplexDensity, _ = utils.computeDelaunayDensity(simplices, newPos, newRad, boxSize*1.05)
     #simplices = utils.wrapSimplicesAroundBox(simplices, newIndices, rad.shape[0])
     denseSimplexList = np.zeros(simplexDensity.shape[0])
     # first find simplices above square lattice density 0.785
