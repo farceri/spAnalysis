@@ -8,6 +8,7 @@ from scipy.fft import fft, fftfreq, fft2
 from sklearn.cluster import DBSCAN
 from scipy.spatial import Delaunay
 import spCluster as cluster
+import random
 import os
 
 ############################## general utilities ###############################
@@ -726,6 +727,18 @@ def initializeDroplet(dirName, dirSave):
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     np.savetxt(dirSave + '/particlePos.dat', pos)
 
+def getUniqueRandomList(low, high, num):
+    numRandom = 0
+    randomList = [0]
+    while(numRandom < num-1):
+        rand = np.random.randint(low, high)
+        if rand not in randomList:
+            randomList.append(rand)
+            numRandom += 1
+    randomList = np.array(randomList)
+    print(randomList.shape[0], np.unique(randomList).shape[0])
+    return randomList
+
 def removeParticles(dirName, numRemove):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
@@ -744,8 +757,8 @@ def removeParticles(dirName, numRemove):
     maxRemove = gasIndices.shape[0]
     print("Maximum number of removable particles:", maxRemove)
     if(numRemove < maxRemove):
-        random = np.random.randint(0, maxRemove, numRemove)
-        removeIndices = gasIndices[random]
+        randomList = getUniqueRandomList(0, maxRemove, numRemove)
+        removeIndices = gasIndices[randomList]
         rad = np.delete(rad, removeIndices)
         pos = np.delete(pos, removeIndices, axis=0)
         vel = np.delete(vel, removeIndices)
@@ -765,7 +778,7 @@ def removeParticles(dirName, numRemove):
         print("Please remove a number of particles smaller than", maxRemove)
 
 ############################### Delaunay analysis ##############################
-def augmentPacking(pos, rad, fraction=0.05):
+def augmentPacking(pos, rad, fraction=0.5):
     # augment packing by copying a fraction of the particles around the walls
     Lx = np.array([1,0])
     Ly = np.array([0,1])
@@ -889,10 +902,19 @@ def computeIntersectionArea(pos0, pos1, pos2, sigma, boxSize):
     #projLength = np.sqrt((slope**2 * pos2[0]**2 + pos2[1]**2 + intercept**2 - 2*intercept*pos2[1] - 2*slope*pos2[0]*pos2[1] + 2*slope*intercept*pos2[1]) / (1 + slope**2))
     theta = np.arcsin(projLength / np.linalg.norm(pos2))
     intersectArea = 0.5 * sigma**2 * theta
-    return projLength, intersectArea
+    # check if distances from two opposite vertices to the projection point are both less than the distance between the two opposite vertices
+    delta10 = np.linalg.norm(pos0)
+    delta12 = np.linalg.norm(pos2)
+    delta20 = np.linalg.norm(pbcDistance(pos2, pos0, boxSize))
+    delta1Proj = delta12 * np.cos(np.arcsin(projLength / delta12)) # this angle is the same as theta
+    delta0Proj = delta20 * np.cos(np.arcsin(projLength / delta20))
+    internalProj = True
+    if(delta1Proj > delta10 or delta0Proj > delta10):
+        internalProj = False
+    return projLength, intersectArea, internalProj
 
-def checkSegmentArea(projLength, sigma):
-    if(projLength < sigma):
+def checkSegmentArea(projLength, sigma, internalProj):
+    if(projLength < sigma and internalProj == True):
         smallTheta = np.arccos(projLength/sigma)
         smallTheta /= 2
         return smallTheta * sigma**2 - 0.5 * sigma**2 * np.sin(2*smallTheta)
@@ -915,10 +937,6 @@ def isSimplexNearWall(pIndexList, pos, rad, boxSize):
     return isSimplexNearWall
 
 def computeTriangleArea(pos0, pos1, pos2, boxSize):
-    #pos2 = pbcDistance(pos2, pos1, boxSize)
-    #pos0 = pbcDistance(pos0, pos1, boxSize)
-    #pos1 = np.zeros(pos1.shape[0])
-    #return 0.5 * np.abs(pos0[0]*(pos1[1] - pos2[1]) + pos1[0]*(pos2[1] - pos0[1]) + pos2[0]*(pos0[1] - pos1[1]))
     delta01 = np.linalg.norm(pbcDistance(pos0, pos1, boxSize))
     delta12 = np.linalg.norm(pbcDistance(pos1, pos2, boxSize))
     delta20 = np.linalg.norm(pbcDistance(pos2, pos0, boxSize))
@@ -939,14 +957,14 @@ def computeDelaunayDensity(simplices, pos, rad, boxSize):
         # first compute projection distance for each vertex in the simplex and then check if the intersection is all inside the simplex
         # if not, remove the external segment from the intersection area and add it to the simplex where the segment is contained
         # first vertex
-        projLength, intersectArea1 = computeIntersectionArea(pos0, pos1, pos2, rad[simplices[sIndex,1]], boxSize)
-        segmentArea2 = checkSegmentArea(projLength, rad[simplices[sIndex,2]])
+        projLength, intersectArea1, internalProj = computeIntersectionArea(pos0, pos1, pos2, rad[simplices[sIndex,1]], boxSize)
+        segmentArea2 = checkSegmentArea(projLength, rad[simplices[sIndex,2]], internalProj)
         # second vertex
-        projLength, intersectArea2 = computeIntersectionArea(pos1, pos2, pos0, rad[simplices[sIndex,2]], boxSize)
-        segmentArea0 = checkSegmentArea(projLength, rad[simplices[sIndex,0]])
+        projLength, intersectArea2, internalProj = computeIntersectionArea(pos1, pos2, pos0, rad[simplices[sIndex,2]], boxSize)
+        segmentArea0 = checkSegmentArea(projLength, rad[simplices[sIndex,0]], internalProj)
         # third vertex
-        projLength, intersectArea0 = computeIntersectionArea(pos2, pos0, pos1, rad[simplices[sIndex,0]], boxSize)
-        segmentArea1 = checkSegmentArea(projLength, rad[simplices[sIndex,1]])
+        projLength, intersectArea0, internalProj = computeIntersectionArea(pos2, pos0, pos1, rad[simplices[sIndex,0]], boxSize)
+        segmentArea1 = checkSegmentArea(projLength, rad[simplices[sIndex,1]], internalProj)
         # first correction
         if(segmentArea2 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,0], simplices[sIndex,1])

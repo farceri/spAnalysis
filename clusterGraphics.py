@@ -21,13 +21,18 @@ import spCluster as cluster
 ################################################################################
 ############################ Local density analysis ############################
 ################################################################################
-def plotSimplexDensity(dirName, figureName, pad = 1, logy=False):
-    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
+def plotSimplexDensity(dirName, figureName, which = False, pad = 1, logy=False):
+    if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
         _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter=False)
     denseSimplexList = np.loadtxt(dirName + os.sep + 'denseSimplexList.dat')
-    simplexDensity = simplexDensity[denseSimplexList==1]
+    if(which == 'fluid'):
+        simplexDensity = simplexDensity[denseSimplexList==1]
+        figureName = figureName + '-' + which
+    elif(which == 'gas'):
+        simplexDensity = simplexDensity[denseSimplexList==0]
+        figureName = figureName + '-' + which
     fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
     ax[0].plot(np.arange(1, simplexDensity.shape[0]+1, 1), np.sort(simplexDensity), color='k', marker='.', markersize=8, lw=0.8, fillstyle='none')
     ax[0].tick_params(axis='both', labelsize=12)
@@ -55,7 +60,7 @@ def plotSimplexDensity(dirName, figureName, pad = 1, logy=False):
     ax[1].set_xlabel('$\\varphi^{Simplex}$', fontsize=16)
     fig.tight_layout()
     fig.subplots_adjust(wspace=0.3)
-    plt.savefig("/home/francesco/Pictures/soft/mips/simplexPDF" + figureName + ".png", transparent=True, format="png")
+    plt.savefig("/home/francesco/Pictures/soft/mips/simplexPDF-" + figureName + ".png", transparent=True, format="png")
     plt.show()
 
 def fitPhiPDF(dirName, figureName, numBins):
@@ -1170,7 +1175,121 @@ def plotSPPressureProfile(dirName, figureName, shift=0, which='pressure'):
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
+def plotSPAreaVSRemoved(dirName, figureName):
+    fig, ax = plt.subplots(figsize=(7,4.5), dpi = 120)
+    Nlist = np.array(['4096', '8192', '16384'])
+    sampleList = np.array(['0.28', '0.27', '0.27'])
+    dirList = np.array(['10', '50', '100', '500', '1000', '2000', '3000', '4000'])
+    markerList = np.array(['v', 'o', 's'])
+    for n in range(Nlist.shape[0]):
+        fluidArea = []
+        gasArea = []
+        phi = []
+        initialPhi = float(utils.readFromParams(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/", 'phi'))
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/" + dirList[d] + "removed/"
+            if(os.path.exists(dirSample)):
+                phi.append(float(utils.readFromParams(dirSample, 'phi')))
+                if(os.path.exists(dirSample + os.sep + "simplexArea.dat")):
+                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+                    simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
+                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
+                else:
+                    _, simplexDensity = cluster.computeDelaunayCluster(dirSample, 0.78, filter=False)
+                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
+                fluidArea.append(np.sum(simplexArea[denseSimplexList==1]))
+                gasArea.append(np.sum(simplexArea[denseSimplexList==0]))
+        phi = np.array(phi)
+        fluidArea = np.array(fluidArea)
+        gasArea = np.array(gasArea)
+        #ax.semilogx(initialPhi - phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+        ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Global$ $density,$ $\\varphi$", fontsize=18)
+    #ax.set_xlabel("$\\varphi^{low}$ - $\\varphi$", fontsize=18)
+    ax.set_ylabel("$Fluid$ $area$", fontsize=18)
+    ax.legend(fontsize=12, loc='best')
+    fig.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/spRemoved-" + figureName + ".png"
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterArea(dirName, figureName, fixed=False, which='1e-03'):
+    fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
+    if(fixed=="phi"):
+        phi = utils.readFromParams(dirName, "phi")
+        if(phi == 0.45):
+            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
+        else:
+            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
+        taup = np.zeros(dirList.shape[0])
+    elif(fixed=="Dr"):
+        dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.31', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
+        colorList = cm.get_cmap('viridis', dirList.shape[0])
+        phi = np.zeros(dirList.shape[0])
+    else:
+        print('please specify fixed parameter')
+    fluidArea = np.zeros((dirList.shape[0],2))
+    gasArea = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        if(fixed=="phi"):
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+        elif(fixed=="Dr"):
+            dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
+            if(os.path.exists(dirSample + "delaunayDensity.dat")):
+                data = np.loadtxt(dirSample + "delaunayDensity.dat")
+                phi[d] = np.mean(data[:,3])
+        if(os.path.exists(dirSample + "delaunayArea.dat")):
+            data = np.loadtxt(dirSample + "delaunayArea.dat")
+            fluidArea[d,0] = np.mean(data[:,1])
+            fluidArea[d,1] = np.std(data[:,1])
+            gasArea[d,0] = np.mean(data[:,2])
+            gasArea[d,1] = np.std(data[:,2])
+            print(dirList[d], fluidArea[d,0], gasArea[d,0])
+    if(fixed=="Dr"):
+        x = phi
+        xlabel = "$Density,$ $\\varphi$"
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterArea-vsPhi-" + figureName
+    elif(fixed=="phi"):
+        x = taup
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterArea-vsDr-" + figureName
+        ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=18)
+    ax.set_ylabel("$Area$ $fraction$", fontsize=18)
+    ax.errorbar(x[fluidArea[:,0]>0], fluidArea[fluidArea[:,0]>0,0], fluidArea[fluidArea[:,0]>0,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Fluid$')
+    ax.errorbar(x[gasArea[:,0]>0], gasArea[gasArea[:,0]>0,0], gasArea[gasArea[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
+    ax.legend(fontsize=14, loc='best')
+    fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterAreaVSTime(dirName, figureName, which=False):
+    fig, ax = plt.subplots(figsize=(7.5,4), dpi = 120)
+    data = np.loadtxt(dirName + "delaunayArea.dat")
+    dt = utils.readFromParams(dirName, 'dt')
+    if(which == 'fluid'):
+        figureName = figureName + '-' + which
+        ax.plot(data[:,0]*dt, data[:,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', label='$Fluid$')
+    elif(which == 'gas'):
+        figureName = figureName + '-' + which
+        ax.plot(data[:,0]*dt, data[:,2], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', label='$Gas$')
+    else:
+        ax.plot(data[:,0]*dt, data[:,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', label='$Fluid$')
+        ax.plot(data[:,0]*dt, data[:,2], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', label='$Gas$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $time,$ $t$", fontsize=18)
+    ax.set_ylabel("$Area$ $fraction$", fontsize=18)
+    ax.legend(fontsize=14, loc='best')
+    figureName = "/home/francesco/Pictures/soft/mips/pArea-vsTime-" + figureName
+    fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter='inter'):
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
@@ -1206,59 +1325,62 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
             fluidDensity[d,1] = np.std(data[:,1])
             gasDensity[d,0] = np.mean(data[:,2])
             gasDensity[d,1] = np.std(data[:,2])
-            phi[d] = np.mean(data[:,3])
+            if(fixed=="Dr"):
+                phi[d] = np.mean(data[:,3])
             print(dirList[d], fluidDensity[d,0], gasDensity[d,0])
     if(fixed=="Dr"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/mips/pClusterVoro-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterPhi-vsPhi-" + figureName
         ax.plot(x, x, color='k', lw=1.2, ls='--')
-        # interpolate to find upper bound
-        fluid = fluidDensity[fluidDensity[:,0]>0,0][10:]
-        error = fluidDensity[fluidDensity[:,0]>0,1][10:]
-        phiup = phi[fluidDensity[:,0]>0][10:]
-        index = np.argwhere((fluid - error*0.5) <= phiup)[0,0]
-        error = error[index]*0.5
-        p = np.linspace(phiup[index-1], phiup[index],100)
-        fluidSlope = (fluid[index] - fluid[index-1]) / (phiup[index] - phiup[index-1])
-        phiSlope = (phiup[index] - phiup[index-1]) / (phiup[index] - phiup[index-1])
-        fluidInter = fluid[index-1] + fluidSlope*(p - phiup[index-1])
-        phiInter = phiup[index-1] + phiSlope*(p - phiup[index-1])
-        phiupper = p[np.argwhere((fluidInter - error) <= phiInter)[0,0]]
-        ax.plot(phiInter, phiInter, color='r')
-        ax.plot(phiInter, fluidInter, color='r', ls='--', lw=4)
-        # interpolate to find lower bound
-        gas = gasDensity[gasDensity[:,0]>0,0][:10]
-        philow = phi[fluidDensity[:,0]>0][:10]
-        index = np.argwhere((gas + 1e-02) < philow)[0,-1]
-        p = np.linspace(philow[index-1], philow[index],100)
-        gasSlope = (gas[index] - gas[index-1]) / (philow[index] - philow[index-1])
-        phiSlope = (philow[index] - philow[index-1]) / (philow[index] - philow[index-1])
-        gasInter = gas[index-1] + gasSlope*(p - philow[index-1])
-        phiInter = philow[index-1] + phiSlope*(p - philow[index-1])
-        philower = p[np.argwhere((gasInter + 1e-02) < phiInter)[0,-1]]
-        ax.plot(phiInter, phiInter, color='r')
-        ax.plot(phiInter, gasInter, color='r', ls='--', lw=4)
-        print("phiup:", phiupper, "phidown:", philower)
-        np.savetxt(dirName + "MIPSBounds.dat", np.column_stack((numParticles, philower, phiupper)))
+        if(inter=='inter'):
+            # interpolate to find upper bound
+            fluid = fluidDensity[fluidDensity[:,0]>0,0][10:]
+            error = fluidDensity[fluidDensity[:,0]>0,1][10:]
+            phiup = phi[fluidDensity[:,0]>0][10:]
+            index = np.argwhere((fluid - error*0.5) <= phiup)[0,0]
+            error = error[index]*0.5
+            p = np.linspace(phiup[index-1], phiup[index],100)
+            fluidSlope = (fluid[index] - fluid[index-1]) / (phiup[index] - phiup[index-1])
+            phiSlope = (phiup[index] - phiup[index-1]) / (phiup[index] - phiup[index-1])
+            fluidInter = fluid[index-1] + fluidSlope*(p - phiup[index-1])
+            phiInter = phiup[index-1] + phiSlope*(p - phiup[index-1])
+            phiupper = p[np.argwhere((fluidInter - error) <= phiInter)[0,0]]
+            ax.plot(phiInter, phiInter, color='r')
+            ax.plot(phiInter, fluidInter, color='r', ls='--', lw=4)
+            # interpolate to find lower bound
+            gas = gasDensity[gasDensity[:,0]>0,0][:10]
+            philow = phi[fluidDensity[:,0]>0][:10]
+            index = np.argwhere((gas + 1e-02) < philow)[0,-1]
+            p = np.linspace(philow[index-1], philow[index],100)
+            gasSlope = (gas[index] - gas[index-1]) / (philow[index] - philow[index-1])
+            phiSlope = (philow[index] - philow[index-1]) / (philow[index] - philow[index-1])
+            gasInter = gas[index-1] + gasSlope*(p - philow[index-1])
+            phiInter = philow[index-1] + phiSlope*(p - philow[index-1])
+            philower = p[np.argwhere((gasInter + 1e-02) < phiInter)[0,-1]]
+            ax.plot(phiInter, phiInter, color='r')
+            ax.plot(phiInter, gasInter, color='r', ls='--', lw=4)
+            print("phiup:", phiupper, "phidown:", philower)
+            np.savetxt(dirName + "MIPSBounds.dat", np.column_stack((numParticles, philower, phiupper)))
+            # another way to compute the lower bound that matches the first
+            ax.set_ylim(-0.18, 1.02)
+            y = np.linspace(-0.2, 1.05, 100)
+            dirSample = dirName + os.sep + dirList[index-1] + "/active-langevin/Dr" + which + "/dynamics/"
+            phi1 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
+            dirSample = dirName + os.sep + dirList[index] + "/active-langevin/Dr" + which + "/dynamics/"
+            phi2 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
+            ax.plot(np.ones(100)*(phi1+phi2)/2, y, ls='dotted', color='k', lw=1)
+            print("phidown from density avarage:", (phi1+phi2)/2)
     elif(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/mips/pClusterVoro-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterPhi-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Area$ $fraction$", fontsize=18)
     ax.errorbar(x[fluidDensity[:,0]>0], fluidDensity[fluidDensity[:,0]>0,0], fluidDensity[fluidDensity[:,0]>0,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Fluid$')
     ax.errorbar(x[gasDensity[:,0]>0], gasDensity[gasDensity[:,0]>0,0], gasDensity[gasDensity[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
     ax.legend(fontsize=14, loc='best')
-    ax.set_ylim(-0.18, 1.02)
-    y = np.linspace(-0.2, 1.05, 100)
-    dirSample = dirName + os.sep + "0.28/active-langevin/Dr" + which + "/dynamics/"
-    phi1 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
-    dirSample = dirName + os.sep + "0.29/active-langevin/Dr" + which + "/dynamics/"
-    phi2 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
-    ax.plot(np.ones(100)*(phi1+phi2)/2, y, ls='dotted', color='k', lw=1)
-    print("phidown from density avarage:", (phi1+phi2)/2)
     if(fixed!="Dr"):
         ax.set_xscale('log')
     #ax.set_xlim(5.8e-06, 2.8e03)
@@ -1267,7 +1389,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03'):
     plt.show()
 
 def plotSPClusterDensityVSTime(dirName, figureName, which=False):
-    fig, ax = plt.subplots(figsize=(7,7), dpi = 120)
+    fig, ax = plt.subplots(figsize=(7.5,4), dpi = 120)
     data = np.loadtxt(dirName + "delaunayDensity.dat")
     dt = utils.readFromParams(dirName, 'dt')
     if(which == 'fluid'):
@@ -1281,9 +1403,9 @@ def plotSPClusterDensityVSTime(dirName, figureName, which=False):
         ax.plot(data[:,0]*dt, data[:,2], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', label='$Gas$')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Simulation$ $time,$ $t$", fontsize=18)
-    ax.set_ylabel("$Area$ $fraction$", fontsize=18)
+    ax.set_ylabel("$Density$", fontsize=18)
     ax.legend(fontsize=14, loc='best')
-    figureName = "/home/francesco/Pictures/soft/mips/pFraction-vsTime-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pDensity-vsTime-" + figureName
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -1915,8 +2037,8 @@ def plotSPDeltaPVSSystemSize(dirName, figureName, which='1.5e-04'):
 def plotSPMIPSBoundsVSSystemSize(dirName, figureName, which='up'):
     fig, ax = plt.subplots(figsize = (7,3.5), dpi = 120)
     labelList = np.array(['$N = 1024$', '$N = 2048$', '$N = 4096$', '$N = 8192$', '$N = 16384$', '$N = 32768$'])
-    dirList = np.array(['1024', '2048', '4096', '8192', '16384'])#, '32768'])
-    numParticles = np.array([1024, 2048, 4096, 8192, 16384])#, 32768])
+    dirList = np.array(['1024', '2048', '4096', '8192', '16384', '32768'])
+    numParticles = np.array([1024, 2048, 4096, 8192, 16384, 32768])
     bounds = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d] + "-2d/densitySweep/"
@@ -2224,9 +2346,10 @@ if __name__ == '__main__':
 ############################ local density analysis ############################
     if(whichPlot == "simplex"):
         figureName = sys.argv[3]
-        pad = float(sys.argv[4])
-        logy = sys.argv[5]
-        plotSimplexDensity(dirName, figureName, pad, logy)
+        which = sys.argv[4]
+        pad = float(sys.argv[5])
+        logy = sys.argv[6]
+        plotSimplexDensity(dirName, figureName, which, pad, logy)
 
     elif(whichPlot == "fitphi"):
         figureName = sys.argv[3]
@@ -2354,11 +2477,27 @@ if __name__ == '__main__':
         which = sys.argv[5]
         plotSPPressureProfile(dirName, figureName, shift, which)
 
+    elif(whichPlot == "remove"):
+        figureName = sys.argv[3]
+        plotSPAreaVSRemoved(dirName, figureName)
+
+    elif(whichPlot == "clusterarea"):
+        figureName = sys.argv[3]
+        fixed = sys.argv[4]
+        which = sys.argv[5]
+        plotSPClusterArea(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "areatime"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterAreaVSTime(dirName, figureName, which)
+
     elif(whichPlot == "clusterphi"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
         which = sys.argv[5]
-        plotSPClusterDensity(dirName, figureName, fixed, which)
+        inter = sys.argv[6]
+        plotSPClusterDensity(dirName, figureName, fixed, which, inter)
 
     elif(whichPlot == "phitime"):
         figureName = sys.argv[3]

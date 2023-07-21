@@ -141,7 +141,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     pos = utils.centerPositions(pos, rad, boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, 0.1)
+    #pos = utils.shiftPositions(pos, boxSize, 0.1, -0.3)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -226,7 +226,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     else:
         figureName = "/home/francesco/Pictures/soft/packings/" + figureName + ".png"
     plt.tight_layout()
-    plt.savefig(figureName, transparent=True, format = "png")
+    plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
 
 def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, alpha = 0.6):
@@ -364,10 +364,10 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
     setPackingAxes(boxSize, ax)
     colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
-            denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
+        if(os.path.exists(dirName + os.sep + "denseList!.dat")):
+            denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
         else:
-            denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
+            denseList,_ = cluster.computeVoronoiCluster(dirName, threshold, filter=filter)
         colorId = getDenseColorList(denseList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -383,14 +383,30 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
 
-def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.84, filter=True, alpha=0.8):
+def getDenseSimplexColorList(denseList):
+    colorId = np.ones(denseList.shape[0])
+    for simplexId in range(denseList.shape[0]):
+        if(denseList[simplexId]==0):
+            colorId[simplexId] = 0
+    return colorId
+
+def computeDenseSimplexColorList(densityList):
+    colorId = np.ones(densityList.shape[0])
+    for simplexId in range(densityList.shape[0]):
+        if(densityList[simplexId] > 0.78):
+            colorId[simplexId] = 0
+        if(densityList[simplexId] < 0.78 and densityList[simplexId] > 0.453):
+            colorId[simplexId] = 0.5
+    return colorId
+
+def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filter=False, alpha=0.8):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, -0.4)
+    pos = utils.shiftPositions(pos, boxSize, 0, 0)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -398,22 +414,33 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.84, filt
     ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.1)
-    newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
-    colorId = getRadColorList(newRad)
+    colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
+        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
+        denseSimplexList = np.loadtxt(dirName + os.sep + "denseSimplexList.dat")
         colorId = getDenseColorList(denseList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
-    delaunay = Delaunay(newPos)
-    insideIndex = utils.getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
-    plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.3, color='k')
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
+    #delaunay = Delaunay(newPos)
+    #insideIndex = utils.getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
+    #plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.2, color='k')
+    #newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, 0.45, 0, 0)
+    #plt.tripcolor(newPos[:,0], newPos[:,1], simplices[simplexDensity<0], lw=0.3, facecolors=colorId[simplexDensity<0], edgecolors='k', alpha=0.5, cmap='bwr')
+    simplices = utils.getPBCDelaunay(pos, rad, boxSize)
+    simplexDensity = np.loadtxt(dirName + os.sep + "simplexDensity.dat")
+    print(np.argwhere(simplexDensity<0))
+    print(simplexDensity[simplexDensity<0])
+    print(simplices[simplexDensity<0])
+    plt.triplot(pos[:,0], pos[:,1], simplices[simplexDensity<0], lw=0.2, color='k')
+    plt.plot(pos[simplices[simplexDensity<0,0],0], pos[simplices[simplexDensity<0,0],1], marker='*', markersize=20, color='r')
+    plt.plot(pos[simplices[simplexDensity<0,1],0], pos[simplices[simplexDensity<0,1],1], marker='*', markersize=20, color='b')
+    plt.plot(pos[simplices[simplexDensity<0,2],0], pos[simplices[simplexDensity<0,2],1], marker='*', markersize=20, color='g')
     #plt.plot(pos[:,0], pos[:,1], 'o', markersize=0.2, markeredgecolor='k', color='r')
     #plt.plot(pos[14730,0], pos[14730,1], '*', markersize=10, markeredgecolor='k', color='b')
     #plt.plot(pos[595,0], pos[595,1], '*', markersize=10, markeredgecolor='k', color='r')
