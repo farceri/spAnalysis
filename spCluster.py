@@ -1472,7 +1472,7 @@ def computeAugmentedDelaunayCluster(dirName, threshold1=0.78, threshold2=0.45, s
         for i in range(denseSimplexList.shape[0]):
             if(denseSimplexList[i] == 0 and insideIndex[i] == 1):
                 indices = utils.findNeighborSimplices(simplices, i)
-                if(np.sum(denseSimplexList[indices]) >= 2): # all are dense
+                if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.302): # all are dense
                     denseSimplexList[i] = 1
     # second filter - label dense simplices surrounded by dilute simplices as dilute
             if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
