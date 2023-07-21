@@ -399,7 +399,7 @@ def computeDenseSimplexColorList(densityList):
             colorId[simplexId] = 0.5
     return colorId
 
-def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filter=False, alpha=0.8):
+def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filter=False, alpha=0.8, colored=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
@@ -427,27 +427,24 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
         y = pos[particleId,1]
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
-    #delaunay = Delaunay(newPos)
-    #insideIndex = utils.getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
-    #plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.2, color='k')
-    #newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, 0.45, 0, 0)
-    #plt.tripcolor(newPos[:,0], newPos[:,1], simplices[simplexDensity<0], lw=0.3, facecolors=colorId[simplexDensity<0], edgecolors='k', alpha=0.5, cmap='bwr')
-    simplices = utils.getPBCDelaunay(pos, rad, boxSize)
-    simplexDensity = np.loadtxt(dirName + os.sep + "simplexDensity.dat")
-    print(np.argwhere(simplexDensity<0))
-    print(simplexDensity[simplexDensity<0])
-    print(simplices[simplexDensity<0])
-    plt.triplot(pos[:,0], pos[:,1], simplices[simplexDensity<0], lw=0.2, color='k')
-    plt.plot(pos[simplices[simplexDensity<0,0],0], pos[simplices[simplexDensity<0,0],1], marker='*', markersize=20, color='r')
-    plt.plot(pos[simplices[simplexDensity<0,1],0], pos[simplices[simplexDensity<0,1],1], marker='*', markersize=20, color='b')
-    plt.plot(pos[simplices[simplexDensity<0,2],0], pos[simplices[simplexDensity<0,2],1], marker='*', markersize=20, color='g')
-    #plt.plot(pos[:,0], pos[:,1], 'o', markersize=0.2, markeredgecolor='k', color='r')
-    #plt.plot(pos[14730,0], pos[14730,1], '*', markersize=10, markeredgecolor='k', color='b')
-    #plt.plot(pos[595,0], pos[595,1], '*', markersize=10, markeredgecolor='k', color='r')
-    #plt.plot(pos[11881,0], pos[11881,1], '*', markersize=10, markeredgecolor='k', color='k')
-    #plt.plot(pos[7929,0], pos[7929,1], '*', markersize=10, markeredgecolor='k', color='b')
-    #plt.plot(pos[6831,0], pos[6831,1], '*', markersize=10, markeredgecolor='k', color='r')
-    #plt.plot(pos[7895,0], pos[7895,1], '*', markersize=10, markeredgecolor='k', color='k')
+    if(colored == 'colored'):
+        np.seterr(divide='ignore', invalid='ignore')
+        newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, 0.45, 0, 0)
+        plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
+    else:
+        newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
+        delaunay = Delaunay(newPos)
+        insideIndex = utils.getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
+        plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.2, color='k')
+    #simplices = utils.getPBCDelaunay(pos, rad, boxSize)
+    #simplexDensity = np.loadtxt(dirName + os.sep + "simplexDensity.dat")
+    #print(np.argwhere(simplexDensity<0))
+    #print(simplexDensity[simplexDensity<0])
+    #print(simplices[simplexDensity<0])
+    #plt.triplot(pos[:,0], pos[:,1], simplices[simplexDensity<0], lw=0.2, color='k')
+    #plt.plot(pos[simplices[simplexDensity<0,0],0], pos[simplices[simplexDensity<0,0],1], marker='*', markersize=20, color='r')
+    #plt.plot(pos[simplices[simplexDensity<0,1],0], pos[simplices[simplexDensity<0,1],1], marker='*', markersize=20, color='b')
+    #plt.plot(pos[simplices[simplexDensity<0,2],0], pos[simplices[simplexDensity<0,2],1], marker='*', markersize=20, color='g')
     #x = np.linspace(0,1,1000)
     #slope = -0.11838938050442274
     #intercept = 0.9852218251735015
@@ -756,7 +753,8 @@ if __name__ == '__main__':
     elif(whichPlot == "ssdeldense"):
         threshold = float(sys.argv[4])
         filter = sys.argv[5]
-        plotSPDelaunayPacking(dirName, figureName, dense=True, threshold=threshold, filter=filter)
+        colored = sys.argv[6]
+        plotSPDelaunayPacking(dirName, figureName, dense=True, threshold=threshold, filter=filter, colored=colored)
 
     elif(whichPlot == "ssvideo"):
         numFrames = int(sys.argv[4])

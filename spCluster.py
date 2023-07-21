@@ -1460,7 +1460,6 @@ def computeAugmentedDelaunayCluster(dirName, threshold1=0.78, threshold2=0.45, s
     delaunay = Delaunay(newPos)
     simplices = delaunay.simplices
     simplexDensity, _ = utils.computeDelaunayDensity(simplices, newPos, newRad, boxSize*1.5)
-    print(np.argwhere(simplexDensity<0)[:,0])
     insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
     simplexLabelList = np.ones(simplexDensity.shape[0])
     for simplexId in range(simplexLabelList.shape[0]):
@@ -1469,7 +1468,7 @@ def computeAugmentedDelaunayCluster(dirName, threshold1=0.78, threshold2=0.45, s
         if(simplexDensity[simplexId] < threshold1 and simplexDensity[simplexId] > threshold2):
             simplexLabelList[simplexId] = 0.5
     insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
-    return newPos, simplices[insideIndex==1], simplexLabelList[insideIndex==1], simplexDensity[insideIndex==1]
+    return newPos, simplices, simplexLabelList, simplexDensity
 
 ############################## Delaunay clustering #############################
 def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False):
