@@ -406,7 +406,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, 0)
+    pos = utils.shiftPositions(pos, boxSize, 0, -0.3)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -416,7 +416,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
@@ -429,13 +429,14 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
     if(colored == 'colored'):
         np.seterr(divide='ignore', invalid='ignore')
-        newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, 0.45, 0, 0)
+        newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, 0.45, 0, -0.3)
         plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
     else:
         newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
-        delaunay = Delaunay(newPos)
-        insideIndex = utils.getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
-        plt.triplot(newPos[:,0], newPos[:,1], delaunay.simplices[insideIndex==1], lw=0.2, color='k')
+        simplices = Delaunay(newPos).simplices
+        simplices = np.unique(np.sort(simplices, axis=1), axis=0)
+        insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
+        plt.triplot(newPos[:,0], newPos[:,1], simplices[insideIndex==1], lw=0.2, color='k')
     #simplices = utils.getPBCDelaunay(pos, rad, boxSize)
     #simplexDensity = np.loadtxt(dirName + os.sep + "simplexDensity.dat")
     #print(np.argwhere(simplexDensity<0))

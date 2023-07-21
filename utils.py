@@ -778,7 +778,7 @@ def removeParticles(dirName, numRemove):
         print("Please remove a number of particles smaller than", maxRemove)
 
 ############################### Delaunay analysis ##############################
-def augmentPacking(pos, rad, fraction=0.5):
+def augmentPacking(pos, rad, fraction=0.2):
     # augment packing by copying a fraction of the particles around the walls
     Lx = np.array([1,0])
     Ly = np.array([0,1])
@@ -850,10 +850,23 @@ def wrapSimplicesAroundBox(innerSimplices, augmentedIndices, numParticles):
     return innerSimplices
 
 def getPBCDelaunay(pos, rad, boxSize):
-    newPos, newRad, newIndices = augmentPacking(pos, rad, 0.5)
+    newPos, newRad, newIndices = augmentPacking(pos, rad, 0.2)
     delaunay = Delaunay(newPos)
     insideIndex = getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
-    return wrapSimplicesAroundBox(delaunay.simplices[insideIndex==1], newIndices, rad.shape[0])
+    simplices = wrapSimplicesAroundBox(delaunay.simplices[insideIndex==1], newIndices, rad.shape[0])
+    return np.unique(np.sort(simplices, axis=1), axis=0)
+
+def findNeighborSimplices(simplices, sIndex):
+    neighborList = []
+    vertices = simplices[sIndex]
+    # find simplices which have a pair of the three vertices
+    index0List = np.argwhere(simplices==vertices[0])[:,0]
+    index1List = np.argwhere(simplices==vertices[1])[:,0]
+    index2List = np.argwhere(simplices==vertices[2])[:,0]
+    firstNeighbor = np.setdiff1d(np.intersect1d(index0List, index1List),np.intersect1d(index1List, index2List))[0]
+    secondNeighbor = np.setdiff1d(np.intersect1d(index1List, index2List),np.intersect1d(index0List, index2List))[0]
+    thirdNeighbor = np.setdiff1d(np.intersect1d(index0List, index2List),np.intersect1d(index0List, index1List))[0]
+    return np.array([firstNeighbor, secondNeighbor, thirdNeighbor])
 
 def getDelaunaySimplexPos(pos, rad, boxSize):
     simplices = getPBCDelaunay(pos, rad, boxSize)

@@ -22,7 +22,7 @@ import spCluster as cluster
 ############################ Local density analysis ############################
 ################################################################################
 def plotSimplexDensity(dirName, figureName, which = False, pad = 1, logy=False):
-    if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
+    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
         _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter=False)

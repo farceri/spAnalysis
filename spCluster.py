@@ -1457,18 +1457,37 @@ def computeAugmentedDelaunayCluster(dirName, threshold1=0.78, threshold2=0.45, s
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
-    delaunay = Delaunay(newPos)
-    simplices = delaunay.simplices
-    simplexDensity, _ = utils.computeDelaunayDensity(simplices, newPos, newRad, boxSize*1.5)
+    simplices = Delaunay(newPos).simplices
+    simplices = np.unique(np.sort(simplices, axis=1), axis=0)
     insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
-    simplexLabelList = np.ones(simplexDensity.shape[0])
-    for simplexId in range(simplexLabelList.shape[0]):
-        if(simplexDensity[simplexId] > threshold1):
-            simplexLabelList[simplexId] = 0
-        if(simplexDensity[simplexId] < threshold1 and simplexDensity[simplexId] > threshold2):
-            simplexLabelList[simplexId] = 0.5
-    insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
-    return newPos, simplices, simplexLabelList, simplexDensity
+    simplexDensity, _ = utils.computeDelaunayDensity(simplices, newPos, newRad, boxSize*1.2)
+    #simplices = utils.wrapSimplicesAroundBox(simplices, newIndices, rad.shape[0])
+    denseSimplexList = np.zeros(simplexDensity.shape[0])
+    # first find simplices above square lattice density 0.785
+    for i in range(simplexDensity.shape[0]):
+        if(simplexDensity[i] > threshold1):
+            denseSimplexList[i] = 1
+    # first filter - label dilute simplices surrounded by dense simplices as dense
+    for times in range(3):
+        for i in range(denseSimplexList.shape[0]):
+            if(denseSimplexList[i] == 0 and insideIndex[i] == 1):
+                indices = utils.findNeighborSimplices(simplices, i)
+                if(np.sum(denseSimplexList[indices]) >= 2): # all are dense
+                    denseSimplexList[i] = 1
+    # second filter - label dense simplices surrounded by dilute simplices as dilute
+            if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
+                indices = utils.findNeighborSimplices(simplices, i)
+                if(np.sum(denseSimplexList[indices]) == 0): # all are dilute
+                    denseSimplexList[i] = 0
+    #for simplexId in range(denseSimplexList.shape[0]):
+    #    if(simplexDensity[simplexId] > threshold1):
+    #        denseSimplexList[simplexId] = 0
+    #    if(simplexDensity[simplexId] < threshold1 and simplexDensity[simplexId] > threshold2):
+    #        denseSimplexList[simplexId] = 0.5
+    print("total # of simplices:", denseSimplexList.shape[0])
+    print("# of dilute simplices:", denseSimplexList[denseSimplexList==0].shape[0])
+    print("# of dense simplices:", denseSimplexList[denseSimplexList==1].shape[0])
+    return newPos, simplices[insideIndex==1], denseSimplexList[insideIndex==1], simplexDensity[insideIndex==1]
 
 ############################## Delaunay clustering #############################
 def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False):
@@ -1490,11 +1509,22 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False):
         print("There are", np.argwhere(simplexDensity<0)[:,0].shape[0], "negative simplex densities")
         print(simplices[np.argwhere(simplexDensity<0)[:,0]])
     denseSimplexList = np.zeros(simplexDensity.shape[0])
-    #print("average local density:", np.mean(simplexDensity))
-    # first find dense simplices
+    # first find simplices above square lattice density 0.785
     for i in range(simplexDensity.shape[0]):
         if(simplexDensity[i] > threshold):
             denseSimplexList[i] = 1
+    # first filter - label dilute simplices surrounded by dense simplices as dense
+    for times in range(3):
+        for i in range(denseSimplexList.shape[0]):
+            if(denseSimplexList[i] == 0):
+                indices = utils.findNeighborSimplices(simplices, i)
+                if(np.sum(denseSimplexList[indices]) >= 2): # all are dense
+                    denseSimplexList[i] = 1
+    # second filter - label dense simplices surrounded by dilute simplices as dilute
+            if(denseSimplexList[i] == 1):
+                indices = utils.findNeighborSimplices(simplices, i)
+                if(np.sum(denseSimplexList[indices]) == 0): # all are dilute
+                    denseSimplexList[i] = 0
     #print("Fraction of dense simplices: ", denseSimplexList[denseSimplexList==1].shape[0]/denseSimplexList.shape[0])
     # if all the simplices touching a particle are dense then the particle is dense
     for i in range(numParticles):
