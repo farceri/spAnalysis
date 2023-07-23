@@ -526,13 +526,13 @@ def plotSoftParticlePressureMap(axFrame, pos, pressure, rad, alpha = 0.7):
         r = rad[particleId]
         axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth='0.3'))
 
-def plotSoftParticleCluster(axFrame, pos, rad, clusterList, alpha = 0.4):
+def plotSoftParticleCluster(axFrame, pos, rad, denseList, alpha = 0.4):
     for particleId in range(pos.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
-        if(clusterList[particleId] == 1):
-            axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='b', alpha=alpha, linewidth = 0.7))
+        if(denseList[particleId] == 1):
+            axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth = 0.7))
         else:
             axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[1,1,1], alpha=alpha, linewidth = 0.7))
 
@@ -580,7 +580,7 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     anim.save("/home/francesco/Pictures/soft/packings/clustermix-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
-def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = False, firstIndex = 10, npt = False, quiver = False, cluster = False, pmap = False, droplet = False, l1=0.035):
+def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = False, firstIndex = 10, npt = False, quiver = False, dense = False, pmap = False, droplet = False, l1=0.035):
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     #pos = utils.shiftPositions(pos, boxSize, -0.5, -0.1)
     pos = utils.centerPositions(pos, rad, boxSize)
@@ -603,12 +603,12 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
             else:
                 pressure = cluster.computeParticleStress(dirName)
         plotSoftParticlePressureMap(axFrame, pos, pressure, rad)
-    elif(cluster == "cluster"):
-        if(os.path.exists(dirName + os.sep + "clusterLabels.dat")):
-            clusterList = np.loadtxt(dirName + os.sep + "clusterLabels.dat")[:,0]
+    elif(dense == "dense"):
+        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+            denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
-            clusterList,_,_ = cluster.searchClusters(dirName, numParticles=rad.shape[0])
-        plotSoftParticleCluster(axFrame, pos, rad, clusterList)
+            denseList,_ = cluster.computeDelaunayCluster(dirName)
+        plotSoftParticleCluster(axFrame, pos, rad, denseList)
     else:
         if(npt == "npt"):
             boxSize = np.loadtxt(dirSample + "/boxSize.dat")
@@ -617,7 +617,7 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
     axFrame.remove()
     frames.append(axFrame)
 
-def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04, logSpaced = False, subSet = False, firstIndex = 0, npt = False, quiver = False, cluster = False, pmap = False, droplet = False):
+def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04, logSpaced = False, subSet = False, firstIndex = 0, npt = False, quiver = False, dense = False, pmap = False, droplet = False):
     def animate(i):
         frames[i].figure=fig
         fig.axes.append(frames[i])
@@ -648,11 +648,11 @@ def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepF
     setPackingAxes(boxSize, ax)
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
     # the first configuration gets two frames for better visualization
-    makeSoftParticleFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, subSet, firstIndex, npt, quiver, cluster, pmap, droplet)
+    makeSoftParticleFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, subSet, firstIndex, npt, quiver, dense, pmap, droplet)
     vel = []
     for i in stepList:
         dirSample = dirName + os.sep + "t" + str(i)
-        makeSoftParticleFrame(dirSample, rad, boxSize, figFrame, frames, subSet, firstIndex, npt, quiver, cluster, pmap, droplet)
+        makeSoftParticleFrame(dirSample, rad, boxSize, figFrame, frames, subSet, firstIndex, npt, quiver, dense, pmap, droplet)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     if(quiver=="quiver"):
         figureName = "velmap-" + figureName
@@ -793,7 +793,7 @@ if __name__ == '__main__':
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, cluster = "cluster")
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, dense = "dense")
 
     elif(whichPlot == "clustermix"):
         numFrames = int(sys.argv[4])
