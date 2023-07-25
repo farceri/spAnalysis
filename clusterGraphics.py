@@ -21,7 +21,8 @@ import spCluster as cluster
 ################################################################################
 ############################ Local density analysis ############################
 ################################################################################
-def plotSimplexDensity(dirName, figureName, which = False, pad = 1, logy=False):
+def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
+    fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
     if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
@@ -33,7 +34,6 @@ def plotSimplexDensity(dirName, figureName, which = False, pad = 1, logy=False):
     elif(which == 'gas'):
         simplexDensity = simplexDensity[denseSimplexList==0]
         figureName = figureName + '-' + which
-    fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
     ax[0].plot(np.arange(1, simplexDensity.shape[0]+1, 1), np.sort(simplexDensity), color='k', marker='.', markersize=8, lw=0.8, fillstyle='none')
     ax[0].tick_params(axis='both', labelsize=12)
     ax[0].set_xlabel('$Simplex$ $index$', fontsize=16)
@@ -45,11 +45,9 @@ def plotSimplexDensity(dirName, figureName, which = False, pad = 1, logy=False):
     y = np.linspace(np.min(pdf)-pad, np.max(pdf)+pad, 100)
     if(logy == 'logy'):
         ax[1].set_yscale('log')
-        #ax[1].set_ylim(np.min(pdf), np.max(pdf)+pad/2)
         ax[1].set_ylim(6.4e-03, 50.6)
         y = np.linspace(1e-04, 100, 100)
     else:
-        #ax[1].set_ylim(np.min(pdf)-pad/2, np.max(pdf)+pad/2)
         ax[1].set_ylim(-2.8, 43.2)
         y = np.linspace(-5, 50, 100)
     ax[1].plot(np.ones(100)*0.906899682, y, ls='dotted', color='k', lw=1, label='$Triangular$ $lattice$')
@@ -61,6 +59,81 @@ def plotSimplexDensity(dirName, figureName, which = False, pad = 1, logy=False):
     fig.tight_layout()
     fig.subplots_adjust(wspace=0.3)
     plt.savefig("/home/francesco/Pictures/soft/mips/simplexPDF-" + figureName + ".png", transparent=True, format="png")
+    plt.show()
+
+def plotSimplexLabels(dirName, figureName, filter = False, logy=False, pad = 1):
+    numBins = 100
+    fig, ax = plt.subplots(2, 2, sharex = 'col', sharey = 'col', figsize=(10,6), dpi=150)
+    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
+        simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
+    else:
+        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter=filter)
+    # dilute surrounded by dense
+    dilute3dense =  np.loadtxt(dirName + os.sep + 'delaunayLabels/dilute3dense.dat')
+    dilute2dense =  np.loadtxt(dirName + os.sep + 'delaunayLabels/dilute2dense.dat')
+    dilute1dense =  np.loadtxt(dirName + os.sep + 'delaunayLabels/dilute1dense.dat')
+    dilute3dense = simplexDensity[dilute3dense==1]
+    dilute2dense = simplexDensity[dilute2dense==1]
+    dilute1dense = simplexDensity[dilute1dense==1]
+    ax[0,0].plot(np.arange(1, dilute3dense.shape[0]+1, 1), np.sort(dilute3dense), color='r', marker='o', markersize=4, lw=0.8, fillstyle='none', label="$Dilute,$ $3$ $dense$")
+    ax[0,0].plot(np.arange(1, dilute2dense.shape[0]+1, 1), np.sort(dilute2dense), color='g', marker='v', markersize=4, lw=0.8, fillstyle='none', label="$Dilute,$ $2$ $dense$")
+    ax[0,0].plot(np.arange(1, dilute1dense.shape[0]+1, 1), np.sort(dilute1dense), color='b', marker='s', markersize=4, lw=0.8, fillstyle='none', label="$Dilute,$ $1$ $dense$")
+    pdf, edges = np.histogram(dilute3dense, bins=np.linspace(0, 1, numBins), density=True)
+    edges = (edges[1:] + edges[:-1])/2
+    ax[0,1].plot(edges[pdf>0], pdf[pdf>0], color='r', marker='o', markersize=6, lw=0.8, fillstyle='none')
+    pdf, edges = np.histogram(dilute2dense, bins=np.linspace(0, 1, numBins), density=True)
+    edges = (edges[1:] + edges[:-1])/2
+    ax[0,1].plot(edges[pdf>0], pdf[pdf>0], color='g', marker='v', markersize=6, lw=0.8, fillstyle='none')
+    pdf, edges = np.histogram(dilute1dense, bins=np.linspace(0, 1, numBins), density=True)
+    edges = (edges[1:] + edges[:-1])/2
+    ax[0,1].plot(edges[pdf>0], pdf[pdf>0], color='b', marker='s', markersize=6, lw=0.8, fillstyle='none')
+    # dense surrounded by dilute
+    dense3dilute =  np.loadtxt(dirName + os.sep + 'delaunayLabels/dense3dilute.dat')
+    dense2dilute =  np.loadtxt(dirName + os.sep + 'delaunayLabels/dense2dilute.dat')
+    dense1dilute =  np.loadtxt(dirName + os.sep + 'delaunayLabels/dense1dilute.dat')
+    dense3dilute = simplexDensity[dense3dilute==1]
+    dense2dilute = simplexDensity[dense2dilute==1]
+    dense1dilute = simplexDensity[dense1dilute==1]
+    ax[1,0].plot(np.arange(1, dense3dilute.shape[0]+1, 1), np.sort(dense3dilute), color='r', marker='o', markersize=4, lw=0.8, fillstyle='none', label="$Dense,$ $3$ $dilute$")
+    ax[1,0].plot(np.arange(1, dense2dilute.shape[0]+1, 1), np.sort(dense2dilute), color='g', marker='v', markersize=4, lw=0.8, fillstyle='none', label="$Dense,$ $2$ $dilute$")
+    ax[1,0].plot(np.arange(1, dense1dilute.shape[0]+1, 1), np.sort(dense1dilute), color='b', marker='s', markersize=4, lw=0.8, fillstyle='none', label="$Dense,$ $1$ $dilute$")
+    pdf, edges = np.histogram(dense3dilute, bins=np.linspace(0, 1, numBins), density=True)
+    edges = (edges[1:] + edges[:-1])/2
+    ax[1,1].plot(edges[pdf>0], pdf[pdf>0], color='r', marker='o', markersize=6, lw=0.8, fillstyle='none')
+    pdf, edges = np.histogram(dense2dilute, bins=np.linspace(0, 1, numBins), density=True)
+    edges = (edges[1:] + edges[:-1])/2
+    ax[1,1].plot(edges[pdf>0], pdf[pdf>0], color='g', marker='v', markersize=6, lw=0.8, fillstyle='none')
+    pdf, edges = np.histogram(dense1dilute, bins=np.linspace(0, 1, numBins), density=True)
+    edges = (edges[1:] + edges[:-1])/2
+    ax[1,1].plot(edges[pdf>0], pdf[pdf>0], color='b', marker='s', markersize=6, lw=0.8, fillstyle='none')
+    # figure settings
+    for i in range(2):
+        ax[i,0].legend(fontsize=10, loc='best')
+        ax[i,0].tick_params(axis='both', labelsize=12)
+        ax[i,0].set_ylabel('$\\varphi^{Simplex}$', fontsize=16)
+        ax[i,0].set_ylim(-0.06, 1.06)
+    ax[1,0].set_xlabel('$Simplex$ $index$', fontsize=16)
+    # plot triangular and square densities
+    y = np.linspace(np.min(pdf)-pad, np.max(pdf)+pad, 100)
+    if(logy == 'logy'):
+        ax[0,1].set_yscale('log')
+        ax[0,1].set_ylim(6.4e-03, 50.6)
+        y = np.linspace(1e-04, 100, 100)
+    else:
+        ax[0,1].set_ylim(-2.8, 43.2)
+        y = np.linspace(-5, 50, 100)
+    for i in range(2):
+        ax[i,1].plot(np.ones(100)*0.906899682, y, ls='dotted', color='k', lw=1, label='$Triangular$ $lattice$')
+        ax[i,1].plot(np.ones(100)*0.785398163, y, ls='dashdot', color='k', lw=1, label='$Square$ $lattice$')
+        ax[i,1].tick_params(axis='both', labelsize=12)
+        ax[i,1].set_ylabel('$PDF(\\varphi^{Simplex})$', fontsize=16)
+        ax[i,1].set_xlim(-0.02, 1.02)
+    ax[1,1].legend(fontsize=10, loc='best')
+    ax[1,1].set_xlabel('$\\varphi^{Simplex}$', fontsize=16)
+    fig.tight_layout()
+    fig.subplots_adjust(wspace=0.3)
+    fig.subplots_adjust(hspace=0)
+    plt.savefig("/home/francesco/Pictures/soft/mips/simplexLabels-" + figureName + ".png", transparent=True, format="png")
     plt.show()
 
 def fitPhiPDF(dirName, figureName, numBins):
@@ -1348,6 +1421,17 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
             phiupper = p[np.argwhere((fluidInter - error) <= phiInter)[0,0]]
             ax.plot(phiInter, phiInter, color='r')
             ax.plot(phiInter, fluidInter, color='r', ls='--', lw=4)
+            # another way to compute the lower bound that matches the first
+            ax.set_ylim(-0.18, 1.02)
+            y = np.linspace(-0.2, 1.05, 100)
+            dirSample = dirName + os.sep + dirList[10+index-1] + "/active-langevin/Dr" + which + "/dynamics/"
+            phi1 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
+            dirSample = dirName + os.sep + dirList[10+index] + "/active-langevin/Dr" + which + "/dynamics/"
+            phi2 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
+            ax.plot(np.ones(100)*(phi1+phi2)/2, y, ls='dotted', color='k', lw=1)
+            phiup = (phi1+phi2)/2
+            print("phiup from density avarage:", phiup)
+            print("phiup from interpolation:", phiupper)
             # interpolate to find lower bound
             gas = gasDensity[gasDensity[:,0]>0,0][:10]
             philow = phi[fluidDensity[:,0]>0][:10]
@@ -1360,8 +1444,6 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
             philower = p[np.argwhere((gasInter + 1e-02) < phiInter)[0,-1]]
             ax.plot(phiInter, phiInter, color='r')
             ax.plot(phiInter, gasInter, color='r', ls='--', lw=4)
-            print("phiup:", phiupper, "phidown:", philower)
-            np.savetxt(dirName + "MIPSBounds.dat", np.column_stack((numParticles, philower, phiupper)))
             # another way to compute the lower bound that matches the first
             ax.set_ylim(-0.18, 1.02)
             y = np.linspace(-0.2, 1.05, 100)
@@ -1370,7 +1452,10 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
             dirSample = dirName + os.sep + dirList[index] + "/active-langevin/Dr" + which + "/dynamics/"
             phi2 = np.mean(np.loadtxt(dirSample + "delaunayDensity.dat")[:,3])
             ax.plot(np.ones(100)*(phi1+phi2)/2, y, ls='dotted', color='k', lw=1)
-            print("phidown from density avarage:", (phi1+phi2)/2)
+            philow = (phi1+phi2)/2
+            print("phidown from density avarage:", philow)
+            print("phidown from interpolation:", philower)
+            np.savetxt(dirName + "MIPSBounds.dat", np.column_stack((numParticles, philower, phiupper, philow, phiup)))
     elif(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
@@ -2044,8 +2129,8 @@ def plotSPMIPSBoundsVSSystemSize(dirName, figureName, which='up'):
         dirSample = dirName + os.sep + dirList[d] + "-2d/densitySweep/"
         if(os.path.exists(dirSample + "/MIPSBounds.dat")):
             data = np.loadtxt(dirSample + "/MIPSBounds.dat")
-            bounds[d,0] = data[1]
-            bounds[d,1] = data[2]
+            bounds[d,0] = data[3]
+            bounds[d,1] = data[4]
     if(which=='down'):
         label = '$Lower$ $bound$'
         ax.semilogx(numParticles, bounds[:,0], color='k', marker='v', markersize=10, markeredgewidth=1.2, fillstyle='none', lw=1.2, ls='dashdot', label='$Lower$ $bound$')
@@ -2347,9 +2432,14 @@ if __name__ == '__main__':
     if(whichPlot == "simplex"):
         figureName = sys.argv[3]
         which = sys.argv[4]
-        pad = float(sys.argv[5])
-        logy = sys.argv[6]
-        plotSimplexDensity(dirName, figureName, which, pad, logy)
+        logy = sys.argv[5]
+        plotSimplexDensity(dirName, figureName, which, logy)
+
+    elif(whichPlot == "simplexlabel"):
+        figureName = sys.argv[3]
+        filter = sys.argv[4]
+        logy = sys.argv[5]
+        plotSimplexLabels(dirName, figureName, filter, logy)
 
     elif(whichPlot == "fitphi"):
         figureName = sys.argv[3]

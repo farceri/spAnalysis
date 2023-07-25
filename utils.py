@@ -778,7 +778,7 @@ def removeParticles(dirName, numRemove):
         print("Please remove a number of particles smaller than", maxRemove)
 
 ############################### Delaunay analysis ##############################
-def augmentPacking(pos, rad, fraction=0.2):
+def augmentPacking(pos, rad, fraction=0.1):
     # augment packing by copying a fraction of the particles around the walls
     Lx = np.array([1,0])
     Ly = np.array([0,1])
@@ -850,7 +850,7 @@ def wrapSimplicesAroundBox(innerSimplices, augmentedIndices, numParticles):
     return innerSimplices
 
 def getPBCDelaunay(pos, rad, boxSize):
-    newPos, newRad, newIndices = augmentPacking(pos, rad, 0.2)
+    newPos, newRad, newIndices = augmentPacking(pos, rad, 0.1)
     delaunay = Delaunay(newPos)
     insideIndex = getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
     simplices = wrapSimplicesAroundBox(delaunay.simplices[insideIndex==1], newIndices, rad.shape[0])
@@ -863,10 +863,35 @@ def findNeighborSimplices(simplices, sIndex):
     index0List = np.argwhere(simplices==vertices[0])[:,0]
     index1List = np.argwhere(simplices==vertices[1])[:,0]
     index2List = np.argwhere(simplices==vertices[2])[:,0]
-    firstNeighbor = np.setdiff1d(np.intersect1d(index0List, index1List),np.intersect1d(index1List, index2List))[0]
-    secondNeighbor = np.setdiff1d(np.intersect1d(index1List, index2List),np.intersect1d(index0List, index2List))[0]
-    thirdNeighbor = np.setdiff1d(np.intersect1d(index0List, index2List),np.intersect1d(index0List, index1List))[0]
+    intersect01 = np.intersect1d(index0List, index1List)
+    intersect12 = np.intersect1d(index1List, index2List)
+    intersect20 = np.intersect1d(index2List, index0List)
+    # need to subtract shorter array from larger array
+    if(intersect01.shape[0] >= intersect12.shape[0]):
+        firstNeighbor = np.setdiff1d(intersect01, intersect12)[0]
+    else:
+        firstNeighbor = np.setdiff1d(intersect12, intersect01)[0]
+    if(intersect12.shape[0] >= intersect20.shape[0]):
+        secondNeighbor = np.setdiff1d(intersect12, intersect20)[0]
+    else:
+        secondNeighbor = np.setdiff1d(intersect20, intersect12)[0]
+    if(intersect20.shape[0] >= intersect01.shape[0]):
+        thirdNeighbor = np.setdiff1d(intersect20, intersect01)[0]
+    else:
+        thirdNeighbor = np.setdiff1d(intersect01, intersect20)[0]
     return np.array([firstNeighbor, secondNeighbor, thirdNeighbor])
+
+def findAllNeighborSimplices(simplices, sIndex):
+    neighborList = []
+    vertices = simplices[sIndex]
+    # find simplices which at least one vertex in common
+    index0List = np.argwhere(simplices==vertices[0])[:,0]
+    index1List = np.argwhere(simplices==vertices[1])[:,0]
+    index2List = np.argwhere(simplices==vertices[2])[:,0]
+    vertex0Neighbors = np.setdiff1d(index0List, sIndex)
+    vertex1Neighbors = np.setdiff1d(index1List, sIndex)
+    vertex2Neighbors = np.setdiff1d(index2List, sIndex)
+    return np.unique(np.concatenate((vertex0Neighbors, vertex1Neighbors, vertex2Neighbors)))
 
 def getDelaunaySimplexPos(pos, rad, boxSize):
     simplices = getPBCDelaunay(pos, rad, boxSize)
@@ -1044,6 +1069,127 @@ def computeOverlapArea(pos1, pos2, rad1, rad2, boxSize):
         return angle * rad2**2 - 0.5 * rad2**2 * np.sin(2*angle)
     else:
         return 0
+
+def labelDelaunaySimplices(dirLabel, simplices, denseSimplexList):
+    # save dense simplices with 3, 2 and 1 dilute neighboring simplices
+    dense3dilute = np.zeros(denseSimplexList.shape[0])
+    dense2dilute = np.zeros(denseSimplexList.shape[0])
+    dense1dilute = np.zeros(denseSimplexList.shape[0])
+    dense3diluteAllNeighbors = np.zeros(denseSimplexList.shape[0])
+    dense2diluteAllNeighbors = np.zeros(denseSimplexList.shape[0])
+    dense1diluteAllNeighbors = np.zeros(denseSimplexList.shape[0])
+    dense3diluteNeighbors = np.zeros(denseSimplexList.shape[0])
+    dense2diluteNeighbors = np.zeros(denseSimplexList.shape[0])
+    dense1diluteNeighbors = np.zeros(denseSimplexList.shape[0])
+    for i in range(denseSimplexList.shape[0]):
+        if(denseSimplexList[i] == 1):
+            indices = findNeighborSimplices(simplices, i)
+            allIndices = findAllNeighborSimplices(simplices, i)
+            if(np.sum(denseSimplexList[indices]) == 0): # all are dilute
+                dense3dilute[i] = 1
+                dense3diluteAllNeighbors[allIndices] = 1
+                dense3diluteNeighbors[indices[denseSimplexList[indices]==0]] = 1
+            elif(np.sum(denseSimplexList[indices]) == 1): # two are dilute
+                dense2dilute[i] = 1
+                dense2diluteAllNeighbors[allIndices] = 1
+                dense2diluteNeighbors[indices[denseSimplexList[indices]==0]] = 1
+            elif(np.sum(denseSimplexList[indices]) == 2): # one is dilute
+                dense1dilute[i] = 1
+                dense1diluteAllNeighbors[allIndices] = 1
+                dense1diluteNeighbors[indices[denseSimplexList[indices]==0]] = 1
+    np.savetxt(dirLabel + "/dense3dilute.dat", dense3dilute)
+    np.savetxt(dirLabel + "/dense2dilute.dat", dense2dilute)
+    np.savetxt(dirLabel + "/dense1dilute.dat", dense1dilute)
+    np.savetxt(dirLabel + "/dense3diluteAllNeighbors.dat", dense3diluteAllNeighbors)
+    np.savetxt(dirLabel + "/dense2diluteAllNeighbors.dat", dense2diluteAllNeighbors)
+    np.savetxt(dirLabel + "/dense1diluteAllNeighbors.dat", dense1diluteAllNeighbors)
+    np.savetxt(dirLabel + "/dense3diluteNeighbors.dat", dense3diluteNeighbors)
+    np.savetxt(dirLabel + "/dense2diluteNeighbors.dat", dense2diluteNeighbors)
+    np.savetxt(dirLabel + "/dense1diluteNeighbors.dat", dense1diluteNeighbors)
+    # save dilute simplices with 3, 2 and 1 dense neighboring simplices
+    dilute3dense = np.zeros(denseSimplexList.shape[0])
+    dilute2dense = np.zeros(denseSimplexList.shape[0])
+    dilute1dense = np.zeros(denseSimplexList.shape[0])
+    dilute3denseAllNeighbors = np.zeros(denseSimplexList.shape[0])
+    dilute2denseAllNeighbors = np.zeros(denseSimplexList.shape[0])
+    dilute1denseAllNeighbors = np.zeros(denseSimplexList.shape[0])
+    dilute3denseNeighbors = np.zeros(denseSimplexList.shape[0])
+    dilute2denseNeighbors = np.zeros(denseSimplexList.shape[0])
+    dilute1denseNeighbors = np.zeros(denseSimplexList.shape[0])
+    for i in range(denseSimplexList.shape[0]):
+        if(denseSimplexList[i] == 0):
+            indices = findNeighborSimplices(simplices, i)
+            allIndices = findAllNeighborSimplices(simplices, i)
+            if(np.sum(denseSimplexList[indices]) == 3): # all are dense
+                dilute3dense[i] = 1
+                dilute3denseAllNeighbors[allIndices] = 1
+                dilute3denseNeighbors[indices[denseSimplexList[indices]==1]] = 1
+            elif(np.sum(denseSimplexList[indices]) == 2): # two are dense
+                dilute2dense[i] = 1
+                dilute2denseAllNeighbors[allIndices] = 1
+                dilute2denseNeighbors[indices[denseSimplexList[indices]==1]] = 1
+            elif(np.sum(denseSimplexList[indices]) == 1): # one is dense
+                dilute1dense[i] = 1
+                dilute1denseAllNeighbors[allIndices] = 1
+                dilute1denseNeighbors[indices[denseSimplexList[indices]==1]] = 1
+    np.savetxt(dirLabel + "/dilute3dense.dat", dilute3dense)
+    np.savetxt(dirLabel + "/dilute2dense.dat", dilute2dense)
+    np.savetxt(dirLabel + "/dilute1dense.dat", dilute1dense)
+    np.savetxt(dirLabel + "/dilute3denseAllNeighbors.dat", dilute3denseAllNeighbors)
+    np.savetxt(dirLabel + "/dilute2denseAllNeighbors.dat", dilute2denseAllNeighbors)
+    np.savetxt(dirLabel + "/dilute1denseAllNeighbors.dat", dilute1denseAllNeighbors)
+    np.savetxt(dirLabel + "/dilute3denseNeighbors.dat", dilute3denseNeighbors)
+    np.savetxt(dirLabel + "/dilute2denseNeighbors.dat", dilute2denseNeighbors)
+    np.savetxt(dirLabel + "/dilute1denseNeighbors.dat", dilute1denseNeighbors)
+
+def applyParticleFilters(contacts, denseList, simplices, denseSimplexList):
+    numParticles = denseList.shape[0]
+    connectList = np.zeros(numParticles)
+    for i in range(numParticles):
+        if(np.sum(contacts[i]!=-1)>5):
+            denseContacts = 0
+            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                if(denseList[c] == 1):
+                    denseContacts += 1
+            if(denseContacts > 1):
+            # this is at least a four particle cluster
+                connectList[i] = 1
+    denseList[connectList==0] = 0
+    # this is to include contacts of particles belonging to the cluster
+    for times in range(5):
+        for i in range(numParticles):
+            if(denseList[i] == 1):
+                for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                    if(denseList[c] != 1):
+                        denseList[c] = 1
+    # look for rattles inside the fluid and label them as dense particles
+    neighborCount = np.zeros(numParticles)
+    denseNeighborCount = np.zeros(numParticles)
+    for i in range(numParticles):
+        if(denseList[i]==0):
+            for sIndex in np.argwhere(simplices==i)[:,0]:
+                indices = np.delete(simplices[sIndex], np.argwhere(simplices[sIndex]==i)[0,0])
+                for index in indices:
+                    neighborCount[i] += 1
+                    if(denseList[index] == 1):
+                        denseNeighborCount[i] += 1
+    rattlerList = np.zeros(numParticles)
+    for i in range(numParticles):
+        if(denseList[i]==0):
+            if(neighborCount[i] == denseNeighborCount[i]):
+                rattlerList[i] = 1
+    denseList[rattlerList==1] = 1
+    #print("Number of dense particles after contact filter: ", denseList[denseList==1].shape[0])
+    # need to update denseSimplexList after the applied filters
+    for sIndex in range(simplices.shape[0]):
+        indexCount = 0
+        for pIndex in range(simplices[sIndex].shape[0]):
+            indexCount += denseList[simplices[sIndex][pIndex]]
+        if(indexCount==3):
+            denseSimplexList[sIndex] = 1
+        else:
+            denseSimplexList[sIndex] = 0
+    return denseList, denseSimplexList
 
 ############################# Local density analysis ###########################
 def computeLocalDensityGrid(pos, rad, contacts, boxSize, localSquare, xbin, ybin):
