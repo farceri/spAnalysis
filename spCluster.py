@@ -1658,7 +1658,7 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        if(os.path.exists(dirSample + os.sep + "denseSimplexList!.dat")):
+        if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
@@ -1696,8 +1696,8 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, delaunayDensity[:,0], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='b')
         uplot.plotCorrelation(timeList, delaunayDensity[:,1], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='g')
         uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
-        plt.pause(0.5)
-        #plt.show()
+        #plt.pause(0.5)
+        plt.show()
 
 ######################## Compute cluster shape parameter #######################
 def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
@@ -1843,12 +1843,12 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
     boxLength = 2 * (boxSize[0] + boxSize[1])
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
+        if(os.path.exists(dirSample + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         else:
-            denseList, _ = computeDelaunayCluster(dirSample)
+            denseList, _ = computeDelaunayCluster(dirSample, threshold=0.78, filter='filter')
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         # first fill out the area occupied by fluid and the gas
@@ -2394,9 +2394,9 @@ def averageRadialTension(dirName, shiftx, shifty, dirSpacing=1):
         virial[:,i] *= sigma/dirList.shape[0]
         active[:,i] *= sigma/dirList.shape[0]
     np.savetxt(dirName + os.sep + "surfaceTension.dat", np.column_stack((centers, virial, active)))
-    print("surface tension: ", np.sum(centers/sigma * (virial[:,0] + active[:,0] - virial[:,1] - active[:,1])))
-    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\Delta p$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, active[:,0] - active[:,1], "$\\Delta p$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
+    print("surface tension: ", np.sum(virial[:,0] + active[:,0] - virial[:,1] - active[:,1]))
+    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='k', lw=1.5)
+    uplot.plotCorrelation(centers, active[:,0] - active[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
     #plt.yscale('log')
     plt.show()
 
@@ -2473,7 +2473,7 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1):
     plt.show()
 
 ############################ Linear surface tension ############################
-def averageLinearTension(dirName, shiftx=0, dirSpacing=1):
+def averageLinearTension(dirName, dirSpacing=1):
     dim = 2
     ec = 240
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
@@ -2497,7 +2497,6 @@ def averageLinearTension(dirName, shiftx=0, dirSpacing=1):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
         #pos = np.loadtxt(dirSample + "/particlePos.dat")
         vel = np.loadtxt(dirSample + "/particleVel.dat")
         angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
@@ -2524,12 +2523,12 @@ def averageLinearTension(dirName, shiftx=0, dirSpacing=1):
                     virial[j,1] += worky
                     active[j,0] += driving * vel[i,0] * director[i,0] / (2*Dr)
                     active[j,1] += driving * vel[i,1] * director[i,1] / (2*Dr)
-    virial *= sigma**2/(binArea * dirList.shape[0])
-    active *= sigma**2/(binArea * dirList.shape[0])
+    virial *= sigma*binWidth/(binArea * dirList.shape[0])
+    active *= sigma*binWidth/(binArea * dirList.shape[0])
     np.savetxt(dirName + os.sep + "surfaceTension.dat", np.column_stack((centers, virial, active)))
-    print("surface tension: ", np.sum(centers/sigma*(virial[:,0] + active[:,0] - virial[:,1] - active[:,1])))
-    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\Delta p$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, active[:,0] - active[:,1], "$\\Delta p$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
+    print("surface tension: ", 0.5*np.sum(virial[:,0] + active[:,0] - virial[:,1] - active[:,1]))
+    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='k', lw=1.5)
+    uplot.plotCorrelation(centers, active[:,0] - active[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
     #plt.yscale('log')
     plt.show()
 
@@ -2862,8 +2861,8 @@ def averageDropletRadialTension(dirName, shiftx, shifty, l1=0.04, dirSpacing=1):
         thermal[:,i] *= sigma/dirList.shape[0]
     np.savetxt(dirName + os.sep + "surfaceTension.dat", np.column_stack((centers, virial, thermal)))
     print("surface tension: ", np.sum(centers * (virial[:,0] + thermal[:,0] - virial[:,1] - thermal[:,1])))
-    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\Delta p$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, thermal[:,0] - thermal[:,1], "$\\Delta p$", xlabel = "$Distance$", color='r', lw=1.5)
+    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='k', lw=1.5)
+    uplot.plotCorrelation(centers, thermal[:,0] - thermal[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='r', lw=1.5)
     #plt.yscale('log')
     plt.show()
 
@@ -2987,9 +2986,9 @@ def averageDropletLinearTension(dirName, l1=0.04, dirSpacing=1):
     thermal *= sigma*binWidth/(binArea * dirList.shape[0])
     virial *= sigma*binWidth/(binArea * dirList.shape[0])
     np.savetxt(dirName + os.sep + "surfaceTension.dat", np.column_stack((centers, virial, thermal)))
-    print("surface tension: ", np.sum(centers * (virial[:,0] + thermal[:,0] - virial[:,1] - thermal[:,1])))
-    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\Delta p$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, thermal[:,0] - thermal[:,1], "$\\Delta p$", xlabel = "$Distance$", color='r', lw=1.5)
+    print("surface tension: ", 0.5*np.sum(virial[:,0] + thermal[:,0] - virial[:,1] - thermal[:,1]))
+    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='k', lw=1.5)
+    uplot.plotCorrelation(centers, thermal[:,0] - thermal[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='r', lw=1.5)
     #plt.yscale('log')
     plt.show()
 
@@ -3194,12 +3193,10 @@ if __name__ == '__main__':
         averageRadialTension(dirName, shiftx, shifty)
 
     elif(whichCorr == "linearprofile"):
-        shiftx = float(sys.argv[3])
-        averageLinearPressureProfile(dirName, shiftx)
+        averageLinearPressureProfile(dirName)
 
     elif(whichCorr == "lineartension"):
-        shiftx = float(sys.argv[3])
-        averageLinearTension(dirName, shiftx)
+        averageLinearTension(dirName)
 
     elif(whichCorr == "ptime"):
         bound = sys.argv[3]
@@ -3234,11 +3231,11 @@ if __name__ == '__main__':
         l1 = float(sys.argv[5])
         averageDropletRadialTension(dirName, shiftx, shifty, l1)
 
-    elif(whichCorr == "slabprofile"):
+    elif(whichCorr == "droplinearprofile"):
         l1 = float(sys.argv[3])
         averageDropletLinearPressureProfile(dirName, l1)
 
-    elif(whichCorr == "slabtension"):
+    elif(whichCorr == "droplineartension"):
         l1 = float(sys.argv[3])
         averageDropletLinearTension(dirName, l1)
 

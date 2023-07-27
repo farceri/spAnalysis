@@ -23,7 +23,7 @@ import spCluster as cluster
 ################################################################################
 def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
     fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
-    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
+    if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
         _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter=False)
@@ -58,7 +58,7 @@ def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
     ax[1].set_xlabel('$\\varphi^{Simplex}$', fontsize=16)
     fig.tight_layout()
     fig.subplots_adjust(wspace=0.3)
-    plt.savefig("/home/francesco/Pictures/soft/mips/simplexPDF-" + figureName + ".png", transparent=True, format="png")
+    plt.savefig("/home/francesco/Pictures/soft/mips/sPDF-" + figureName + ".png", transparent=True, format="png")
     plt.show()
 
 def plotSimplexLabels(dirName, figureName, filter = False, logy=False, pad = 1):
@@ -1172,122 +1172,6 @@ def plotSPPressurePDF(dirName, figureName):
 ################################################################################
 ######################### Cluster pressure properties ##########################
 ################################################################################
-def plotClusterPressureVSTime(dirName, figureName, bound=False, prop=False):
-    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    pressure = np.loadtxt(dirName + os.sep + "clusterPressure.dat")
-    fig, ax = plt.subplots(1, 2, sharey=True, figsize = (11, 5), dpi = 120)
-    if(bound == "bound"):
-        ax[0].plot(pressure[:,0], pressure[:,1], linewidth=1.5, color='g', label="$wall$")
-        ax[1].plot(pressure[:,0], pressure[:,1], linewidth=1.5, color='g', label="$wall$")
-    # dense particles
-    ax[0].plot(pressure[:,0], pressure[:,2], linewidth=1.5, color='k', label="$virial$")
-    ax[0].plot(pressure[:,0], pressure[:,3], linewidth=1.5, color='r', label="$thermal$")
-    ptot = pressure[:,2] + pressure[:,3]
-    if(prop == "prop"):
-        ax[0].plot(pressure[:,0], pressure[:,4], linewidth=1.5, color=[1,0.5,0], label="$active$")
-        ptot += pressure[:,4]
-    ax[0].plot(pressure[:,0], ptot, linewidth=1.5, color='b', ls='dotted', label="$total$")
-    # dilute particles
-    ax[1].plot(pressure[:,0], pressure[:,5], linewidth=1.5, color='k', ls='--', label="$virial$")
-    ax[1].plot(pressure[:,0], pressure[:,6], linewidth=1.5, color='r', ls='--', label="$thermal$")
-    ptot = pressure[:,5] + pressure[:,6]
-    if(prop == "prop"):
-        ax[1].plot(pressure[:,0], pressure[:,7], linewidth=1.5, color=[1,0.5,0], ls='--', label="$active$")
-        ptot += pressure[:,7]
-    ax[1].plot(pressure[:,0], ptot, linewidth=1.5, color='b', ls='dotted', label="$total$")
-    # plotting settings
-    ax[0].tick_params(axis='both', labelsize=12)
-    ax[1].tick_params(axis='both', labelsize=12)
-    ax[0].set_xlabel("$Simulation$ $step$", fontsize=15)
-    ax[1].set_xlabel("$Simulation$ $step$", fontsize=15)
-    ax[0].set_ylabel("$Pressure$", fontsize=15)
-    ax[0].legend(fontsize=12, loc='best')
-    #ax.set_ylim(50, 700)
-    plt.tight_layout()
-    fig.subplots_adjust(wspace=0)
-    #figureName = "/home/francesco/Pictures/soft/mips/pClusterPressure-" + figureName
-    #fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPPressureProfile(dirName, figureName, shift=0, which='pressure'):
-    fig, ax = plt.subplots(figsize = (8,4), dpi = 120)
-    if(os.path.exists(dirName + "/pressureProfile.dat")):
-        data = np.loadtxt(dirName + "/pressureProfile.dat")
-        sigma = float(utils.readFromDynParams(dirName, 'sigma'))
-        data[:,1] = np.roll(data[:,1], shift)
-        data[:,2] = np.roll(data[:,2], shift)
-        data[:,3] = np.roll(data[:,3], shift)
-        data[:,4] = np.roll(data[:,4], shift)
-        data[:,5] = np.roll(data[:,5], shift)
-        data[:,6] = np.roll(data[:,6], shift)
-        data[:,7] = np.roll(data[:,7], shift)
-        data[:,8] = np.roll(data[:,8], shift)
-        half = int(data.shape[0]/2)
-        print("surface tension: ", np.sum(data[:half,0] * (data[:half,2] + data[:half,6] - data[:half,3] - data[:half,7]))/sigma)
-        if(which=='pressure'):
-            ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='--', label='$Steric$')
-            ax.plot(data[:,0], data[:,4], lw=1.5, color='r', ls='dotted', label='$Thermal$')
-            ax.plot(data[:,0], data[:,5], lw=1.5, color=[1,0.5,0], label='$Active$')
-            ax.plot(data[:,0], data[:,8], lw=1.5, color='b', ls='dashdot', label='$Total$')
-        elif(which=='delta'):
-            ax.plot(data[:,0], data[:,2] - data[:,3], lw=1.5, color='k', ls='solid', label='$Steric$')
-            ax.plot(data[:,0], data[:,6] - data[:,7], lw=1.5, color=[1,0.5,0], ls='solid', label='$Active$')
-    ax.tick_params(axis='both', labelsize=14)
-    #ax.set_xlabel("$Radial$ $distance,$ $r$", fontsize=18)
-    ax.set_xlabel("$Position,$ $x$", fontsize=18)
-    if(which=="pressure"):
-        ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=18)
-        ax.set_ylim(np.min(data[:,4])-0.2, np.max(data[:,8])+0.6)
-        figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
-    elif(which=="delta"):
-        ax.set_ylabel("$\\Delta p^\ast = p_{xx} - p_{yy} \\sigma^2$", fontsize=18)
-        ax.set_ylim(np.min(data[:,6] - data[:,7])-0.2, np.max(data[:,6] - data[:,7])+0.6)
-        figureName = "/home/francesco/Pictures/soft/mips/deltaProfile-" + figureName + ".png"
-    ax.legend(fontsize=13, loc='upper right', ncol=4)
-    fig.tight_layout()
-    fig.savefig(figureName, transparent=True, format = "png")
-    plt.show()
-
-def plotSPAreaVSRemoved(dirName, figureName):
-    fig, ax = plt.subplots(figsize=(7,4.5), dpi = 120)
-    Nlist = np.array(['4096', '8192', '16384'])
-    sampleList = np.array(['0.28', '0.27', '0.27'])
-    dirList = np.array(['10', '50', '100', '500', '1000', '2000', '3000', '4000'])
-    markerList = np.array(['v', 'o', 's'])
-    for n in range(Nlist.shape[0]):
-        fluidArea = []
-        gasArea = []
-        phi = []
-        initialPhi = float(utils.readFromParams(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/", 'phi'))
-        for d in range(dirList.shape[0]):
-            dirSample = dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/" + dirList[d] + "removed/"
-            if(os.path.exists(dirSample)):
-                phi.append(float(utils.readFromParams(dirSample, 'phi')))
-                if(os.path.exists(dirSample + os.sep + "simplexArea.dat")):
-                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-                    simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
-                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-                else:
-                    _, simplexDensity = cluster.computeDelaunayCluster(dirSample, 0.78, filter=False)
-                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-                fluidArea.append(np.sum(simplexArea[denseSimplexList==1]))
-                gasArea.append(np.sum(simplexArea[denseSimplexList==0]))
-        phi = np.array(phi)
-        fluidArea = np.array(fluidArea)
-        gasArea = np.array(gasArea)
-        #ax.semilogx(initialPhi - phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
-        ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Global$ $density,$ $\\varphi$", fontsize=18)
-    #ax.set_xlabel("$\\varphi^{low}$ - $\\varphi$", fontsize=18)
-    ax.set_ylabel("$Fluid$ $area$", fontsize=18)
-    ax.legend(fontsize=12, loc='best')
-    fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/spRemoved-" + figureName + ".png"
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
 def plotSPClusterArea(dirName, figureName, fixed=False, which='1e-03'):
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
     if(fixed=="phi"):
@@ -1403,7 +1287,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
             print(dirList[d], fluidDensity[d,0], gasDensity[d,0])
     if(fixed=="Dr"):
         x = phi
-        xlabel = "$Density,$ $\\varphi$"
+        xlabel = "$Volume$ $fraction,$ $\\varphi$"
         figureName = "/home/francesco/Pictures/soft/mips/pClusterPhi-vsPhi-" + figureName
         ax.plot(x, x, color='k', lw=1.2, ls='--')
         if(inter=='inter'):
@@ -1462,7 +1346,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
         figureName = "/home/francesco/Pictures/soft/mips/pClusterPhi-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Area$ $fraction$", fontsize=18)
+    ax.set_ylabel("$Phase$ $density$", fontsize=18)
     ax.errorbar(x[fluidDensity[:,0]>0], fluidDensity[fluidDensity[:,0]>0,0], fluidDensity[fluidDensity[:,0]>0,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Fluid$')
     ax.errorbar(x[gasDensity[:,0]>0], gasDensity[gasDensity[:,0]>0,0], gasDensity[gasDensity[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
     ax.legend(fontsize=14, loc='best')
@@ -1495,7 +1379,162 @@ def plotSPClusterDensityVSTime(dirName, figureName, which=False):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
+def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
+    fig, ax = plt.subplots(figsize=(7,4.5), dpi = 120)
+    Nlist = np.array(['4096', '8192', '16384'])
+    sampleList = np.array(['0.28', '0.27', '0.27'])
+    dirList = np.array([['10', '50', '100', '200', '300', '500', '1000'],
+                        ['10', '50', '100', '500', '1000', '1500', '2000', '2200', '2300', '2500'],
+                        ['10', '50', '100', '500', '1000', '2000', '3000', '4000', '4500']], dtype=object)
+    markerList = np.array(['v', 'o', 's'])
+    for n in range(Nlist.shape[0]):
+        fluidArea = []
+        gasArea = []
+        phi = []
+        initialPhi = float(utils.readFromParams(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/", 'phi'))
+        for d in range(len(dirList[n])):
+            #print(Nlist[n], dirList[n][d])
+            dirSample = dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/" + dirList[n][d] + "removed/"
+            if(os.path.exists(dirSample)):
+                phi.append(float(utils.readFromParams(dirSample, 'phi')))
+                if(os.path.exists(dirSample + os.sep + "simplexArea.dat")):
+                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+                    simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
+                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
+                else:
+                    _, simplexDensity = cluster.computeDelaunayCluster(dirSample, 0.78, filter='filter')
+                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
+                fluidArea.append(np.sum(simplexArea[denseSimplexList==1]))
+                gasArea.append(np.sum(simplexArea[denseSimplexList==0]))
+        phi = np.array(phi)
+        fluidArea = np.array(fluidArea)
+        gasArea = np.array(gasArea)
+        if(which == 'fluid'):
+            if(logx == 'logx'):
+                ax.semilogx(initialPhi - phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+            else:
+                ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+            ax.set_ylabel("$Fluid$ $area$", fontsize=18)
+        elif(which == 'gas'):
+            if(logx == 'logx'):
+                ax.semilogx(initialPhi - phi, gasArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+            else:
+                ax.plot(phi, gasArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+            ax.set_ylabel("$Gas$ $area$", fontsize=18)
+        #ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+    ax.tick_params(axis='both', labelsize=14)
+    if(logx == 'logx'):
+        ax.set_xlabel("$Density$ $difference,$ $\\varphi^{low}$ - $\\varphi$", fontsize=18)
+    else:
+        ax.set_xlabel("$Global$ $density,$ $\\varphi$", fontsize=18)
+    ax.legend(fontsize=12, loc='best')
+    fig.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/spRemoved-" + figureName + ".png"
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotClusterPressureVSTime(dirName, figureName, bound=False, prop=False):
+    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    pressure = np.loadtxt(dirName + os.sep + "clusterPressure.dat")
+    fig, ax = plt.subplots(1, 2, sharey=True, figsize = (11, 5), dpi = 120)
+    if(bound == "bound"):
+        ax[0].plot(pressure[:,0], pressure[:,1], linewidth=1.5, color='g', label="$wall$")
+        ax[1].plot(pressure[:,0], pressure[:,1], linewidth=1.5, color='g', label="$wall$")
+    # dense particles
+    ax[0].plot(pressure[:,0], pressure[:,2], linewidth=1.5, color='k', label="$virial$")
+    ax[0].plot(pressure[:,0], pressure[:,3], linewidth=1.5, color='r', label="$thermal$")
+    ptot = pressure[:,2] + pressure[:,3]
+    if(prop == "prop"):
+        ax[0].plot(pressure[:,0], pressure[:,4], linewidth=1.5, color=[1,0.5,0], label="$active$")
+        ptot += pressure[:,4]
+    ax[0].plot(pressure[:,0], ptot, linewidth=1.5, color='b', ls='dotted', label="$total$")
+    # dilute particles
+    ax[1].plot(pressure[:,0], pressure[:,5], linewidth=1.5, color='k', ls='--', label="$virial$")
+    ax[1].plot(pressure[:,0], pressure[:,6], linewidth=1.5, color='r', ls='--', label="$thermal$")
+    ptot = pressure[:,5] + pressure[:,6]
+    if(prop == "prop"):
+        ax[1].plot(pressure[:,0], pressure[:,7], linewidth=1.5, color=[1,0.5,0], ls='--', label="$active$")
+        ptot += pressure[:,7]
+    ax[1].plot(pressure[:,0], ptot, linewidth=1.5, color='b', ls='dotted', label="$total$")
+    # plotting settings
+    ax[0].tick_params(axis='both', labelsize=12)
+    ax[1].tick_params(axis='both', labelsize=12)
+    ax[0].set_xlabel("$Simulation$ $step$", fontsize=15)
+    ax[1].set_xlabel("$Simulation$ $step$", fontsize=15)
+    ax[0].set_ylabel("$Pressure$", fontsize=15)
+    ax[0].legend(fontsize=12, loc='best')
+    #ax.set_ylim(50, 700)
+    plt.tight_layout()
+    fig.subplots_adjust(wspace=0)
+    #figureName = "/home/francesco/Pictures/soft/mips/pClusterPressure-" + figureName
+    #fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPPressureProfile(dirName, figureName, shift=0, which='pressure'):
+    fig, ax = plt.subplots(figsize = (8,4), dpi = 120)
+    if(os.path.exists(dirName + "/pressureProfile.dat")):
+        data = np.loadtxt(dirName + "/pressureProfile.dat")
+        sigma = float(utils.readFromDynParams(dirName, 'sigma'))
+        data[:,1] = np.roll(data[:,1], shift)
+        data[:,2] = np.roll(data[:,2], shift)
+        data[:,3] = np.roll(data[:,3], shift)
+        data[:,4] = np.roll(data[:,4], shift)
+        data[:,5] = np.roll(data[:,5], shift)
+        data[:,6] = np.roll(data[:,6], shift)
+        data[:,7] = np.roll(data[:,7], shift)
+        data[:,8] = np.roll(data[:,8], shift)
+        print("surface tension: ", 0.5 * np.sum((data[:,2] + data[:,6] - data[:,3] - data[:,7]) * (data[1,0] - data[0,0]) / sigma))
+        if(which=='pressure'):
+            ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='--', label='$Steric$')
+            ax.plot(data[:,0], data[:,4], lw=1.5, color='r', ls='dotted', label='$Thermal$')
+            ax.plot(data[:,0], data[:,5], lw=1.5, color=[1,0.5,0], label='$Active$')
+            ax.plot(data[:,0], data[:,8], lw=1.5, color='b', ls='dashdot', label='$Total$')
+        elif(which=='delta'):
+            ax.plot(data[:,0], data[:,2] - data[:,3], lw=1.5, color='k', ls='solid', label='$Steric$')
+            ax.plot(data[:,0], data[:,6] - data[:,7], lw=1.5, color=[1,0.5,0], ls='solid', label='$Active$')
+            ax.plot(data[:,0], data[:,2] + data[:,6] - data[:,3] - data[:,7], lw=1.5, color='b', ls='dashdot', label='$Total$')
+    ax.tick_params(axis='both', labelsize=14)
+    #ax.set_xlabel("$Radial$ $distance,$ $r$", fontsize=18)
+    ax.set_xlabel("$Position,$ $x$", fontsize=18)
+    if(which=="pressure"):
+        ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=18)
+        ax.set_ylim(np.min(data[:,4])-0.2, np.max(data[:,8])+0.6)
+        figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
+    elif(which=="delta"):
+        ax.set_ylabel("$\\Delta p^\\ast = (p_{xx} - p_{yy}) \\sigma^2$", fontsize=18)
+        ax.set_ylim(np.min(data[:,6] - data[:,7])-0.2, np.max(data[:,6] - data[:,7])+0.6)
+        figureName = "/home/francesco/Pictures/soft/mips/deltapProfile-" + figureName + ".png"
+    ax.legend(fontsize=13, loc='best')
+    fig.tight_layout()
+    fig.savefig(figureName, transparent=True, format = "png")
+    plt.show()
+
+def plotSPTensionProfile(dirName, figureName, shift=0):
+    fig, ax = plt.subplots(figsize = (8,4), dpi = 120)
+    if(os.path.exists(dirName + "/surfaceTension.dat")):
+        data = np.loadtxt(dirName + "/surfaceTension.dat")
+        sigma = float(utils.readFromDynParams(dirName, 'sigma'))
+        data[:,1] = np.roll(data[:,1], shift)
+        data[:,2] = np.roll(data[:,2], shift)
+        data[:,3] = np.roll(data[:,3], shift)
+        data[:,4] = np.roll(data[:,4], shift)
+        ax.plot(data[:,0], data[:,1]-data[:,2], lw=1.5, color='k', ls='--', label='$Steric$')
+        ax.plot(data[:,0], data[:,3]-data[:,4], lw=1.5, color=[1,0.5,0], label='$Active$')
+        ax.plot(data[:,0], data[:,1]+data[:,3]-data[:,2]-data[:,4], lw=1.5, color='b', ls='dashdot', label='$Total$')
+    print("surface tension: ", 0.5 * np.sum(data[:,1] + data[:,3] - data[:,2] - data[:,4]))
+    ax.tick_params(axis='both', labelsize=14)
+    #ax.set_xlabel("$Radial$ $distance,$ $r$", fontsize=18)
+    ax.set_xlabel("$Position,$ $x$", fontsize=18)
+    ax.set_ylabel("$Surface$ $tension,$ $\\gamma \\sigma$", fontsize=18)
+    ax.set_ylim(np.min(data[:,1]+data[:,3]-data[:,2]-data[:,4])-0.2, np.max(data[:,1]+data[:,3]-data[:,2]-data[:,4])+0.6)
+    figureName = "/home/francesco/Pictures/soft/mips/gProfile-" + figureName + ".png"
+    ax.legend(fontsize=13, loc='best')
+    fig.tight_layout()
+    fig.savefig(figureName, transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr'):
     fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
@@ -1505,8 +1544,7 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
         taup = np.zeros(dirList.shape[0])
     elif(fixed=="Dr"):
-        #dirList = np.array(['30', '35', '40', '45', '52', '58', '62', '67', '72',  '78', '82', '85', '88', '91', '94'])
-        dirList = np.array(['25', '28', '29', '30', '31', '32', '35', '40', '45', '50', '55', '60', '65', '70',  '75', '80', '82', '84', '86', '88', '90', '92', '94', '96'])
+        dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.31', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
         phi = np.zeros(dirList.shape[0])
     else:
         print("please specify the fixed parameter")
@@ -1516,7 +1554,7 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
             taup[d] = 1/(utils.readFromParams(dirSample, "Dr") * utils.readFromParams(dirSample, "sigma"))
         elif(fixed=="Dr"):
-            dirSample = dirName + os.sep + "0." + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
+            dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr2e-04/dynamics/"
             phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
         if(os.path.exists(dirSample + "/borderEnergy.dat")):
             data = np.loadtxt(dirSample + "/surfaceWork.dat")
@@ -1526,13 +1564,13 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsDr-" + figureName + "-phi" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsDr-" + figureName
         ax.set_xscale('log')
         #ax.set_yscale('log')
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsPhi-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsPhi-" + figureName
     ax.errorbar(x[tension[:,0]>0], tension[tension[:,0]>0,0], tension[tension[:,0]>0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
     ax.set_xlabel(xlabel, fontsize=18)
     ax.set_ylabel("$Surface$ $tension,$ $\\gamma$", fontsize=18, labelpad=15)
@@ -1556,7 +1594,7 @@ def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
+def plotSPForceVelMagnitude(dirName, figureName, fixed=False):
     fig, ax = plt.subplots(figsize=(7.5,5), dpi = 120)
     if(fixed=="phi"):
         if(which == '0.45'):
@@ -1564,7 +1602,7 @@ def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
     elif(fixed=="Dr"):
-        dirList = np.array(['thermal30', 'thermal35', 'thermal40', 'thermal45', 'thermal52', 'thermal58', 'thermal62', 'thermal67', 'thermal72',  'thermal78', 'thermal85',  'thermal94', 'thermal1'])
+        dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.31', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
         phi = np.zeros(dirList.shape[0])
     else:
         print("please specify the fixed parameter")
@@ -1575,8 +1613,9 @@ def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
         if(fixed=="phi"):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
         elif(fixed=="Dr"):
-            dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
-            phi[d] = utils.readFromParams(dirSample, "phi")
+            dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr2e-04/dynamics/"
+            data = np.loadtxt(dirSample + "delaunayDensity.dat")
+            phi[d] = np.mean(data[:,3])
         if(os.path.exists(dirSample + "clusterVelMagnitude.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "clusterVelMagnitude.dat")
@@ -1621,7 +1660,7 @@ def plotSPForceVelMagnitude(dirName, figureName, fixed=False, which='1.5e-04'):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
+def plotSPTotalPressure(dirName, figureName, fixed='Dr'):
     fig, ax = plt.subplots(figsize = (7,4), dpi = 120)
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
@@ -1630,8 +1669,7 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
     elif(fixed=="Dr"):
-        #dirList = np.array(['30', '35', '40', '45', '52', '58', '62', '67', '72',  '78', '82', '85', '88', '91', '94'])
-        dirList = np.array(['25', '28', '29', '30', '31', '32', '35', '40', '45', '50', '55', '60', '65', '70',  '75', '80', '82', '84', '86', '88', '90', '92', '94', '96'])
+        dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.31', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
         phi = np.zeros(dirList.shape[0])
     else:
         print("please specify the fixed parameter")
@@ -1641,11 +1679,9 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
         if(fixed=="phi"):
             dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
         elif(fixed=="Dr"):
-            #dirSample = dirName + os.sep + "thermal" + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
-            dirSample = dirName + os.sep + "0." + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
-            #phi[d] = utils.readFromParams(dirSample, "phi")
-            phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
-            #print(phi[d], utils.readFromParams(dirSample, "phi"))
+            dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr2e-04/dynamics/"
+            data = np.loadtxt(dirSample + "delaunayDensity.dat")
+            phi[d] = np.mean(data[:,3])
         if(os.path.exists(dirSample + "/pressure.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "/pressure.dat")
@@ -1665,13 +1701,13 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr', which='2e-04'):
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/mips/pTotPressure-vsDr-" + figureName + "-phi" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pTotPressure-vsDr-" + figureName
         ax.set_xscale('log')
         ax.set_yscale('log')
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/mips/pTotPressure-vsPhi-" + figureName + "-Dr" + which
+        figureName = "/home/francesco/Pictures/soft/mips/pTotPressure-vsPhi-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     # pressure components
     ax.errorbar(x[p[:,0,0]>0], p[p[:,0,0]>0,0,0], p[p[:,0,0]>0,0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Steric$')
@@ -1698,7 +1734,7 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
     elif(fixed=="Dr"):
         #dirList = np.array(['thermal30', 'thermal40', 'thermal45', 'thermal52', 'thermal58', 'thermal62', 'thermal67', 'thermal72',  'thermal78', 'thermal85', 'thermal85', 'thermal88', 'thermal94'])
-        dirList = np.array(['0.25', '0.28', '0.29', '0.30', '0.31', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
+        dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.31', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
         phi = np.zeros(dirList.shape[0])
     else:
         print("please specify the fixed parameter")
@@ -1714,10 +1750,8 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
         elif(fixed=="Dr"):
             #dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr1.5e-04/dynamics/"
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr2e-04/dynamics/"
-            if(os.path.exists(dirSample + "localVoroDensity-N16-stats.dat")):
-                phi[d] = np.loadtxt(dirSample + "localVoroDensity-N16-stats.dat")[0]
-            else:
-                phi[d] = cluster.averageLocalVoronoiDensity(dirSample)
+            data = np.loadtxt(dirSample + "delaunayDensity.dat")
+            phi[d] = np.mean(data[:,3])
         if(os.path.exists(dirSample + "/delaunayPressure.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             data = np.loadtxt(dirSample + "/delaunayPressure.dat")
@@ -1791,7 +1825,7 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
         xlabel = "$Density,$ $\\varphi$"
         figure1Name = "/home/francesco/Pictures/soft/mips/pGasFLuid-vsPhi-" + figureName + "-Dr" + which
         figure2Name = "/home/francesco/Pictures/soft/mips/pPressures-vsPhi-" + figureName + "-Dr" + which
-        ax1.set_yscale('log')
+        #ax1.set_yscale('log')
         ax2.set_yscale('log')
     ax1.tick_params(axis='both', labelsize=14)
     ax2.tick_params(axis='both', labelsize=14)
@@ -1996,67 +2030,6 @@ def plotSPPhaseDiagramDeltaPressure(dirName, numBins, figureName, which='16'):
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr', which='2e-04'):
-    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
-    if(fixed=="phi"):
-        phi = utils.readFromParams(dirName, "phi")
-        if(phi == 0.45):
-            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
-        else:
-            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
-        taup = np.zeros(dirList.shape[0])
-    elif(fixed=="Dr"):
-        #dirList = np.array(['30', '35', '40', '45', '52', '58', '62', '67', '72',  '78', '82', '85', '88', '91', '94'])
-        dirList = np.array(['25', '28', '29', '30', '31', '32', '35', '40', '45', '50', '55', '60', '65', '70',  '75', '80', '82', '84', '86', '88', '90', '92', '94', '96'])
-        phi = np.zeros(dirList.shape[0])
-    else:
-        print("please specify the fixed parameter")
-    tension = np.zeros((dirList.shape[0], 2))
-    for d in range(dirList.shape[0]):
-        if(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
-            taup[d] = 1/(utils.readFromParams(dirSample, "Dr") * utils.readFromParams(dirSample, "sigma"))
-        elif(fixed=="Dr"):
-            dirSample = dirName + os.sep + "0." + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
-            phi[d] = np.loadtxt(dirSample + 'localVoroDensity-N16-stats.dat')[0]#'localDensity-N16-stats.dat'
-        if(os.path.exists(dirSample + "/borderEnergy.dat")):
-            data = np.loadtxt(dirSample + "/surfaceWork.dat")
-            tension[d,0] = np.mean((data[1:,3] - data[:-1,3]) / (data[1:,4] - data[:-1,4]))
-            tension[d,1] = np.std((data[1:,3] - data[:-1,3]) / (data[1:,4] - data[:-1,4]))
-    ax.tick_params(axis='both', labelsize=14)
-    if(fixed=="phi"):
-        x = taup
-        xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsDr-" + figureName + "-phi" + which
-        ax.set_xscale('log')
-        #ax.set_yscale('log')
-    else:
-        x = phi
-        xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTension-vsPhi-" + figureName + "-Dr" + which
-    ax.errorbar(x[tension[:,0]>0], tension[tension[:,0]>0,0], tension[tension[:,0]>0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-    ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Surface$ $tension,$ $\\gamma$", fontsize=18, labelpad=15)
-    fig.tight_layout()
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
-    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    data = np.loadtxt(dirName + os.sep + "surfaceWork.dat")
-    fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
-    ax.plot(data[1:,0], (data[1:,3] - data[:-1,3]) / (data[1:,4] - data[:-1,4]), linewidth=1.2, color='k')
-    # plotting settings
-    ax.tick_params(axis='both', labelsize=12)
-    ax.set_xlabel("$Simulation$ $step$", fontsize=15)
-    ax.set_ylabel("$Surface$ $tension,$ $\\Delta W / \\Delta l_c$", fontsize=15)
-    ax.legend(fontsize=12, loc='best')
-    #ax.set_ylim(50, 700)
-    plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTensionVSTime-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
 def plotSPDeltaPVSPhi(dirName, figureName, which='2e-04'):
     fig, ax = plt.subplots(figsize = (7,5), dpi = 120)
     #dirList = np.array(['thermal25', 'thermal40', 'thermal45', 'thermal52', 'thermal58', 'thermal62', 'thermal67', 'thermal72',  'thermal78', 'thermal85', 'thermal85', 'thermal88'])
@@ -2129,8 +2102,8 @@ def plotSPMIPSBoundsVSSystemSize(dirName, figureName, which='up'):
         dirSample = dirName + os.sep + dirList[d] + "-2d/densitySweep/"
         if(os.path.exists(dirSample + "/MIPSBounds.dat")):
             data = np.loadtxt(dirSample + "/MIPSBounds.dat")
-            bounds[d,0] = data[3]
-            bounds[d,1] = data[4]
+            bounds[d,0] = data[1]
+            bounds[d,1] = data[2]
     if(which=='down'):
         label = '$Lower$ $bound$'
         ax.semilogx(numParticles, bounds[:,0], color='k', marker='v', markersize=10, markeredgewidth=1.2, fillstyle='none', lw=1.2, ls='dashdot', label='$Lower$ $bound$')
@@ -2567,9 +2540,16 @@ if __name__ == '__main__':
         which = sys.argv[5]
         plotSPPressureProfile(dirName, figureName, shift, which)
 
+    elif(whichPlot == "tprofile"):
+        figureName = sys.argv[3]
+        shift = int(sys.argv[4])
+        plotSPTensionProfile(dirName, figureName, shift)
+
     elif(whichPlot == "remove"):
         figureName = sys.argv[3]
-        plotSPAreaVSRemoved(dirName, figureName)
+        which = sys.argv[4]
+        logx = sys.argv[5]
+        plotSPAreaVSRemoved(dirName, figureName, which, logx)
 
     elif(whichPlot == "clusterarea"):
         figureName = sys.argv[3]
@@ -2601,24 +2581,17 @@ if __name__ == '__main__':
     elif(whichPlot == "clustergamma"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
-        which = sys.argv[5]
-        plotSPClusterSurfaceTension(dirName, figureName, fixed, which)
+        plotSPClusterSurfaceTension(dirName, figureName, fixed)
 
     elif(whichPlot == "forcevel"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
         plotSPForceVelMagnitude(dirName, figureName, fixed)
 
-    elif(whichPlot == "tradeoff"):
-        figureName = sys.argv[3]
-        which = sys.argv[4]
-        plotSPClusterTradeoff(dirName, figureName, which)
-
     elif(whichPlot == "totalp"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
-        which = sys.argv[5]
-        plotSPTotalPressure(dirName, figureName, fixed, which)
+        plotSPTotalPressure(dirName, figureName, fixed)
 
     elif(whichPlot == "clusterp"):
         figureName = sys.argv[3]
@@ -2626,6 +2599,11 @@ if __name__ == '__main__':
         inter = sys.argv[5]
         which = sys.argv[6]
         plotSPClusterPressure(dirName, figureName, fixed, inter, which)
+
+    elif(whichPlot == "tradeoff"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterTradeoff(dirName, figureName, which)
 
     elif(whichPlot == "phased"):
         numBins = int(sys.argv[3])

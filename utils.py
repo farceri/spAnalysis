@@ -444,7 +444,7 @@ def getStepList(numFrames, firstStep, stepFreq):
 def getDirectories(dirName):
     listDir = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "dynamics")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels")):
             listDir.append(dir)
     return listDir
 
@@ -452,7 +452,7 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "dynamics")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)

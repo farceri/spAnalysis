@@ -141,7 +141,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     pos = utils.centerPositions(pos, rad, boxSize)
-    #pos = utils.shiftPositions(pos, boxSize, 0.1, -0.3)
+    #pos = utils.shiftPositions(pos, boxSize, 0, 0.2)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -291,7 +291,7 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0.2, -0.3)
+    pos = utils.shiftPositions(pos, boxSize, 0, -0.2)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -378,6 +378,10 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
     for i, cell in enumerate(cells):
         polygon = cell['vertices']
         ax.fill(*zip(*polygon), facecolor = 'none', edgecolor='k', lw=0.2)
+    plt.plot(pos[0,0], pos[0,1], marker='*', markersize=20, color='k')
+    plt.plot(pos[cells[0]['faces'][0]['adjacent_cell'],0], pos[cells[0]['faces'][0]['adjacent_cell'],1], marker='*', markersize=20, color='r')
+    plt.plot(pos[cells[0]['faces'][1]['adjacent_cell'],0], pos[cells[0]['faces'][1]['adjacent_cell'],1], marker='*', markersize=20, color='b')
+    plt.plot(pos[cells[0]['faces'][2]['adjacent_cell'],0], pos[cells[0]['faces'][2]['adjacent_cell'],1], marker='*', markersize=20, color='g')
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/packings/voronoi-" + figureName + ".png"
     plt.savefig(figureName, transparent=False, format = "png")
@@ -406,7 +410,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, -0.2) # for 4k and 16k, -0.3, 0.1 for 8k
+    pos = utils.shiftPositions(pos, boxSize, 0, -0.2) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -416,7 +420,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
@@ -430,9 +434,9 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     if(colored == 'colored'):
         np.seterr(divide='ignore', invalid='ignore')
         newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, 0, -0.2) # colorId is 0 for dense and 1 for dilute
-        plt.tripcolor(newPos[:,0], newPos[:,1], simplices[colorId==0], lw=0.3, facecolors=colorId[colorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
+        plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
         if(filter == 'filter'):
-            figureName = "/home/francesco/Pictures/soft/packings/fluidDelaunay-" + figureName + ".png"
+            figureName = "/home/francesco/Pictures/soft/packings/delaunay-" + figureName + ".png"
         else:
             figureName = "/home/francesco/Pictures/soft/packings/delaunay-" + figureName + ".png"
     else:
