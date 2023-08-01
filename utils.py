@@ -5,7 +5,6 @@ Created by Francesco
 #functions and script to compute correlations in space and time
 import numpy as np
 from scipy.fft import fft, fftfreq, fft2
-from sklearn.cluster import DBSCAN
 from scipy.spatial import Delaunay
 import spCluster as cluster
 import random
