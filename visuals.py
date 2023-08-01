@@ -420,7 +420,7 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
+        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
@@ -446,9 +446,10 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
         insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
         plt.triplot(newPos[:,0], newPos[:,1], simplices[insideIndex==1], lw=0.2, color='k')
         figureName = "/home/francesco/Pictures/soft/packings/triangle-" + figureName + ".png"
-    #plt.plot(pos[simplices[simplexDensity<0,0],0], pos[simplices[simplexDensity<0,0],1], marker='*', markersize=20, color='r')
-    #plt.plot(pos[simplices[simplexDensity<0,1],0], pos[simplices[simplexDensity<0,1],1], marker='*', markersize=20, color='b')
-    #plt.plot(pos[simplices[simplexDensity<0,2],0], pos[simplices[simplexDensity<0,2],1], marker='*', markersize=20, color='g')
+    #plt.plot(pos[7540,0], pos[7540,1], marker='*', markersize=20, color='r')
+    #plt.plot(pos[13406,0], pos[13406,1], marker='*', markersize=20, color='b')
+    #plt.plot(pos[13722,0], pos[13722,1], marker='*', markersize=20, color='g')
+    #plt.plot(pos[5254,0], pos[5254,1], marker='*', markersize=20, color='k')
     #x = np.linspace(0,1,1000)
     #slope = -0.11838938050442274
     #intercept = 0.9852218251735015

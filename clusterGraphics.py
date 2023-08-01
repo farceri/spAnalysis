@@ -23,10 +23,10 @@ import spCluster as cluster
 ################################################################################
 def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
     fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
-    if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
+    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
-        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter=False)
+        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter='filter')
     denseSimplexList = np.loadtxt(dirName + os.sep + 'denseSimplexList.dat')
     if(which == 'fluid'):
         simplexDensity = simplexDensity[denseSimplexList==1]
@@ -1284,7 +1284,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
             gasDensity[d,1] = np.std(data[:,2])
             if(fixed=="Dr"):
                 phi[d] = np.mean(data[:,3])
-            print(dirList[d], fluidDensity[d,0], gasDensity[d,0])
+                print(dirList[d], phi[d], fluidDensity[d,0], gasDensity[d,0])
     if(fixed=="Dr"):
         x = phi
         xlabel = "$Volume$ $fraction,$ $\\varphi$"
@@ -1380,18 +1380,23 @@ def plotSPClusterDensityVSTime(dirName, figureName, which=False):
     plt.show()
 
 def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
-    fig, ax = plt.subplots(figsize=(7,4.5), dpi = 120)
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     Nlist = np.array(['4096', '8192', '16384'])
     sampleList = np.array(['0.28', '0.27', '0.27'])
     dirList = np.array([['10', '50', '100', '200', '300', '500', '1000'],
                         ['10', '50', '100', '500', '1000', '1500', '2000', '2200', '2300', '2500'],
-                        ['10', '50', '100', '500', '1000', '2000', '3000', '4000', '4500']], dtype=object)
+                        ['10', '50', '100', '500', '1000', '2000', '3000', '4000', '4500', '5000', '5500', '6500', '7500']], dtype=object)
     markerList = np.array(['v', 'o', 's'])
     for n in range(Nlist.shape[0]):
         fluidArea = []
         gasArea = []
         phi = []
-        initialPhi = float(utils.readFromParams(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/", 'phi'))
+        #initialPhi = float(utils.readFromParams(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/", 'phi'))
+        simplexDensity = np.loadtxt(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/simplexDensity.dat")
+        simplexArea = np.loadtxt(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/simplexArea.dat")
+        initialPhi = np.sum(simplexDensity * simplexArea)
+        data = np.loadtxt(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/dynamics/delaunayDensity.dat")
+        print("N", Nlist[n], "initial density:", initialPhi, np.mean(data[:,3]), np.std(data[:,3]))
         for d in range(len(dirList[n])):
             #print(Nlist[n], dirList[n][d])
             dirSample = dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/" + dirList[n][d] + "removed/"
@@ -1407,6 +1412,8 @@ def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
                     simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
                 fluidArea.append(np.sum(simplexArea[denseSimplexList==1]))
                 gasArea.append(np.sum(simplexArea[denseSimplexList==0]))
+                phi[d] = np.sum(simplexDensity * simplexArea)
+                #print(Nlist[n], dirList[n][d], phi[d])
         phi = np.array(phi)
         fluidArea = np.array(fluidArea)
         gasArea = np.array(gasArea)
@@ -1427,10 +1434,13 @@ def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
     if(logx == 'logx'):
         ax.set_xlabel("$Density$ $difference,$ $\\varphi^{low}$ - $\\varphi$", fontsize=18)
     else:
-        ax.set_xlabel("$Global$ $density,$ $\\varphi$", fontsize=18)
+        ax.set_xlabel("$Volume$ $fraction,$ $\\varphi$", fontsize=18)
     ax.legend(fontsize=12, loc='best')
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/spRemoved-" + figureName + ".png"
+    if(logx == 'logx'):
+        figureName = "/home/francesco/Pictures/soft/mips/pRemoved-" + figureName + "-logx"
+    else:
+        figureName = "/home/francesco/Pictures/soft/mips/pRemoved-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -2094,9 +2104,9 @@ def plotSPDeltaPVSSystemSize(dirName, figureName, which='1.5e-04'):
 
 def plotSPMIPSBoundsVSSystemSize(dirName, figureName, which='up'):
     fig, ax = plt.subplots(figsize = (7,3.5), dpi = 120)
-    labelList = np.array(['$N = 1024$', '$N = 2048$', '$N = 4096$', '$N = 8192$', '$N = 16384$', '$N = 32768$'])
-    dirList = np.array(['1024', '2048', '4096', '8192', '16384', '32768'])
     numParticles = np.array([1024, 2048, 4096, 8192, 16384, 32768])
+    dirList = np.array(['1024', '2048', '4096', '8192', '16384', '32768'])
+    labelList = np.array(['$N = 1024$', '$N = 2048$', '$N = 4096$', '$N = 8192$', '$N = 16384$', '$N = 32768$'])
     bounds = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d] + "-2d/densitySweep/"
@@ -2104,6 +2114,7 @@ def plotSPMIPSBoundsVSSystemSize(dirName, figureName, which='up'):
             data = np.loadtxt(dirSample + "/MIPSBounds.dat")
             bounds[d,0] = data[1]
             bounds[d,1] = data[2]
+            print(dirList[d], bounds[d,0], bounds[d,1])
     if(which=='down'):
         label = '$Lower$ $bound$'
         ax.semilogx(numParticles, bounds[:,0], color='k', marker='v', markersize=10, markeredgewidth=1.2, fillstyle='none', lw=1.2, ls='dashdot', label='$Lower$ $bound$')

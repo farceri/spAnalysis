@@ -1490,11 +1490,11 @@ def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shift
                     if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.453):# or 302?
                         denseSimplexList[i] = 1
         # second filter - label dense simplices surrounded by dilute simplices as dilute
-            for i in range(denseSimplexList.shape[0]):
-                if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
-                    indices = utils.findNeighborSimplices(simplices, i)
-                    if(np.sum(denseSimplexList[indices]) == 0 and simplexDensity[i] < 0.907): # all are dilute
-                        denseSimplexList[i] = 0
+        #    for i in range(denseSimplexList.shape[0]):
+        #        if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
+        #            indices = utils.findNeighborSimplices(simplices, i)
+        #            if(np.sum(denseSimplexList[indices]) == 0 and simplexDensity[i] < 0.907): # all are dilute
+        #                denseSimplexList[i] = 0
         if(label == 'label'):
             dirLabel = dirAugment + os.sep + "dense2FilterDelaunayLabels/"
             if(os.path.isdir(dirLabel)==False):
@@ -1538,7 +1538,7 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False, la
     if(np.argwhere(simplexDensity<0)[:,0].shape[0] > 0):
         print(dirName)
         print("There are", np.argwhere(simplexDensity<0)[:,0].shape[0], "negative simplex densities")
-        print(simplices[np.argwhere(simplexDensity<0)[:,0]])
+        print(np.argwhere(simplexDensity<0)[:,0], simplices[np.argwhere(simplexDensity<0)[:,0]])
     denseSimplexList = np.zeros(simplexDensity.shape[0])
     # first find simplices above square lattice density 0.785
     for i in range(simplexDensity.shape[0]):
@@ -1559,11 +1559,11 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False, la
                     if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.453): # all are dense
                         denseSimplexList[i] = 1
         # second filter - label dense simplices surrounded by dilute simplices as dilute - this filter is confirmed!
-            for i in range(denseSimplexList.shape[0]):
-                if(denseSimplexList[i] == 1):
-                    indices = utils.findNeighborSimplices(simplices, i)
-                    if(np.sum(denseSimplexList[indices]) == 0 and simplexDensity[i] < 0.907): # all are dilute
-                        denseSimplexList[i] = 0
+        #    for i in range(denseSimplexList.shape[0]):
+        #        if(denseSimplexList[i] == 1):
+        #            indices = utils.findNeighborSimplices(simplices, i)
+        #            if(np.sum(denseSimplexList[indices]) == 0 and simplexDensity[i] < 0.907): # all are dilute
+        #                denseSimplexList[i] = 0
         if(label == 'label'):
             dirLabel = dirName + os.sep + "dense2FilterDelaunayLabels/"
             if(os.path.isdir(dirLabel)==False):
@@ -1658,7 +1658,7 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
+        if(os.path.exists(dirSample + os.sep + "denseSimplexList!.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
@@ -1696,8 +1696,8 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, delaunayDensity[:,0], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='b')
         uplot.plotCorrelation(timeList, delaunayDensity[:,1], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='g')
         uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
-        #plt.pause(0.5)
-        plt.show()
+        plt.pause(0.5)
+        #plt.show()
 
 ######################## Compute cluster shape parameter #######################
 def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):

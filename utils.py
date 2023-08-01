@@ -444,7 +444,7 @@ def getStepList(numFrames, firstStep, stepFreq):
 def getDirectories(dirName):
     listDir = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
     return listDir
 
@@ -452,7 +452,7 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)
@@ -914,7 +914,7 @@ def checkDelaunayInclusivity(simplices, pos, rad, boxSize):
         pos2 = pbcDistance(pos2, pos1, boxSize)
         pos0 = pbcDistance(pos0, pos1, boxSize)
         pos1 = np.zeros(pos1.shape[0])
-        slope = (pos1[1] - pos0[1]) / (pos1[0] - pos0[0])
+        slope = pbcDistance(pos1[1],pos0[1],boxSize[1]) / pbcDistance(pos1[0],pos0[0],boxSize[0])
         intercept = pos0[1] - pos0[0] * slope
         projLength = np.sqrt((slope**2 * pos2[0]**2 + pos2[1]**2 - 2*slope*pos2[0]*pos2[1]) / (1 + slope**2))
         if(rad[simplices[sIndex,2]] > projLength):
@@ -963,7 +963,7 @@ def findOppositeSimplexIndex(simplices, sIndex, indexA, indexB):
     # find simplex where the intersection is and add segmentArea to it
     indexList = np.intersect1d(np.argwhere(simplices==indexA)[:,0], np.argwhere(simplices==indexB)[:,0])
     # remove sIndex from indexList
-    oppositeIndex = np.setdiff1d(indexList, np.array([sIndex]))
+    oppositeIndex = np.setdiff1d(indexList, sIndex)[0]
     return oppositeIndex
 
 def isSimplexNearWall(pIndexList, pos, rad, boxSize):
@@ -1006,18 +1006,15 @@ def computeDelaunayDensity(simplices, pos, rad, boxSize):
         # first correction
         if(segmentArea2 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,0], simplices[sIndex,1])
-            if(oppositeIndex.shape[0] == 1):
-                occupiedArea[oppositeIndex[0]] += segmentArea2
+            occupiedArea[oppositeIndex] += segmentArea2
         # second correction
         if(segmentArea0 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,1], simplices[sIndex,2])
-            if(oppositeIndex.shape[0] == 1):
-                occupiedArea[oppositeIndex[0]] += segmentArea0
+            occupiedArea[oppositeIndex] += segmentArea0
         # third correction
         if(segmentArea1 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,2], simplices[sIndex,0])
-            if(oppositeIndex.shape[0] == 1):
-                occupiedArea[oppositeIndex[0]] += segmentArea1
+            occupiedArea[oppositeIndex] += segmentArea1
         occupiedArea[sIndex] += (intersectArea1 + intersectArea2 + intersectArea0 - segmentArea2 - segmentArea0 - segmentArea1)
         # subtract overlapping area, there are two halves for each simplex
         occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos1, pos2, rad[simplices[sIndex,1]], rad[simplices[sIndex,2]], boxSize) + 0.5*computeOverlapArea(pos2, pos1, rad[simplices[sIndex,2]], rad[simplices[sIndex,1]], boxSize)
