@@ -854,6 +854,7 @@ def getPBCDelaunay(pos, rad, boxSize):
     insideIndex = getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
     simplices = wrapSimplicesAroundBox(delaunay.simplices[insideIndex==1], newIndices, rad.shape[0])
     return np.unique(np.sort(simplices, axis=1), axis=0)
+    #return np.unique(simplices), axis=0)
 
 def findNeighborSimplices(simplices, sIndex):
     neighborList = []
@@ -962,7 +963,7 @@ def findOppositeSimplexIndex(simplices, sIndex, indexA, indexB):
     # find simplex where the intersection is and add segmentArea to it
     indexList = np.intersect1d(np.argwhere(simplices==indexA)[:,0], np.argwhere(simplices==indexB)[:,0])
     # remove sIndex from indexList
-    oppositeIndex = np.setdiff1d(indexList, sIndex)[0]
+    oppositeIndex = np.setdiff1d(indexList, sIndex)
     return oppositeIndex
 
 def isSimplexNearWall(pIndexList, pos, rad, boxSize):
@@ -1005,15 +1006,18 @@ def computeDelaunayDensity(simplices, pos, rad, boxSize):
         # first correction
         if(segmentArea2 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,0], simplices[sIndex,1])
-            occupiedArea[oppositeIndex] += segmentArea2
+            if(oppositeIndex.shape[0] == 1):
+                occupiedArea[oppositeIndex[0]] += segmentArea2
         # second correction
         if(segmentArea0 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,1], simplices[sIndex,2])
-            occupiedArea[oppositeIndex] += segmentArea0
+            if(oppositeIndex.shape[0] == 1):
+                occupiedArea[oppositeIndex[0]] += segmentArea0
         # third correction
         if(segmentArea1 > 0):
             oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,2], simplices[sIndex,0])
-            occupiedArea[oppositeIndex] += segmentArea1
+            if(oppositeIndex.shape[0] == 1):
+                occupiedArea[oppositeIndex[0]] += segmentArea1
         occupiedArea[sIndex] += (intersectArea1 + intersectArea2 + intersectArea0 - segmentArea2 - segmentArea0 - segmentArea1)
         # subtract overlapping area, there are two halves for each simplex
         occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos1, pos2, rad[simplices[sIndex,1]], rad[simplices[sIndex,2]], boxSize) + 0.5*computeOverlapArea(pos2, pos1, rad[simplices[sIndex,2]], rad[simplices[sIndex,1]], boxSize)

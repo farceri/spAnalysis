@@ -140,8 +140,8 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
-    pos = utils.centerPositions(pos, rad, boxSize)
-    #pos = utils.shiftPositions(pos, boxSize, 0, 0.2)
+    #pos = utils.centerPositions(pos, rad, boxSize)
+    pos = utils.shiftPositions(pos, boxSize, 1.35, 0)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -266,12 +266,12 @@ def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, 
     plt.show()
 
 def getPressureColorList(pressure, which='total'):
-    colorList = cm.get_cmap('viridis', pressure.shape[0])
+    colorList = cm.get_cmap('bwr', pressure.shape[0])
     colorId = np.zeros((pressure.shape[0], 4))
     count = 0
     if(which=='total'):
         p = pressure[:,0] + pressure[:,1] + pressure[:,2]
-    elif(which=='virial'):
+    elif(which=='steric'):
         p = pressure[:,0]
     elif(which=='thermal'):
         p = pressure[:,1]
@@ -291,14 +291,14 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, -0.2)
+    pos = utils.shiftPositions(pos, boxSize, 1.35, 0)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
     ax.set_ylim(yBounds[0], yBounds[1])
     ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
-    if(os.path.exists(dirName + os.sep + "particleStress!.dat")):
+    if(os.path.exists(dirName + os.sep + "particleStress.dat")):
         pressure = np.loadtxt(dirName + os.sep + "particleStress.dat")
     else:
         if(droplet == 'droplet'):
@@ -321,7 +321,7 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
         mintick = np.min(pressure[:,0] + pressure[:,1] + pressure[:,2])
         maxtick = np.max(pressure[:,0] + pressure[:,1] + pressure[:,2])
         label = "$ Total$\n$stress$"
-    elif(which=='virial'):
+    elif(which=='steric'):
         mintick = np.min(pressure[:,0])
         maxtick = np.max(pressure[:,0])
         label = "$ Steric$\n$stress$"
@@ -410,7 +410,9 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, -0.2) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
+    shiftx = 0
+    shifty = -0.2
+    pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -424,7 +426,6 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-        denseSimplexList = np.loadtxt(dirName + os.sep + "denseSimplexList.dat")
         colorId = getDenseColorList(denseList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -432,23 +433,25 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
     if(colored == 'colored'):
-        np.seterr(divide='ignore', invalid='ignore')
-        newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, 0, -0.2) # colorId is 0 for dense and 1 for dilute
+        newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, shiftx, shifty) # colorId is 0 for dense and 1 for dilute
         plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
         if(filter == 'filter'):
-            figureName = "/home/francesco/Pictures/soft/packings/delaunay-" + figureName + ".png"
+            figureName = "filter-" + figureName
         else:
-            figureName = "/home/francesco/Pictures/soft/packings/delaunay-" + figureName + ".png"
+            figureName = "cluster-" + figureName
     else:
         newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
         simplices = Delaunay(newPos).simplices
         simplices = np.unique(np.sort(simplices, axis=1), axis=0)
         insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
         plt.triplot(newPos[:,0], newPos[:,1], simplices[insideIndex==1], lw=0.2, color='k')
-        figureName = "/home/francesco/Pictures/soft/packings/triangle-" + figureName + ".png"
-    #plt.plot(pos[7540,0], pos[7540,1], marker='*', markersize=20, color='r')
-    #plt.plot(pos[13406,0], pos[13406,1], marker='*', markersize=20, color='b')
-    #plt.plot(pos[13722,0], pos[13722,1], marker='*', markersize=20, color='g')
+    if(dense==True):
+        figureName = "/home/francesco/Pictures/soft/packings/deldense-" + figureName + ".png"
+    else:
+        figureName = "/home/francesco/Pictures/soft/packings/del-" + figureName + ".png"
+    #plt.plot(pos[3295,0], pos[3295,1], marker='*', markersize=20, color='r')
+    #plt.plot(pos[5156,0], pos[5156,1], marker='*', markersize=20, color='b')
+    #plt.plot(pos[6226,0], pos[6226,1], marker='*', markersize=20, color='g')
     #plt.plot(pos[5254,0], pos[5254,1], marker='*', markersize=20, color='k')
     #x = np.linspace(0,1,1000)
     #slope = -0.11838938050442274

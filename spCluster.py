@@ -784,7 +784,7 @@ def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
     velOutCluster = np.empty(0)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "delaunayList!.dat")):
+        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
         else:
             denseList,_ = computeDelaunayCluster(dirSample, threshold=0.78, filter=False)
@@ -1462,7 +1462,6 @@ def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shift
     simplices = np.unique(np.sort(simplices, axis=1), axis=0)
     insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
     simplexDensity, _ = utils.computeDelaunayDensity(simplices, newPos, newRad, boxSize*1.1)
-    #simplices = utils.wrapSimplicesAroundBox(simplices, newIndices, rad.shape[0])
     denseSimplexList = np.zeros(simplexDensity.shape[0])
     # first find simplices above square lattice density 0.785
     for i in range(simplexDensity.shape[0]):
@@ -1487,7 +1486,7 @@ def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shift
             for i in range(denseSimplexList.shape[0]):
                 if(denseSimplexList[i] == 0 and insideIndex[i] == 1):
                     indices = utils.findNeighborSimplices(simplices, i)
-                    if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.453):# or 302?
+                    if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.453):
                         denseSimplexList[i] = 1
         # second filter - label dense simplices surrounded by dilute simplices as dilute
         #    for i in range(denseSimplexList.shape[0]):
@@ -1596,14 +1595,12 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False, la
     #print("average density of dense simplices:", np.mean(simplexDensity[denseSimplexList==1]), np.min(simplexDensity[denseSimplexList==1]), np.max(simplexDensity[denseSimplexList==1]))
     if(plot=='plot'):
         uplot.plotCorrelation(np.arange(1, simplexDensity.shape[0]+1, 1), np.sort(simplexDensity), "$\\varphi^{Simplex}$", xlabel = "$Simplex$ $index$", color='k')
-        plt.savefig("/home/francesco/Pictures/soft/delaunayDensityCDF.png", transparent=True, format="png")
         plt.show()
         numBins = 100
         pdf, edges = np.histogram(simplexDensity, bins=np.linspace(0, 1, numBins), density=True)
         edges = (edges[1:] + edges[:-1])/2
         uplot.plotCorrelation(edges, pdf, "$PDF(\\varphi^{Simplex})$", xlabel = "$\\varphi^{Simplex}$", color='b')
         #plt.yscale('log')
-        plt.savefig("/home/francesco/PictureSoftDelaunayDensityPDF.png", transparent=True, format="png")
         plt.show()
     return denseList, simplexDensity
 
@@ -1696,8 +1693,8 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, delaunayDensity[:,0], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='b')
         uplot.plotCorrelation(timeList, delaunayDensity[:,1], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='g')
         uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
-        plt.pause(0.5)
-        #plt.show()
+        #plt.pause(0.5)
+        plt.show()
 
 ######################## Compute cluster shape parameter #######################
 def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
@@ -3081,7 +3078,7 @@ if __name__ == '__main__':
         plot = sys.argv[4]
         computeClusterBlockEvaporationTime(dirName, numBlocks, plot)
 
-    elif(whichCorr == "velpdfcluster"):
+    elif(whichCorr == "velpdf"):
         plot = sys.argv[3]
         averageParticleVelPDFCluster(dirName, plot)
 
