@@ -141,7 +141,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     #pos = utils.centerPositions(pos, rad, boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 1.35, 0)
+    pos = utils.shiftPositions(pos, boxSize, -0.1, 0.2)#1.35, 0 for box21 16k
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -266,7 +266,7 @@ def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, 
     plt.show()
 
 def getPressureColorList(pressure, which='total'):
-    colorList = cm.get_cmap('bwr', pressure.shape[0])
+    colorList = cm.get_cmap('viridis', pressure.shape[0])
     colorId = np.zeros((pressure.shape[0], 4))
     count = 0
     if(which=='total'):
@@ -291,7 +291,7 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 1.35, 0)
+    pos = utils.shiftPositions(pos, boxSize, 0.5, 0.5)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -339,10 +339,10 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
         label = "$E_{pot}$"
     tickList = np.linspace(mintick, maxtick, 5)
     for i in range(tickList.shape[0]):
-        tickList[i] = np.format_float_positional(tickList[i], precision=0)
-        #tickList[i] = np.format_float_scientific(tickList[i], precision=0)
+        #tickList[i] = np.format_float_positional(tickList[i], precision=0)
+        tickList[i] = np.format_float_scientific(tickList[i], precision=0)
     cb.set_ticklabels(tickList)
-    cb.set_label(label=label, fontsize=14, labelpad=20, rotation='horizontal')
+    cb.set_label(label=label, fontsize=14, labelpad=25, rotation='horizontal')
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/packings/pmap-" + figureName + ".png"
     plt.savefig(figureName, transparent=True, format = "png")
@@ -403,7 +403,7 @@ def computeDenseSimplexColorList(densityList):
             colorId[simplexId] = 0.5
     return colorId
 
-def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filter=False, alpha=0.8, colored=False):
+def plotSPDelaunayPacking(dirName, figureName, dense=False, border=True, threshold=0.78, filter=False, alpha=0.8, colored=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
@@ -421,20 +421,31 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, threshold=0.78, filt
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
-    if(dense==True):
+    if(dense==True or border==True):
         if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-        colorId = getDenseColorList(denseList)
+        borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
+        if(border==True):
+            colorId = getDenseColorList(borderList)
+        else:
+            colorId = getDenseColorList(denseList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
+        if(denseList[particleId] == 1):
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='r', alpha=0.5, linewidth=0.3))
     if(colored == 'colored'):
-        newPos, simplices, colorId, simplexDensity = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, shiftx, shifty) # colorId is 0 for dense and 1 for dilute
-        plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
+        newPos, simplices, colorId, borderColorId = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, shiftx, shifty) # colorId is 0 for dense and 1 for dilute
+        #plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
+        if(dense==True):
+            plt.tripcolor(newPos[:,0], newPos[:,1], simplices[colorId==0], lw=0.3, facecolors=colorId[colorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
+        if(border==True):
+            plt.tripcolor(newPos[:,0], newPos[:,1], simplices[borderColorId==0], lw=0.3, facecolors=borderColorId[borderColorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
+        plt.triplot(newPos[:,0], newPos[:,1], simplices, lw=0.2, color='k')
         if(filter == 'filter'):
             figureName = "filter-" + figureName
         else:
@@ -500,9 +511,9 @@ def plotSPDelaunayLabels(dirName, figureName, dense=False, threshold=0.78, filte
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
     # then plot labels on simplices
     if(filter == 'filter'):
-        labelList = np.loadtxt(dirName + os.sep + "augmented/dense2FilterDelaunayLabels/" + label + ".dat")
-        allNeighborList = np.loadtxt(dirName + os.sep + "augmented/dense2FilterDelaunayLabels/" + label + "AllNeighbors.dat")
-        neighborList = np.loadtxt(dirName + os.sep + "augmented/dense2FilterDelaunayLabels/" + label + "Neighbors.dat")
+        labelList = np.loadtxt(dirName + os.sep + "augmented/filterDelaunayLabels/" + label + ".dat")
+        allNeighborList = np.loadtxt(dirName + os.sep + "augmented/filterDelaunayLabels/" + label + "AllNeighbors.dat")
+        neighborList = np.loadtxt(dirName + os.sep + "augmented/filterDelaunayLabels/" + label + "Neighbors.dat")
     else:
         labelList = np.loadtxt(dirName + os.sep + "augmented/delaunayLabels/" + label + ".dat")
         allNeighborList = np.loadtxt(dirName + os.sep + "augmented/delaunayLabels/" + label + "AllNeighbors.dat")
@@ -812,12 +823,21 @@ if __name__ == '__main__':
         plotSPDelaunayPacking(dirName, figureName)
 
     elif(whichPlot == "ssdeldense"):
+        np.seterr(divide='ignore', invalid='ignore')
         threshold = float(sys.argv[4])
         filter = sys.argv[5]
         colored = sys.argv[6]
         plotSPDelaunayPacking(dirName, figureName, dense=True, threshold=threshold, filter=filter, colored=colored)
 
+    elif(whichPlot == "ssdelborder"):
+        np.seterr(divide='ignore', invalid='ignore')
+        threshold = float(sys.argv[4])
+        filter = sys.argv[5]
+        colored = sys.argv[6]
+        plotSPDelaunayPacking(dirName, figureName, border=True, threshold=threshold, filter=filter, colored=colored)
+
     elif(whichPlot == "ssdellabel"):
+        np.seterr(divide='ignore', invalid='ignore')
         threshold = float(sys.argv[4])
         filter = sys.argv[5]
         label = sys.argv[6]

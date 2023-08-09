@@ -1449,7 +1449,7 @@ def checkDelaunay(dirName):
     checkDelaunayInclusivity(delaunay.simplices, pos, rad, boxSize)
 
 ################### Cluster augmented packing for plotting #####################
-def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shiftx=0, shifty=0, label=False):
+def computeAugmentedDelaunayCluster(dirName, threshold=0.76, filter=False, shiftx=0, shifty=0, label=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
@@ -1457,7 +1457,6 @@ def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shift
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     newPos, newRad, newIndices = utils.augmentPacking(pos, rad, 0.1)
     numParticles = newRad.shape[0]
-    denseParticleList = np.zeros(numParticles)
     simplices = Delaunay(newPos).simplices
     simplices = np.unique(np.sort(simplices, axis=1), axis=0)
     insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
@@ -1471,9 +1470,10 @@ def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shift
     dirAugment = dirName + os.sep + "augmented/"
     if(os.path.isdir(dirAugment)==False):
         os.mkdir(dirAugment)
-        np.savetxt(dirAugment + os.sep + "augmentedPos.dat", newPos)
-        np.savetxt(dirAugment + os.sep + "augmentedRad.dat", newRad)
-        np.savetxt(dirAugment + os.sep + "simplices.dat", simplices)
+    np.savetxt(dirAugment + os.sep + "augmentedPos.dat", newPos)
+    np.savetxt(dirAugment + os.sep + "augmentedRad.dat", newRad)
+    np.savetxt(dirAugment + os.sep + "simplices.dat", simplices)
+    np.savetxt(dirAugment + os.sep + "insideIndex.dat", insideIndex)
     if(label == 'label'):
         dirLabel = dirAugment + os.sep + "delaunayLabels/"
         if(os.path.isdir(dirLabel)==False):
@@ -1482,49 +1482,67 @@ def computeAugmentedDelaunayCluster(dirName, threshold=0.78, filter=False, shift
     # apply filters on triangles
     if(filter == 'filter'):
         for times in range(2):
-        # first filter - label dilute simplices surrounded by dense simplices as dense
             for i in range(denseSimplexList.shape[0]):
                 if(denseSimplexList[i] == 0 and insideIndex[i] == 1):
                     indices = utils.findNeighborSimplices(simplices, i)
-                    if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.453):
+                    if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.45):
                         denseSimplexList[i] = 1
-        # second filter - label dense simplices surrounded by dilute simplices as dilute
-        #    for i in range(denseSimplexList.shape[0]):
-        #        if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
-        #            indices = utils.findNeighborSimplices(simplices, i)
-        #            if(np.sum(denseSimplexList[indices]) == 0 and simplexDensity[i] < 0.907): # all are dilute
-        #                denseSimplexList[i] = 0
+            for i in range(denseSimplexList.shape[0]):
+                if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
+                    indices = utils.findNeighborSimplices(simplices, i)
+                    if(np.sum(denseSimplexList[indices]) >= 1):
+                        for j in indices:
+                            if(denseSimplexList[j] == 1 and insideIndex[j] == 1):
+                                secondIndices = utils.findNeighborSimplices(simplices, j)
+                                if(np.sum(denseSimplexList[secondIndices]) <= 1 and simplexDensity[i] < 0.84):
+                                    denseSimplexList[i] = 0
         if(label == 'label'):
-            dirLabel = dirAugment + os.sep + "dense2FilterDelaunayLabels/"
+            dirLabel = dirAugment + os.sep + "filterDelaunayLabels/"
             if(os.path.isdir(dirLabel)==False):
                 os.mkdir(dirLabel)
             utils.labelDelaunaySimplices(dirLabel, simplices, denseSimplexList)
-    # if all the simplices touching a particle are dense then the particle is dense
+    # if one dense simplex is touching a particle then the particle is dense
+    denseList = np.zeros(numParticles)
     for i in range(numParticles):
         indices = np.argwhere(simplices==i)[:,0]
         for sIndex in indices:
             if(denseSimplexList[sIndex] == 1):
-                denseParticleList[i] = 1
+                denseList[i] = 1
+    # find simplices at the interface between dense and non-dense
+    borderSimplexList = np.zeros(denseSimplexList.shape[0])
+    for i in range(denseSimplexList.shape[0]):
+        if(denseSimplexList[i] == 1 and insideIndex[i] == 1):
+            indices = utils.findNeighborSimplices(simplices, i)
+            if(np.sum(denseSimplexList[indices]) <= 2):
+                borderSimplexList[i] = 1
+    np.savetxt(dirAugment + os.sep + "borderSimplexList.dat", borderSimplexList)
+    # label border particles if they belong to a border simplex
+    borderList = np.zeros(numParticles)
+    for i in range(numParticles):
+        indices = np.argwhere(simplices==i)[:,0]
+        if(np.sum(borderSimplexList[indices]) > 0):
+            borderList[i] = 1
+    np.savetxt(dirAugment + os.sep + "borderParticleList.dat", borderList)
     if(filter == 'filter'):
         np.savetxt(dirAugment + os.sep + "denseSimplexList-filter.dat", denseSimplexList)
-        np.savetxt(dirAugment + os.sep + "denseParticleList-filter.dat", denseParticleList)
+        np.savetxt(dirAugment + os.sep + "denseParticleList-filter.dat", denseList)
     else:
         np.savetxt(dirAugment + os.sep + "denseSimplexList.dat", denseSimplexList)
-        np.savetxt(dirAugment + os.sep + "denseParticleList.dat", denseParticleList)
+        np.savetxt(dirAugment + os.sep + "denseParticleList.dat", denseList)
     print("total # of simplices:", denseSimplexList.shape[0])
     print("# of dilute simplices:", denseSimplexList[denseSimplexList==0].shape[0])
     print("# of dense simplices:", denseSimplexList[denseSimplexList==1].shape[0])
     #return newPos, simplices, denseSimplexList, simplexDensity
     colorId = -(denseSimplexList - np.ones(denseSimplexList.shape[0])).astype(int)
-    return newPos, simplices[insideIndex==1], colorId[insideIndex==1], simplexDensity[insideIndex==1]
+    borderColorId = -(borderSimplexList - np.ones(borderSimplexList.shape[0])).astype(int)
+    return newPos, simplices[insideIndex==1], colorId[insideIndex==1], borderColorId[insideIndex==1]
 
 ############################## Delaunay clustering #############################
-def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False, label=False):
+def computeDelaunayCluster(dirName, threshold=0.76, filter=False, plot=False, label=False):
     sep = utils.getDirSep(dirName, "boxSize")
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
-    denseList = np.zeros(numParticles)
     pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
     contacts = np.array(np.loadtxt(dirName + os.sep + "particleContacts.dat")).astype(int)
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
@@ -1551,47 +1569,75 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter=False, plot=False, la
     # apply filters on triangles
     if(filter == 'filter'):
         for times in range(2):
-        # first filter - label dilute simplices surrounded by dense simplices as dense
             for i in range(denseSimplexList.shape[0]):
                 if(denseSimplexList[i] == 0):
                     indices = utils.findNeighborSimplices(simplices, i)
-                    if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.453): # all are dense
+                    if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.45):
                         denseSimplexList[i] = 1
+            for i in range(denseSimplexList.shape[0]):
+                if(denseSimplexList[i] == 1):
+                    indices = utils.findNeighborSimplices(simplices, i)
+                    if(np.sum(denseSimplexList[indices]) >= 1):
+                        for j in indices:
+                            if(denseSimplexList[j] == 1):
+                                secondIndices = utils.findNeighborSimplices(simplices, j)
+                                if(np.sum(denseSimplexList[secondIndices]) <= 1 and simplexDensity[i] < 0.84):
+                                    denseSimplexList[i] = 0
+        # first filter - label dilute simplices surrounded by dense simplices as dense
+        #for i in range(denseSimplexList.shape[0]):
+        #    if(denseSimplexList[i] == 0):
+        #        indices = utils.findNeighborSimplices(simplices, i)
+        #        if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.45): # all are dense
+        #            for j in indices:
+        #                secondIndices = utils.findNeighborSimplices(simplices, j)
+        #                if(np.sum(denseSimplexList[secondIndices]) >= 2 and denseSimplexList[i] == 0):
+        #                    denseSimplexList[i] = 1
         # second filter - label dense simplices surrounded by dilute simplices as dilute - this filter is confirmed!
-        #    for i in range(denseSimplexList.shape[0]):
-        #        if(denseSimplexList[i] == 1):
-        #            indices = utils.findNeighborSimplices(simplices, i)
-        #            if(np.sum(denseSimplexList[indices]) == 0 and simplexDensity[i] < 0.907): # all are dilute
-        #                denseSimplexList[i] = 0
+        #for i in range(denseSimplexList.shape[0]):
+        #    if(denseSimplexList[i] == 1):
+        #        indices = utils.findNeighborSimplices(simplices, i)
+        #        if(np.sum(denseSimplexList[indices]) <= 1 and simplexDensity[i] < 0.84): # all are dilute, phiJ
+        #            for j in indices:
+        #                secondIndices = utils.findNeighborSimplices(simplices, j)
+        #                if(np.sum(denseSimplexList[secondIndices]) <= 1 and denseSimplexList[i] == 1):
+        #                    denseSimplexList[i] = 0
         if(label == 'label'):
-            dirLabel = dirName + os.sep + "dense2FilterDelaunayLabels/"
+            dirLabel = dirName + os.sep + "filterDelaunayLabels/"
             if(os.path.isdir(dirLabel)==False):
                 os.mkdir(dirLabel)
             utils.labelDelaunaySimplices(dirLabel, simplices, denseSimplexList)
         #print("Fraction of dense simplices: ", denseSimplexList[denseSimplexList==1].shape[0]/denseSimplexList.shape[0])
-    # if all the simplices touching a particle are dense then the particle is dense
+    # if one dense simplex is touching a particle then the particle is dense
+    denseList = np.zeros(numParticles)
     for i in range(numParticles):
         indices = np.argwhere(simplices==i)[:,0]
         for sIndex in indices:
-            if(np.sum(denseSimplexList[sIndex]) >= 1):
+            if(denseSimplexList[sIndex] == 1):
                 denseList[i] = 1
+    # find simplices at the interface between dense and non-dense
+    borderSimplexList = np.zeros(denseSimplexList.shape[0])
+    for i in range(denseSimplexList.shape[0]):
+        if(denseSimplexList[i] == 1):
+            indices = utils.findNeighborSimplices(simplices, i)
+            if(np.sum(denseSimplexList[indices]) <= 2):
+                borderSimplexList[i] = 1
+    #denseSimplexList[borderSimplexList==1] = 0 # do not include border simplices in dense simplices
+    np.savetxt(dirName + "/borderSimplexList.dat", borderSimplexList)
+    # label border particles if they belong to a border simplex
+    borderList = np.zeros(numParticles)
+    for i in range(numParticles):
+        indices = np.argwhere(simplices==i)[:,0]
+        if(np.sum(borderSimplexList[indices]) > 0):
+            borderList[i] = 1
+    #denseList[borderList==1] = 0 # do not include border particles in dense particles
+    np.savetxt(dirName + "/borderList.dat", borderList)
+    np.savetxt(dirName + "/delaunayList.dat", denseList)
     #print("Fraction of dense particles: ", denseList[denseList==1].shape[0]/denseList.shape[0])
     if(filter=='particle-filter'):
         denseList, denseSimplexList = utils.applyParticleFilters(contacts, denseList, simplices, denseSimplexList)
-    np.savetxt(dirName + "/delaunayList.dat", denseList)
     np.savetxt(dirName + "/denseSimplexList.dat", denseSimplexList)
     np.savetxt(dirName + "/simplexDensity.dat", simplexDensity)
     np.savetxt(dirName + "/simplexArea.dat", simplexArea)
-    # find simplices at the interface between dense and non-dense
-    borderSimplexList = np.zeros(denseSimplexList.shape[0])
-    for i in range(numParticles):
-        if(denseList[i]==1):
-            for sIndex in np.argwhere(simplices==i)[:,0]:
-                indices = np.delete(simplices[sIndex], np.argwhere(simplices[sIndex]==i)[0,0])
-                for index in indices:
-                    if(denseList[index] == 0 and index>=0):
-                        borderSimplexList[sIndex] = 1
-    np.savetxt(dirName + "/borderSimplexList.dat", borderSimplexList)
     #print("average density of dense simplices:", np.mean(simplexDensity[denseSimplexList==1]), np.min(simplexDensity[denseSimplexList==1]), np.max(simplexDensity[denseSimplexList==1]))
     if(plot=='plot'):
         uplot.plotCorrelation(np.arange(1, simplexDensity.shape[0]+1, 1), np.sort(simplexDensity), "$\\varphi^{Simplex}$", xlabel = "$Simplex$ $index$", color='k')
@@ -1655,7 +1701,7 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        if(os.path.exists(dirSample + os.sep + "denseSimplexList!.dat")):
+        if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
@@ -1733,6 +1779,7 @@ def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, area[:,0], "$Area$ $fraction$", xlabel = "$Time,$ $t$", color='b')
         uplot.plotCorrelation(timeList, area[:,1], "$Area$ $fraction$", xlabel = "$Time,$ $t$", color='g')
         plt.pause(0.5)
+    return area
 
 ######################## Compute delaunay cluster border #######################
 def computeDelaunayBorder(dirName, threshold=0.85, filter='filter'):
@@ -1835,6 +1882,7 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     wallPressure = np.zeros(dirList.shape[0])
+    borderPressure = np.zeros((dirList.shape[0],3))
     fluidPressure = np.zeros((dirList.shape[0],3))
     gasPressure = np.zeros((dirList.shape[0],3))
     boxLength = 2 * (boxSize[0] + boxSize[1])
@@ -1843,19 +1891,27 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
         if(os.path.exists(dirSample + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+            borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
+            borderSimplexList = np.loadtxt(dirSample + os.sep + "borderSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         else:
             denseList, _ = computeDelaunayCluster(dirSample, threshold=0.78, filter='filter')
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+            borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
+            borderSimplexList = np.loadtxt(dirSample + os.sep + "borderSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         # first fill out the area occupied by fluid and the gas
+        borderArea = 0
         fluidArea = 0
         gasArea = 0
         for i in range(simplexArea.shape[0]):
-            if(denseSimplexList[i]==1):
-                fluidArea += simplexArea[i]
+            if(borderSimplexList[i] == 1):
+                borderArea += simplexArea[i]
             else:
-                gasArea += simplexArea[i]
+                if(denseSimplexList[i]==1):
+                    fluidArea += simplexArea[i]
+                else:
+                    gasArea += simplexArea[i]
         # compute stress components
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         vel = np.loadtxt(dirSample + "/particleVel.dat")
@@ -1863,6 +1919,9 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
         angle = np.mod(angle, 2*np.pi)
         director = np.array([np.cos(angle), np.sin(angle)]).T
         contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
+        virialInter = 0
+        thermalInter = 0
+        activeInter = 0
         virialIn = 0
         thermalIn = 0
         activeIn = 0
@@ -1881,12 +1940,16 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
                     wallForce = gradMultiple * delta / distance
                     wallPressure[d] += np.linalg.norm(wallForce) / boxLength
             # particle pressure components
-            if(denseList[i]==1):
-                thermalIn += np.linalg.norm(vel[i])**2
-                activeIn += np.sum(vel[i] * director[i])
+            if(borderList[i]==1):
+                thermalInter += np.linalg.norm(vel[i])**2
+                activeInter += np.sum(vel[i] * director[i])
             else:
-                thermalOut += np.linalg.norm(vel[i])**2
-                activeOut += np.sum(vel[i] * director[i])
+                if(denseList[i]==1):
+                    thermalIn += np.linalg.norm(vel[i])**2
+                    activeIn += np.sum(vel[i] * director[i])
+                else:
+                    thermalOut += np.linalg.norm(vel[i])**2
+                    activeOut += np.sum(vel[i] * director[i])
             for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
                 radSum = rad[i] + rad[c]
                 delta = utils.pbcDistance(pos[i], pos[c], boxSize)
@@ -1895,10 +1958,17 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
                 if(overlap > 0):
                     gradMultiple = ec * overlap / radSum
                     force = gradMultiple * delta / distance
-                    if(denseList[i]==1):
-                        virialIn += 0.5 * np.sum(force * delta)
+                    if(borderList[i]==1):
+                        virialInter += 0.5 * np.sum(force * delta)
                     else:
-                        virialOut += 0.5 * np.sum(force * delta)
+                        if(denseList[i]==1):
+                            virialIn += 0.5 * np.sum(force * delta)
+                        else:
+                            virialOut += 0.5 * np.sum(force * delta)
+        if(borderArea > 0):
+            borderPressure[d,0] = virialInter / (dim * borderArea) # double counting
+            borderPressure[d,1] = thermalInter / borderArea # dim k_B T / dim, dim cancels out
+            borderPressure[d,2] = driving * activeInter / (dim * 2*Dr * borderArea)
         if(fluidArea > 0):
             fluidPressure[d,0] = virialIn / (dim * fluidArea) # double counting
             fluidPressure[d,1] = thermalIn / fluidArea # dim k_B T / dim, dim cancels out
@@ -1908,10 +1978,11 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
             gasPressure[d,1] = thermalOut / gasArea # dim k_B T / dim, dim cancels out
             gasPressure[d,2] = driving * activeOut / (dim * 2*Dr * gasArea)
     wallPressure *= sigma**2
+    borderPressure *= sigma**2
     fluidPressure *= sigma**2
     gasPressure *= sigma**2
     #borderPressure *= sigma**2
-    np.savetxt(dirName + os.sep + "delaunayPressure.dat", np.column_stack((timeList, wallPressure, fluidPressure, gasPressure)))
+    np.savetxt(dirName + os.sep + "delaunayBorderPressure.dat", np.column_stack((timeList, wallPressure, fluidPressure, gasPressure, borderPressure)))
     # pressure components in the fluid
     print("dense pressure: ", np.mean(fluidPressure[:,0] + fluidPressure[:,1] + fluidPressure[:,2]), " +/- ", np.std(fluidPressure[:,0] + fluidPressure[:,1] + fluidPressure[:,2]))
     print("dense virial pressure: ", np.mean(fluidPressure[:,0]), " +/- ", np.std(fluidPressure[:,0]))

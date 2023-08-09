@@ -23,10 +23,10 @@ import spCluster as cluster
 ################################################################################
 def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
     fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
-    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
+    if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
-        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter='filter')
+        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.76, filter='filter')
     denseSimplexList = np.loadtxt(dirName + os.sep + 'denseSimplexList.dat')
     if(which == 'fluid'):
         simplexDensity = simplexDensity[denseSimplexList==1]
@@ -1277,7 +1277,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
                 numParticles = utils.readFromParams(dirSample, "numParticles")
         if(os.path.exists(dirSample + "delaunayDensity.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-            data = np.loadtxt(dirSample + "delaunayDensity.dat")
+            data = np.loadtxt(dirSample + "delaunayDensity-densediluteFilter.dat")
             fluidDensity[d,0] = np.mean(data[:,1])
             fluidDensity[d,1] = np.std(data[:,1])
             gasDensity[d,0] = np.mean(data[:,2])
@@ -1383,36 +1383,36 @@ def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     Nlist = np.array(['4096', '8192', '16384'])
     sampleList = np.array(['0.28', '0.27', '0.27'])
-    dirList = np.array([['10', '50', '100', '200', '300', '500', '1000', '1500'],
-                        ['10', '50', '100', '500', '1000', '1500', '2000', '2200', '2300', '2500'],
-                        ['10', '50', '100', '500', '1000', '2000', '3000', '4000', '4500', '5000', '5500', '6500', '7500']], dtype=object)
+    dirList = np.array([['10', '50', '100', '200', '300', '400', '500', '1000', '1500'],
+                        ['10', '50', '100', '500', '1000', '1500', '2000', '2100', '2200', '2300', '2500'],
+                        ['10', '50', '100', '500', '1000', '2000', '3000', '4000', '4500', '5000', '5500', '6000', '6100', '6200', '6300', '6500', '7500']], dtype=object)
     markerList = np.array(['v', 'o', 's'])
     for n in range(Nlist.shape[0]):
         fluidArea = []
         gasArea = []
         phi = []
-        #initialPhi = float(utils.readFromParams(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/", 'phi'))
-        simplexDensity = np.loadtxt(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/simplexDensity.dat")
-        simplexArea = np.loadtxt(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/simplexArea.dat")
-        initialPhi = np.sum(simplexDensity * simplexArea)
-        data = np.loadtxt(dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/dynamics/delaunayDensity.dat")
-        print("N", Nlist[n], "initial density:", initialPhi, np.mean(data[:,3]), np.std(data[:,3]))
+        dirInit = dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/dynamics/"
+        data = np.loadtxt(dirInit + os.sep + "delaunayDensity.dat")
+        initialPhi = np.mean(data[:,3])
+        print("N", Nlist[n], "initial density:", initialPhi, "+-", np.std(data[:,3]))
+        lengthscale = utils.readFromDynParams(dirInit, "sigma")
         for d in range(len(dirList[n])):
             #print(Nlist[n], dirList[n][d])
             dirSample = dirName + os.sep + Nlist[n] + "-2d" + "/densitySweep/" + sampleList[n] + "/active-langevin/Dr2e-04/" + dirList[n][d] + "removed/dynamics/"
             if(os.path.exists(dirSample)):
-                phi.append(float(utils.readFromParams(dirSample, 'phi')))
-                if(os.path.exists(dirSample + os.sep + "simplexArea.dat")):
-                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-                    simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
-                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
+                if(os.path.exists(dirSample + os.sep + "delaunayArea.dat")):
+                    delaunayArea = np.loadtxt(dirSample + os.sep + "delaunayArea.dat")
                 else:
-                    _, simplexDensity = cluster.computeDelaunayCluster(dirSample, 0.78, filter='filter')
-                    denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
-                    simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-                fluidArea.append(np.sum(simplexArea[denseSimplexList==1]))
-                gasArea.append(np.sum(simplexArea[denseSimplexList==0]))
-                phi[d] = np.sum(simplexDensity * simplexArea)
+                    cluster.computeClusterDelaunayArea(dirSample)
+                    delaunayArea = np.loadtxt(dirSample + os.sep + "delaunayArea.dat")
+                fluidArea.append(np.mean(delaunayArea[:,1]))
+                gasArea.append(np.mean(delaunayArea[:,2]))
+                if(os.path.exists(dirSample + os.sep + "delaunayDensity.dat")):
+                    delaunayDensity = np.loadtxt(dirSample + os.sep + "delaunayDensity.dat")
+                else:
+                    cluster.computeClusterDelaunayDensity(dirSample)
+                    delaunayDensity = np.loadtxt(dirSample + os.sep + "delaunayDensity.dat")
+                phi.append(np.mean(delaunayDensity[:,3]))
                 #print(Nlist[n], dirList[n][d], phi[d])
         phi = np.array(phi)
         fluidArea = np.array(fluidArea)
