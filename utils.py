@@ -661,12 +661,12 @@ def increaseDensity(dirName, dirSave, targetDensity):
     np.savetxt(dirSave + '/particleAngles.dat', angle)
     # adjust particle radii to target density
     rad = np.loadtxt(dirName + '/particleRad.dat')
-    currentDensity = np.sum(np.pi*rad**2)
+    currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     print("Current density: ", currentDensity)
     multiple = np.sqrt(targetDensity / currentDensity)
     rad *= multiple
     np.savetxt(dirSave + '/particleRad.dat', rad)
-    currentDensity = np.sum(np.pi*rad**2)
+    currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     print("Current density: ", currentDensity)
 
 def initializeRectangle(dirName, dirSave):
@@ -777,10 +777,10 @@ def removeParticles(dirName, numRemove):
         print("Please remove a number of particles smaller than", maxRemove)
 
 ############################### Delaunay analysis ##############################
-def augmentPacking(pos, rad, fraction=0.1):
+def augmentPacking(pos, rad, fraction=0.1, lx=1, ly=1):
     # augment packing by copying a fraction of the particles around the walls
-    Lx = np.array([1,0])
-    Ly = np.array([0,1])
+    Lx = np.array([lx,0])
+    Ly = np.array([0,ly])
     leftPos = pos[pos[:,0]<fraction]
     leftRad = rad[pos[:,0]<fraction]
     leftIndices = np.argwhere(pos[:,0]<fraction)[:,0]
@@ -849,7 +849,7 @@ def wrapSimplicesAroundBox(innerSimplices, augmentedIndices, numParticles):
     return innerSimplices
 
 def getPBCDelaunay(pos, rad, boxSize):
-    newPos, newRad, newIndices = augmentPacking(pos, rad, 0.1)
+    newPos, newRad, newIndices = augmentPacking(pos, rad, 0.1, boxSize[0], boxSize[1])
     delaunay = Delaunay(newPos)
     insideIndex = getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
     simplices = wrapSimplicesAroundBox(delaunay.simplices[insideIndex==1], newIndices, rad.shape[0])

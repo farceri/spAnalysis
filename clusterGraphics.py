@@ -26,7 +26,7 @@ def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
     if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
-        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.76, filter='filter')
+        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter='filter')
     denseSimplexList = np.loadtxt(dirName + os.sep + 'denseSimplexList.dat')
     if(which == 'fluid'):
         simplexDensity = simplexDensity[denseSimplexList==1]
@@ -1191,7 +1191,7 @@ def plotSPClusterArea(dirName, figureName, fixed=False, which='1e-03'):
     gasArea = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
         if(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-long/"
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         elif(fixed=="Dr"):
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
@@ -1204,7 +1204,6 @@ def plotSPClusterArea(dirName, figureName, fixed=False, which='1e-03'):
             fluidArea[d,1] = np.std(data[:,1])
             gasArea[d,0] = np.mean(data[:,2])
             gasArea[d,1] = np.std(data[:,2])
-            print(dirList[d], fluidArea[d,0], gasArea[d,0])
     if(fixed=="Dr"):
         x = phi
         xlabel = "$Density,$ $\\varphi$"
@@ -1216,10 +1215,10 @@ def plotSPClusterArea(dirName, figureName, fixed=False, which='1e-03'):
         ax.set_xscale('log')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Area$ $fraction$", fontsize=18)
+    ax.set_ylabel("$Liquid$ $area$ $fraction$", fontsize=18)
     ax.errorbar(x[fluidArea[:,0]>0], fluidArea[fluidArea[:,0]>0,0], fluidArea[fluidArea[:,0]>0,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Fluid$')
-    ax.errorbar(x[gasArea[:,0]>0], gasArea[gasArea[:,0]>0,0], gasArea[gasArea[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
-    ax.legend(fontsize=14, loc='best')
+    #ax.errorbar(x[gasArea[:,0]>0], gasArea[gasArea[:,0]>0,0], gasArea[gasArea[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
+    #ax.legend(fontsize=14, loc='best')
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -1251,7 +1250,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
-            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
+            dirList = np.array(['1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
     elif(fixed=="Dr"):
@@ -1267,7 +1266,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
     taup = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         if(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-long/"
         elif(fixed=="Dr"):
             #dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
@@ -1277,7 +1276,7 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
                 numParticles = utils.readFromParams(dirSample, "numParticles")
         if(os.path.exists(dirSample + "delaunayDensity.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-            data = np.loadtxt(dirSample + "delaunayDensity-densediluteFilter.dat")
+            data = np.loadtxt(dirSample + "delaunayDensity.dat")
             fluidDensity[d,0] = np.mean(data[:,1])
             fluidDensity[d,1] = np.std(data[:,1])
             gasDensity[d,0] = np.mean(data[:,2])
@@ -1346,10 +1345,11 @@ def plotSPClusterDensity(dirName, figureName, fixed=False, which='1e-03', inter=
         figureName = "/home/francesco/Pictures/soft/mips/pClusterPhi-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Phase$ $density$", fontsize=18)
+    ax.set_ylabel("$Liquid$ $Delaunay$ $density$", fontsize=18)
     ax.errorbar(x[fluidDensity[:,0]>0], fluidDensity[fluidDensity[:,0]>0,0], fluidDensity[fluidDensity[:,0]>0,1], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Fluid$')
-    ax.errorbar(x[gasDensity[:,0]>0], gasDensity[gasDensity[:,0]>0,0], gasDensity[gasDensity[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
-    ax.legend(fontsize=14, loc='best')
+    if(fixed=="Dr"):
+        ax.errorbar(x[gasDensity[:,0]>0], gasDensity[gasDensity[:,0]>0,0], gasDensity[gasDensity[:,0]>0,1], color='g', lw=1.2, marker='o', markersize = 8, fillstyle='none', elinewidth=1, capsize=4, label='$Gas$')
+    #ax.legend(fontsize=14, loc='best')
     if(fixed!="Dr"):
         ax.set_xscale('log')
     #ax.set_xlim(5.8e-06, 2.8e03)
@@ -1380,13 +1380,14 @@ def plotSPClusterDensityVSTime(dirName, figureName, which=False):
     plt.show()
 
 def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    fig, ax = plt.subplots(figsize=(7,3.5), dpi = 120)
     Nlist = np.array(['4096', '8192', '16384'])
     sampleList = np.array(['0.28', '0.27', '0.27'])
     dirList = np.array([['10', '50', '100', '200', '300', '400', '500', '1000', '1500'],
-                        ['10', '50', '100', '500', '1000', '1500', '2000', '2100', '2200', '2300', '2500'],
-                        ['10', '50', '100', '500', '1000', '2000', '3000', '4000', '4500', '5000', '5500', '6000', '6100', '6200', '6300', '6500', '7500']], dtype=object)
+                        ['10', '100', '500', '1000', '1500', '2100', '2200', '2300', '2500'],
+                        ['100', '500', '1000', '2000', '3000', '4000', '4500', '5000', '5500', '6000', '6100', '6200', '6300', '6500', '7500']], dtype=object)
     markerList = np.array(['v', 'o', 's'])
+    lsList = np.array(['dotted', 'dashdot', 'solid'])
     for n in range(Nlist.shape[0]):
         fluidArea = []
         gasArea = []
@@ -1419,15 +1420,15 @@ def plotSPAreaVSRemoved(dirName, figureName, which='fluid', logx='logx'):
         gasArea = np.array(gasArea)
         if(which == 'fluid'):
             if(logx == 'logx'):
-                ax.semilogx(initialPhi - phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+                ax.semilogx(initialPhi - phi, fluidArea, markersize=8, marker=markerList[n], ls=lsList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
             else:
-                ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
-            ax.set_ylabel("$Fluid$ $area$", fontsize=18)
+                ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], ls=lsList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+            ax.set_ylabel("$Liquid$ $area$", fontsize=18)
         elif(which == 'gas'):
             if(logx == 'logx'):
-                ax.semilogx(initialPhi - phi, gasArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+                ax.semilogx(initialPhi - phi, gasArea, markersize=8, marker=markerList[n], ls=lsList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
             else:
-                ax.plot(phi, gasArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
+                ax.plot(phi, gasArea, markersize=8, marker=markerList[n], ls=lsList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
             ax.set_ylabel("$Gas$ $area$", fontsize=18)
         #ax.plot(phi, fluidArea, markersize=8, marker=markerList[n], label="$N = $" + Nlist[n], lw=1.2, fillstyle='none')
     ax.tick_params(axis='both', labelsize=14)
@@ -1502,19 +1503,26 @@ def plotSPPressureProfile(dirName, figureName, shift=0, which='pressure'):
             ax.plot(data[:,0], data[:,8], lw=1.5, color='b', ls='dashdot', label='$Total$')
         elif(which=='delta'):
             ax.plot(data[:,0], data[:,2] - data[:,3], lw=1.5, color='k', ls='solid', label='$Steric$')
-            ax.plot(data[:,0], data[:,6] - data[:,7], lw=1.5, color=[1,0.5,0], ls='solid', label='$Active$')
+            ax.plot(data[:,0], data[:,6] - data[:,7], lw=1.5, color=[1,0.5,0], ls='dashed', label='$Active$')
             ax.plot(data[:,0], data[:,2] + data[:,6] - data[:,3] - data[:,7], lw=1.5, color='b', ls='dashdot', label='$Total$')
+        elif(which=='component'):
+            ax.plot(data[:,0], data[:,2] + data[:,6], lw=1.5, color='k', ls='solid', label='$Normal,$ $\\sigma_N$')
+            ax.plot(data[:,0], data[:,3] + data[:,7], lw=1.5, color='b', ls='dashdot', label='$Tangential,$ $\\sigma_T$')
     ax.tick_params(axis='both', labelsize=14)
     #ax.set_xlabel("$Radial$ $distance,$ $r$", fontsize=18)
     ax.set_xlabel("$Position,$ $x$", fontsize=18)
     if(which=="pressure"):
-        ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=18)
+        ax.set_ylabel("$Stress,$ $\\sigma \\sigma^2$", fontsize=18)
         ax.set_ylim(np.min(data[:,4])-0.2, np.max(data[:,8])+0.6)
         figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
     elif(which=="delta"):
-        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=18)
+        ax.set_ylabel("$\\Delta \\sigma^\\ast = (\\sigma_N - \\sigma_T) \\sigma^2$", fontsize=18)
         ax.set_ylim(np.min(data[:,6] - data[:,7])-0.2, np.max(data[:,6] - data[:,7])+0.6)
         figureName = "/home/francesco/Pictures/soft/mips/deltapProfile-" + figureName + ".png"
+    elif(which=="component"):
+        ax.set_ylabel("$Stress$", fontsize=18)
+        ax.set_ylim(np.min(data[:,2] + data[:,6])-0.2, np.max(data[:,3] + data[:,7])+0.6)
+        figureName = "/home/francesco/Pictures/soft/mips/pcompProfile-" + figureName + ".png"
     ax.legend(fontsize=13, loc='best', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
@@ -1694,6 +1702,7 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr'):
             phi[d] = np.mean(data[:,3])
         if(os.path.exists(dirSample + "/pressure.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+            #print(dirList[d], taup[d])
             data = np.loadtxt(dirSample + "/pressure.dat")
             sigma = np.mean(np.loadtxt(dirSample + "/particleRad.dat"))
             # steric
@@ -1722,11 +1731,11 @@ def plotSPTotalPressure(dirName, figureName, fixed='Dr'):
     # pressure components
     ax.errorbar(x[p[:,0,0]>0], p[p[:,0,0]>0,0,0], p[p[:,0,0]>0,0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Steric$')
     ax.errorbar(x[p[:,1,0]>0], p[p[:,1,0]>0,1,0], p[p[:,1,0]>0,1,1], lw=1.2, color='r', marker='v', markersize=8, fillstyle='none', capsize=3, label='$Thermal$')
-    ax.errorbar(x[p[:,2,0]>0], p[p[:,2,0]>0,2,0], p[p[:,2,0]>0,2,1], lw=1.2, color=[1,0.5,0], marker='s', markersize=8, fillstyle='none', capsize=3, label='$Actve$')
+    ax.errorbar(x[p[:,2,0]>0], p[p[:,2,0]>0,2,0], p[p[:,2,0]>0,2,1], lw=1.2, color=[0.1,0.8,0.2], marker='s', markersize=8, fillstyle='none', capsize=3, label='$Actve$')
     #ax.errorbar(x[p[:,3,0]>0], p[p[:,3,0]>0,3,0], p[p[:,3,0]>0,3,1], lw=1.2, color='b', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Total$')
     #ax.set_xlim(5.8e-06, 2.8e03)
     ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Pressure,$ $P \\sigma^2$", fontsize=18)
+    ax.set_ylabel("$Pressure$ $components$", fontsize=18)
     ax.legend(fontsize=14, loc='best')
     ax.set_yscale('log')
     fig.tight_layout()
@@ -1739,7 +1748,7 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
-            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
+            dirList = np.array(['1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
     elif(fixed=="Dr"):
@@ -1762,9 +1771,9 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr2e-04/dynamics/"
             data = np.loadtxt(dirSample + "delaunayDensity.dat")
             phi[d] = np.mean(data[:,3])
-        if(os.path.exists(dirSample + "/delaunayPressure.dat")):
+        if(os.path.exists(dirSample + "/delaunayBorderPressure.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-            data = np.loadtxt(dirSample + "/delaunayPressure.dat")
+            data = np.loadtxt(dirSample + "/delaunayBorderPressure.dat")
             # dense steric
             pIn[d,0,0] = np.mean(data[:,2])
             pIn[d,0,1] = np.std(data[:,2])
@@ -1841,23 +1850,23 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     ax2.tick_params(axis='both', labelsize=14)
     # dense and dilute pressure
     ax1.errorbar(x[ptotIn[:,0]>0], ptotIn[ptotIn[:,0]>0,0], ptotIn[ptotIn[:,0]>0,1], color='b', marker='s', markersize=8, fillstyle='none', lw=1.2, capsize=3, label='$Fluid$')
-    ax1.errorbar(x[ptotOut[:,0]>0], ptotOut[ptotOut[:,0]>0,0], ptotOut[ptotOut[:,0]>0,1], color='g', marker='o', markersize=8, fillstyle='none', lw=1.2, capsize=3, label='$Gas$')
+    ax1.errorbar(x[ptotOut[:,0]>0], ptotOut[ptotOut[:,0]>0,0], ptotOut[ptotOut[:,0]>0,1], color=[1,0.5,0], marker='o', markersize=8, fillstyle='none', lw=1.2, capsize=3, label='$Gas$')
     #ax1.errorbar(x[deltap[:,0]!=0], np.abs(deltap[deltap[:,0]!=0,0]), deltap[deltap[:,0]!=0,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1.2, capsize=3, label='$\\Delta p$')
     # pressure components
     if(fixed=='phi'):
-        ax2.errorbar(x[pIn[:,0,0]>0], pIn[pIn[:,0,0]>0,0,0], pIn[pIn[:,0,0]>0,0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Steric$')
-        ax2.errorbar(x[pIn[:,1,0]>0], pIn[pIn[:,1,0]>0,1,0], pIn[pIn[:,1,0]>0,1,1], lw=1.2, color='r', marker='v', markersize=8, fillstyle='none', capsize=3, label='$Thermal$')
-        ax2.errorbar(x[pIn[:,2,0]>0], pIn[pIn[:,2,0]>0,2,0], pIn[pIn[:,2,0]>0,2,1], lw=1.2, color=[1,0.5,0], marker='s', markersize=8, fillstyle='none', capsize=3, label='$Actve$')
-        ax2.errorbar(x[pOut[:,0,0]>0], pOut[pOut[:,0,0]>0,0,0], pOut[pOut[:,0,0]>0,0,1], ls='--', lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-        ax2.errorbar(x[pOut[:,1,0]>0], pOut[pOut[:,1,0]>0,1,0], pOut[pOut[:,1,0]>0,1,1], ls='--', lw=1.2, color='r', marker='v', markersize=8, fillstyle='none', capsize=3)
-        ax2.errorbar(x[pOut[:,2,0]>0], pOut[pOut[:,2,0]>0,2,0], pOut[pOut[:,2,0]>0,2,1], ls='--', lw=1.2, color=[1,0.5,0], marker='s', markersize=8, fillstyle='none', capsize=3)
+        ax2.errorbar(x[pOut[:,0,0]>0], pOut[pOut[:,0,0]>0,0,0], pOut[pOut[:,0,0]>0,0,1], lw=1.1, color='k', marker='o', markersize=8, markeredgewidth=1.3, fillstyle='none', capsize=3, label='$P^{Steric}_{gas}$')
+        ax2.errorbar(x[pOut[:,2,0]>0], pOut[pOut[:,2,0]>0,2,0], pOut[pOut[:,2,0]>0,2,1], lw=1.1, color=[0.1,0.8,0.2], marker='s', markersize=8, markeredgewidth=1.3, fillstyle='none', capsize=3, label='$P^{Active}_{gas}$')
+        ax2.errorbar(x[pOut[:,1,0]>0], pOut[pOut[:,1,0]>0,1,0], pOut[pOut[:,1,0]>0,1,1], lw=1.1, color='r', marker='v', markersize=8, markeredgewidth=1.3, fillstyle='none', capsize=3, label='$P^{Thermal}_{gas}$')
+        ax2.errorbar(x[pIn[:,0,0]>0], pIn[pIn[:,0,0]>0,0,0], pIn[pIn[:,0,0]>0,0,1], lw=1.1, color='k', marker='o', markersize=6, fillstyle='full', capsize=3, label='$P^{Steric}_{liquid}$')
+        ax2.errorbar(x[pIn[:,2,0]>0], pIn[pIn[:,2,0]>0,2,0], pIn[pIn[:,2,0]>0,2,1], lw=1.1, color=[0.1,0.8,0.2], marker='s', markeredgecolor='k', markeredgewidth=0.9, markersize=6, fillstyle='full', capsize=3, label='$P^{Active}_{liquid}$')
+        ax2.errorbar(x[pIn[:,1,0]>0], pIn[pIn[:,1,0]>0,1,0], pIn[pIn[:,1,0]>0,1,1], lw=1.1, color='r', marker='v', markeredgecolor='k', markeredgewidth=0.9, markersize=6, fillstyle='full', capsize=3, label='$P^{Thermal}_{liquid}$')
     else:
-        ax2.errorbar(x, pIn[:,0,0], pIn[:,0,1], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Steric$')
-        ax2.errorbar(x, pIn[:,1,0], pIn[:,1,1], lw=1.2, color='r', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Thermal$')
-        ax2.errorbar(x, pIn[:,2,0], pIn[:,2,1], lw=1.2, color=[1,0.5,0], marker='s', markersize=8, fillstyle='none', capsize=3, label='$Active$')
-        ax2.errorbar(x, pOut[:,0,0], pOut[:,0,1], ls='--', lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-        ax2.errorbar(x, pOut[:,1,0], pOut[:,1,1], ls='--', lw=1.2, color='r', marker='o', markersize=8, fillstyle='none', capsize=3)
-        ax2.errorbar(x, pOut[:,2,0], pOut[:,2,1], ls='--', lw=1.2, color=[1,0.5,0], marker='s', markersize=8, fillstyle='none', capsize=3)
+        ax2.errorbar(x, pOut[:,0,0], pOut[:,0,1], lw=1.1, color='k', marker='o', markersize=8, markeredgewidth=1.5, fillstyle='none', capsize=3)
+        ax2.errorbar(x, pOut[:,1,0], pOut[:,1,1], lw=1.1, color='r', marker='v', markersize=8, markeredgewidth=1.5, fillstyle='none', capsize=3)
+        ax2.errorbar(x, pOut[:,2,0], pOut[:,2,1], lw=1.1, color=[0.1,0.8,0.2], marker='s', markersize=8, markeredgewidth=1.5, fillstyle='none', capsize=3)
+        ax2.errorbar(x, pIn[:,0,0], pIn[:,0,1], lw=1.1, color='k', marker='o', markersize=6, fillstyle='full', capsize=3, label='$Steric$')
+        ax2.errorbar(x, pIn[:,1,0], pIn[:,1,1], lw=1.1, color='r', marker='v', markeredgecolor='k', markersize=6, fillstyle='full', capsize=3, label='$Thermal$')
+        ax2.errorbar(x, pIn[:,2,0], pIn[:,2,1], lw=1.1, color=[0.1,0.8,0.2], marker='s', markeredgecolor='k', markersize=6, fillstyle='full', capsize=3, label='$Active$')
     if(inter == 'inter' and check):
         if(which=='gasFluid'):
             ax1.plot(np.ones(100)*taupc, np.linspace(np.min(ptotOut[:,0]), np.max(ptotIn[:,0]), 100), lw=0.7, ls='--', color='k')
@@ -1869,11 +1878,11 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
             ax2.plot(t, bottomInter, lw=2, color='k')
     #ax.set_xlim(5.8e-06, 2.8e03)
     ax1.set_xlabel(xlabel, fontsize=18)
-    ax1.set_ylabel("$Total$ $pressure$", fontsize=18)
+    ax1.set_ylabel("$Pressure,$ $p$", fontsize=18)
     ax2.set_xlabel(xlabel, fontsize=18)
     ax2.set_ylabel("$Pressure$ $components$", fontsize=18)
     ax1.legend(fontsize=14, loc='best')
-    ax2.legend(fontsize=14, loc='best')
+    #ax2.legend(fontsize=12, loc='best', ncol=2)
     fig1.tight_layout()
     fig1.savefig(figure1Name + ".png", transparent=True, format = "png")
     fig2.tight_layout()
@@ -1943,13 +1952,13 @@ def plotSPPhaseDiagram(dirName, numBins, figureName, which='16', log=False):
     #data = np.loadtxt(dirName + "/stericActiveTradeoff.dat")#[0.3,0.7,0]
     #ax.plot(data[:,1], data[:,0], color='k', marker='v', markersize=8, markeredgewidth=1.2, fillstyle='none', lw=1)
     ax.tick_params(axis='both', labelsize=14)
-    ax.set_ylabel("$Average$ $local$ $density,$ $\\langle \\varphi_l \\rangle$", fontsize=18)
+    ax.set_ylabel("$Local$ $density,$ $\\langle \\varphi_{local} \\rangle$", fontsize=18)
     ax.set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=18)
     ax.set_ylim(0.22, 0.95)
     ax.plot(np.ones(50)*1e06, np.linspace(0,1.2,50), ls='dotted', color='k', lw=0.7)
     colorBar = cm.ScalarMappable(cmap=colorMap)
     cb = plt.colorbar(colorBar)
-    label = "$\\Delta \\varphi_l$"#"$\\Delta \\varphi^2_{16}}$"
+    label = "$Variance$ \n $\\Delta \\varphi_{local}$"#"$\\Delta \\varphi^2_{16}}$"
     cb.set_ticks([0, 1])
     cb.ax.tick_params(labelsize=14, length=0)
     cb.ax.invert_yaxis()

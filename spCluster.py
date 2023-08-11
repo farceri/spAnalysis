@@ -1574,6 +1574,7 @@ def computeDelaunayCluster(dirName, threshold=0.76, filter=False, plot=False, la
                     indices = utils.findNeighborSimplices(simplices, i)
                     if(np.sum(denseSimplexList[indices]) >= 2 and simplexDensity[i] > 0.45):
                         denseSimplexList[i] = 1
+        for times in range(2):
             for i in range(denseSimplexList.shape[0]):
                 if(denseSimplexList[i] == 1):
                     indices = utils.findNeighborSimplices(simplices, i)
@@ -1581,7 +1582,7 @@ def computeDelaunayCluster(dirName, threshold=0.76, filter=False, plot=False, la
                         for j in indices:
                             if(denseSimplexList[j] == 1):
                                 secondIndices = utils.findNeighborSimplices(simplices, j)
-                                if(np.sum(denseSimplexList[secondIndices]) <= 1 and simplexDensity[i] < 0.84):
+                                if(np.sum(denseSimplexList[secondIndices]) <= 1 and simplexDensity[i] < 0.83):
                                     denseSimplexList[i] = 0
         # first filter - label dilute simplices surrounded by dense simplices as dense
         #for i in range(denseSimplexList.shape[0]):
@@ -1701,12 +1702,12 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
+        if(os.path.exists(dirSample + os.sep + "denseSimplexList!.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         else:
-            _, simplexDensity = computeDelaunayCluster(dirSample, threshold=0.78, filter='filter')
+            _, simplexDensity = computeDelaunayCluster(dirSample, threshold=0.76, filter='filter')
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         occupiedArea = simplexDensity * simplexArea
@@ -1739,8 +1740,8 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, delaunayDensity[:,0], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='b')
         uplot.plotCorrelation(timeList, delaunayDensity[:,1], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='g')
         uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
-        #plt.pause(0.5)
-        plt.show()
+        plt.pause(0.5)
+        #plt.show()
 
 ######################## Compute cluster shape parameter #######################
 def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
@@ -1760,17 +1761,21 @@ def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
         # area
         if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+            borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
+            borderSimplexList = np.loadtxt(dirSample + os.sep + "borderSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         else:
             _, simplexDensity = computeDelaunayCluster(dirSample)
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
+            borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
+            borderSimplexList = np.loadtxt(dirSample + os.sep + "borderSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
         occupiedArea = simplexDensity * simplexArea
         for i in range(simplexDensity.shape[0]):
-            if(denseSimplexList[i]==1):
+            if(denseSimplexList[i]==1 and borderSimplexList[i]==0):
                 area[d,0] += simplexArea[i]
-            else:
+            elif(denseSimplexList[i]==0 and borderSimplexList[i]==0):
                 area[d,1] += simplexArea[i]
     np.savetxt(dirName + os.sep + "delaunayArea.dat", np.column_stack((timeList, area)))
     print("Fluid area: ", np.mean(area[:,0]), " +- ", np.std(area[:,0]))
@@ -2739,7 +2744,7 @@ def computeClusterVelMagnitudeVSTime(dirName, plot=False, dirSpacing=1):
 def computeDropletParticleStress(dirName, l1 = 0.04):
     dim = 2
     ec = 240
-    l2 = 0.2
+    l2 = 0.5
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
@@ -2789,7 +2794,7 @@ def computeDropletParticleStressVSTime(dirName, dirSpacing=1):
 def computeDropletPressureVSTime(dirName, l1=0.1, dirSpacing=1):
     dim = 2
     ec = 240
-    l2 = 0.2
+    l2 = 0.5
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
@@ -2863,7 +2868,7 @@ def computeDropletPressureVSTime(dirName, l1=0.1, dirSpacing=1):
 def averageDropletRadialTension(dirName, shiftx, shifty, l1=0.04, dirSpacing=1):
     dim = 2
     ec = 240
-    l2 = 0.2
+    l2 = 0.5
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
@@ -2938,7 +2943,7 @@ def averageDropletRadialTension(dirName, shiftx, shifty, l1=0.04, dirSpacing=1):
 def averageDropletLinearPressureProfile(dirName, l1 = 0.04, dirSpacing=1):
     dim = 2
     ec = 240
-    l2 = 0.2
+    l2 = 0.5
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
@@ -3004,7 +3009,7 @@ def averageDropletLinearPressureProfile(dirName, l1 = 0.04, dirSpacing=1):
 def averageDropletLinearTension(dirName, l1=0.04, dirSpacing=1):
     dim = 2
     ec = 240
-    l2 = 0.2
+    l2 = 0.5
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")

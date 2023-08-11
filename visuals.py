@@ -141,7 +141,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     #pos = utils.centerPositions(pos, rad, boxSize)
-    pos = utils.shiftPositions(pos, boxSize, -0.1, 0.2)#1.35, 0 for box21 16k
+    pos = utils.shiftPositions(pos, boxSize, -0.5, 0)#1.35, 0 for box21 16k 0, 0.2 for 0.31 16k droplet
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -403,15 +403,27 @@ def computeDenseSimplexColorList(densityList):
             colorId[simplexId] = 0.5
     return colorId
 
-def plotSPDelaunayPacking(dirName, figureName, dense=False, border=True, threshold=0.78, filter=False, alpha=0.8, colored=False):
+def getBorderColorList(denseList, borderList):
+    colorId = np.zeros((denseList.shape[0], 4))
+    for particleId in range(denseList.shape[0]):
+        if(borderList[particleId]==1):
+            colorId[particleId] = [0,0,1,1]
+        else:
+            if(denseList[particleId]==1):
+                colorId[particleId] = [0.2,0.2,0.2,0.2]
+            else:
+                colorId[particleId] = [1,1,1,1]
+    return colorId
+
+def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, threshold=0.76, filter='filter', alpha=0.8, colored=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = 0
-    shifty = -0.2
+    shiftx = -0.5
+    shifty = 0
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -422,27 +434,24 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=True, thresho
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
     if(dense==True or border==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-        borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
+        colorId = getDenseColorList(denseList)
         if(border==True):
-            colorId = getDenseColorList(borderList)
-        else:
-            colorId = getDenseColorList(denseList)
+            borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
+            colorId = getBorderColorList(denseList, borderList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth=0.3))
-        if(denseList[particleId] == 1):
-            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='r', alpha=0.5, linewidth=0.3))
     if(colored == 'colored'):
         newPos, simplices, colorId, borderColorId = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, shiftx, shifty) # colorId is 0 for dense and 1 for dilute
-        #plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
         if(dense==True):
-            plt.tripcolor(newPos[:,0], newPos[:,1], simplices[colorId==0], lw=0.3, facecolors=colorId[colorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
+            plt.tripcolor(newPos[:,0], newPos[:,1], simplices, lw=0.3, facecolors=colorId, edgecolors='k', alpha=0.5, cmap='bwr')
+            #plt.tripcolor(newPos[:,0], newPos[:,1], simplices[colorId==0], lw=0.3, facecolors=colorId[colorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
         if(border==True):
             plt.tripcolor(newPos[:,0], newPos[:,1], simplices[borderColorId==0], lw=0.3, facecolors=borderColorId[borderColorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
         plt.triplot(newPos[:,0], newPos[:,1], simplices, lw=0.2, color='k')
@@ -451,13 +460,15 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=True, thresho
         else:
             figureName = "cluster-" + figureName
     else:
-        newPos, newRad, newIndices = utils.augmentPacking(pos, rad)
+        newPos, newRad, newIndices = utils.augmentPacking(pos, rad, lx=boxSize[0], ly=boxSize[1])
         simplices = Delaunay(newPos).simplices
         simplices = np.unique(np.sort(simplices, axis=1), axis=0)
         insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
         plt.triplot(newPos[:,0], newPos[:,1], simplices[insideIndex==1], lw=0.2, color='k')
     if(dense==True):
         figureName = "/home/francesco/Pictures/soft/packings/deldense-" + figureName + ".png"
+    elif(border==True):
+        figureName = "/home/francesco/Pictures/soft/packings/delborder-" + figureName + ".png"
     else:
         figureName = "/home/francesco/Pictures/soft/packings/del-" + figureName + ".png"
     #plt.plot(pos[3295,0], pos[3295,1], marker='*', markersize=20, color='r')
