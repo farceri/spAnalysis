@@ -6,6 +6,7 @@ Created by Francesco
 import numpy as np
 from scipy.fft import fft, fftfreq, fft2
 from scipy.spatial import Delaunay
+from sklearn.cluster import DBSCAN
 import spCluster as cluster
 import random
 import os
@@ -1302,6 +1303,15 @@ def computeLocalTempGrid(pos, vel, xbin, ybin, localTemp): #this works only for 
                         localTemp[x, y] += np.linalg.norm(vel[pId])**2
                         counts[x, y] += 1
     localTemp[localTemp>0] /= counts[localTemp>0]*2
+
+################################ DB clustering #################################
+def getDBClusterLabels(pos, boxSize, eps, min_samples, denseList = np.empty(0)):
+    numParticles = pos.shape[0]
+    if(denseList.shape[0] > 0):
+        distance = computeDistances(pos[denseList==1], boxSize)
+    db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
+    labels = db.labels_
+    return labels
 
 
 if __name__ == '__main__':

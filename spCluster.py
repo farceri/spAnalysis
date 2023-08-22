@@ -523,7 +523,7 @@ def averageClusterFluctuations(dirName, dirSpacing=10000):
     #plt.show()
 
 ############################# Cluster distribution #############################
-def averageClusterDistribution(dirName, numBins=40, dirSpacing=1):
+def averageClusterDistribution(dirName, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     phi = int(utils.readFromParams(dirName, "phi"))
     particleRad = np.array(np.loadtxt(dirName + "/particleRad.dat"))
@@ -581,8 +581,9 @@ def computeLocalDensityAndNumberFluctuations(dirName, plot=False, color='k'):
         deltaPhi[i] = np.var(localDensity)
     np.savetxt(dirName + os.sep + "localNumberDensity.dat", np.column_stack((numBins, meanNum, deltaNum, meanPhi, deltaPhi)))
     if(plot=="plot"):
-        uplot.plotCorrelation(meanNum, deltaPhi, "$Variance$ $of$ $local$ $number,$ $\\Delta N^2$", "$Local$ $number,$ $N_s$", color=color, logx=True, logy=True)
+        uplot.plotCorrelation(meanNum, deltaPhi, "$Variance$ $of$ $local$ $number,$ $\\Delta N^2$", "$Local$ $number,$ $N_s$", color=color, logx=True)
         plt.pause(0.5)
+        #plt.show()
     return meanNum, deltaNum, meanPhi, deltaPhi
 
 def averageLocalDensityAndNumberFluctuations(dirName, plot=False, dirSpacing=1000000):
@@ -614,7 +615,7 @@ def averageLocalDensityAndNumberFluctuations(dirName, plot=False, dirSpacing=100
     stdDeltaPhi = np.std(deltaPhiList, axis=0)
     np.savetxt(dirName + os.sep + "averageLocalNumberDensity.dat", np.column_stack((numBins, meanNum, stdMeanNum, deltaNum, stdDeltaNum, meanPhi, stdMeanPhi, deltaPhi, stdDeltaPhi)))
     if(plot=="plot"):
-        uplot.plotCorrWithError(meanNum, deltaNum, stdDeltaNum, "$Variance$ $of$ $local$ $number,$ $\\Delta N^2$", "$Local$ $number,$ $N_s$", color='k', logx=True, logy=True)
+        uplot.plotCorrWithError(meanNum, deltaPhi, stdDeltaPhi, "$Variance$ $of$ $local$ $number,$ $\\Delta N^2$", "$Local$ $number,$ $N_s$", color='k', logx=True)
         plt.pause(0.5)
 
 ############################# Cluster mixing time ##############################
@@ -630,26 +631,33 @@ def computeClusterMixingTime(dirName, plot=False, dirSpacing=1):
     if(os.path.exists(dirName + os.sep + "t0/delaunayList.dat")):
         initDenseList = np.loadtxt(dirName + os.sep + "t0/delaunayList.dat")
     else:
-        initDenseList,_ = computeVoronoiCluster(dirName + os.sep + "t0/")
+        initDenseList,_ = computeDelaunayCluster(dirName + os.sep + "t0/")
+    initDenseList *= 2
+    initDenseList -= 1
     initParticlesInCluster = initDenseList[initDenseList==1].shape[0]
     fraction = np.zeros(dirList.shape[0])
+    denseFraction = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
-        sharedParticles = 0
+        sharedParticles = np.zeros(numParticles)
         dirSample = dirName + os.sep + dirList[d]
         if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
         else:
-            denseList,_ = computeVoronoiCluster(dirSample)
+            denseList,_ = computeDelaunayCluster(dirSample)
+        denseList *= 2
+        denseList -= 1
+        denseFraction[d,0] = np.mean(denseList)
+        denseFraction[d,1] = np.mean(denseList**2)
         # check whether the particles in the cluster have changed by threshold
         for i in range(numParticles):
-            if(initDenseList[i] == 1 and denseList[i] == 1):
-                sharedParticles += 1
-        fraction[d] = sharedParticles / initParticlesInCluster
-        #print(timeList[d], fraction[d])
+                sharedParticles[i] = denseList[i] * initDenseList[i]
+        fraction[d] = np.mean(sharedParticles)
+    fraction = (fraction - np.mean(denseFraction[:,0])**2) / np.mean(denseFraction[:,1])
     np.savetxt(dirName + os.sep + "mixingTime.dat", np.column_stack((timeList, fraction)))
     if(plot=='plot'):
         uplot.plotCorrelation(timeList[fraction>0], fraction[fraction>0], "$N_c^0(t) / N_c^0$", xlabel = "$Simulation$ $time$", color='k')
-        plt.show()
+        #plt.show()
+        plt.pause(0.5)
 
 ################## Cluster mixing time averaged in time blocks #################
 def computeClusterBlockMixingTime(dirName, numBlocks, plot=False, dirSpacing=1):
@@ -664,30 +672,37 @@ def computeClusterBlockMixingTime(dirName, numBlocks, plot=False, dirSpacing=1):
     timeList = timeList[:blockFreq]
     fraction = np.zeros((blockFreq, numBlocks))
     for block in range(numBlocks):
-        print(block)
         # first get cluster at initial condition
         if(os.path.exists(dirName + os.sep + dirList[block*blockFreq] + "/delaunayList.dat")):
             initDenseList = np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/delaunayList.dat")
         else:
             initDenseList,_ = computeDelaunayCluster(dirName + os.sep + dirList[block*blockFreq])
+        initDenseList *= 2
+        initDenseList -= 1
         initParticlesInCluster = initDenseList[initDenseList==1].shape[0]
+        denseFraction = np.zeros((blockFreq,2))
         for d in range(blockFreq):
-            sharedParticles = 0
+            sharedParticles = np.zeros(numParticles)
             dirSample = dirName + os.sep + dirList[block*blockFreq + d]
             if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
                 denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
             else:
                 denseList,_ = computeDelaunayCluster(dirSample)
+            denseList *= 2
+            denseList -= 1
+            denseFraction[d,0] = np.mean(denseList)
+            denseFraction[d,1] = np.mean(denseList**2)
             # check whether the particles in the cluster have changed by threshold
             for i in range(numParticles):
-                if(initDenseList[i] == 1 and denseList[i] == 1):
-                    sharedParticles += 1
-            fraction[d, block] = sharedParticles / initParticlesInCluster
+                sharedParticles[i] = denseList[i] * initDenseList[i]
+            fraction[d, block] = np.mean(sharedParticles)
+        fraction[:, block] = (fraction[:,block] - np.mean(denseFraction[:,0])**2) / np.mean(denseFraction[:,1])
     blockFraction = np.column_stack((np.mean(fraction, axis=1), np.std(fraction, axis=1)))
     np.savetxt(dirName + os.sep + "blockMixingTime.dat", np.column_stack((timeList, blockFraction)))
     if(plot=='plot'):
         uplot.plotCorrelation(timeList, blockFraction[:,0], "$N_c^0(t) / N_c^0$", xlabel = "$Simulation$ $time$", color='k')
-        plt.show()
+        #plt.show()
+        plt.pause(0.5)
 
 ############ Time-averaged cluster mixing in log-spaced time window ############
 def computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower):
@@ -749,17 +764,19 @@ def computeClusterBlockEvaporationTime(dirName, numBlocks, plot=False, dirSpacin
     for block in range(numBlocks):
         print(block)
         # first get cluster at initial condition
-        if(os.path.exists(dirName + os.sep + dirList[block*blockFreq] + "/delaunayBorderList.dat")):
-            initBorderList = np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/delaunayBorderList.dat")
+        if(os.path.exists(dirName + os.sep + dirList[block*blockFreq] + "/borderList.dat")):
+            initBorderList = np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/borderList.dat")
         else:
-            initBorderList,_ = computeDelaunayBorder(dirName + os.sep + dirList[block*blockFreq])
+            computeDelaunayCluster(dirName + os.sep + dirList[block*blockFreq])
+            initBorderList = np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/borderList.dat")
         for d in range(blockFreq):
             sharedParticles = 0
             dirSample = dirName + os.sep + dirList[block*blockFreq + d]
-            if(os.path.exists(dirSample + os.sep + "delaunayBorderList.dat")):
-                borderList = np.loadtxt(dirSample + os.sep + "delaunayBorderList.dat")
+            if(os.path.exists(dirSample + os.sep + "borderList.dat")):
+                borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
             else:
-                borderList,_ = computeDelaunayBorder(dirSample)
+                computeDelaunayCluster(dirSample)
+                borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
             # check whether the particles in the cluster have changed by threshold
             for i in range(numParticles):
                 if(initBorderList[i] == 1 and borderList[i] == 0):
@@ -925,7 +942,7 @@ def searchClusters(dirName, numParticles=None, plot=False, cluster="cluster"):
         plt.show()
     return connectLabel, noClusterList, particleLabel
 
-def searchDBClusters(dirName, eps=0, min_samples=8, plot=False, contactFilter='contact'):
+def searchDBClusters(dirName, eps=0, min_samples=6, plot=False, contactFilter='contact'):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
@@ -947,7 +964,7 @@ def searchDBClusters(dirName, eps=0, min_samples=8, plot=False, contactFilter='c
         plt.show()
     return clusterLabels, noClusterLabels, labels
 
-def averageDBClusterSize(dirName, dirSpacing, eps=0.03, min_samples=10, plot=False, contactFilter=False):
+def averageDBClusterSize(dirName, dirSpacing, eps=0.03, min_samples=6, plot=False, contactFilter=False):
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
     #cutoff = 2 * np.max(rad)
@@ -1870,6 +1887,48 @@ def computeClusterDelaunayShape(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, shapeParam[:,2], "$Perimeter,$ $Area,$ $Shape$", xlabel = "$Time,$ $t$", color='k')
         plt.pause(0.5)
     return shapeParam
+
+############################# Cluster distribution #############################
+def averageDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    phi = int(utils.readFromParams(dirName, "phi"))
+    rad = np.array(np.loadtxt(dirName + "/particleRad.dat"))
+    eps = 2 * np.max(rad)
+    boxSize = np.loadtxt(dirName + "/boxSize.dat")
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    clusterNumber = np.empty(0)
+    clusterArea = np.empty(0)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
+            denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
+        else:
+            computeDelaunayCluster(dirSample)
+            denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        denseRad = rad[denseList==1]
+        labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=10, denseList=denseList)
+        numLabels = np.unique(labels).shape[0]-1
+        for i in range(numLabels):
+            clusterNumber = np.append(clusterNumber, labels[labels==i].shape[0])
+            clusterArea = np.append(clusterArea, np.sum(denseRad[labels==i]**2)*np.pi)
+    # in cluster
+    clusterArea = clusterArea[clusterNumber>0]
+    clusterNumber = clusterNumber[clusterNumber>0]
+    clusterArea = clusterArea[np.argsort(clusterNumber)]
+    clusterNumber = np.sort(clusterNumber)
+    np.savetxt(dirName + os.sep + "clusterDistribution.dat", np.column_stack((clusterNumber, clusterArea)))
+    print("Average number in cluster: ", np.mean(clusterNumber), " +- ", np.std(clusterNumber))
+    if(plot == 'plot'):
+        numBins = 40
+        pdf, edges = np.histogram(clusterNumber, bins=np.geomspace(np.min(clusterNumber), np.max(clusterNumber), numBins), density=True)
+        edges = (edges[1:] + edges[:-1])/2
+        uplot.plotCorrelation(edges, pdf, "$PDF(N_c)$", xlabel = "$N_c$", color='k', logx=True, logy=True)
+        #plt.show()
+        plt.pause(0.5)
 
 ######################### Cluster pressure components ##########################
 def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
@@ -3239,6 +3298,10 @@ if __name__ == '__main__':
     elif(whichCorr == "delshape"):
         plot = sys.argv[3]
         computeClusterDelaunayShape(dirName, plot)
+
+    elif(whichCorr == "deldistro"):
+        plot = sys.argv[3]
+        averageDelaunayClusterDistribution(dirName, plot)
 
     elif(whichCorr == "clusterdptime"):
         computeDelaunayClusterPressureVSTime(dirName)

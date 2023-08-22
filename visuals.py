@@ -208,9 +208,9 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     #    print(particleId)
     #    plt.pause(1)
     if(dense==True):
-        figureName = "/home/francesco/Pictures/soft/packings/dense-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/dense-" + figureName + ".png"
     elif(border==True):
-        figureName = "/home/francesco/Pictures/soft/packings/border-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/border-" + figureName + ".png"
     elif(ekmap==True):
         colorBar = cm.ScalarMappable(cmap='viridis')
         cb = plt.colorbar(colorBar)
@@ -220,11 +220,11 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
         ticklabels = [np.format_float_scientific(np.min(ekin), precision=2), np.format_float_scientific(np.max(ekin), precision=2)]
         cb.set_ticklabels(ticklabels)
         cb.set_label(label=label, fontsize=14, labelpad=-20, rotation='horizontal')
-        figureName = "/home/francesco/Pictures/soft/packings/ekmap-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/ekmap-" + figureName + ".png"
     elif(quiver==True):
-        figureName = "/home/francesco/Pictures/soft/packings/velmap-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/velmap-" + figureName + ".png"
     else:
-        figureName = "/home/francesco/Pictures/soft/packings/" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/" + figureName + ".png"
     plt.tight_layout()
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
