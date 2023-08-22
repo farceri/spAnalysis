@@ -774,7 +774,7 @@ def computeClusterBlockEvaporationTime(dirName, numBlocks, plot=False, dirSpacin
         plt.show()
 
 ############################ Velocity distribution #############################
-def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
+def averageClusterVelPDF(dirName, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
@@ -821,6 +821,86 @@ def averageParticleVelPDFCluster(dirName, plot=False, dirSpacing=1):
     if(plot == "plot"):
         #plt.pause(0.5)
         plt.show()
+
+######################### CLuster velocity correlation #########################
+def computeClusterVelTimeCorr(dirName, numBlocks, plot=False, dirSpacing=1):
+    numParticles = utils.readFromParams(dirName, "numParticles")
+    timeStep = utils.readFromParams(dirName, "dt")
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    blockFreq = dirList.shape[0]//numBlocks
+    timeList = timeList[:blockFreq]
+    blockVelCorr = np.zeros((blockFreq, numBlocks))
+    for block in range(numBlocks):
+        if(os.path.exists(dirName + os.sep + dirList[block*blockFreq] + "/delaunayList.dat")):
+            initDenseList = np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/delaunayList.dat")
+        else:
+            initDenseList,_ = computeDelaunayCluster(dirName + os.sep + dirList[block*blockFreq])
+        initVel = np.array(np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/particleVel.dat"))
+        initVel = initVel[initDensitList==0]
+        velMagnitude = np.column_stack((np.linalg.norm(initVel, axis=1), np.linalg.norm(initVel, axis=1)))
+        initDir = initVel / velMagnitude
+        velSquared = np.mean(np.sum(initVel**2, axis=1))
+        for d in range(blockFreq):
+            vel = np.array(np.loadtxt(dirName + os.sep + dirList[block*blockFreq + d] + "/particleVel.dat"))
+            vel = vel[initDensitList==0]
+            velMagnitude = np.column_stack((np.linalg.norm(vel, axis=1), np.linalg.norm(vel, axis=1)))
+            dir = vel / velMagnitude
+            blockVelCorr[d, block] = np.mean(np.sum(vel*initVel, axis=1))
+        blockVelCorr[:, block] /= velSquared
+    velCorr = np.column_stack((np.mean(blockVelCorr, axis=1), np.std(blockVelCorr, axis=1)))
+    np.savetxt(dirName + os.sep + "velTimeCorr.dat", np.column_stack((timeList*timeStep, velCorr)))
+    if(plot=='plot'):
+        uplot.plotCorrWithError(timeList*timeStep, velCorr[:,0], velCorr[:,1], ylabel="$C_{vv}(\\Delta t)$", xlabel="$Elapsed$ $time,$ $\\Delta t$", color = 'k')
+        plt.show()
+        #plt.pause(0.5)
+
+def computeClusterLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot=False):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    if(os.path.exists(dirName + os.sep + "t0/delaunayList.dat")):
+        initDenseList = np.loadtxt(dirName + os.sep + "t0/delaunayList.dat")
+    else:
+        initDenseList,_ = computeDelaunayCluster(dirName + os.sep + "t0/")
+    initVel = np.array(np.loadtxt(dirName + os.sep + "t0/particleVel.dat"))
+    initVel = initVel[initDenseList==0]
+    velSquared = np.mean(np.sum(initVel**2, axis=1))
+    timeStep = utils.readFromParams(dirName, "dt")
+    timeList = []
+    velCorr = []
+    freqDecade = int(10**freqPower)
+    decadeSpacing = 10
+    spacingDecade = 1
+    stepDecade = 10
+    numBlocks = int(10**(maxPower-freqPower))
+    for power in range(maxPower):
+        for spacing in range(1,decadeSpacing):
+            stepRange = np.arange(0,stepDecade,spacing*spacingDecade,dtype=int)
+            stepVelCorr = []
+            numPairs = 0
+            for multiple in range(startBlock, numBlocks):
+                for i in range(stepRange.shape[0]-1):
+                    if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
+                        vel1, vel2 = utils.readVelPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
+                        vel1 = vel1[initDenseList==0]
+                        vel2 = vel2[initDenseList==0]
+                        stepVelCorr.append(np.mean(np.sum(vel1*vel2, axis=1)))
+                        numPairs += 1
+            if(numPairs > 0):
+                timeList.append(spacing*spacingDecade)
+                velCorr.append([np.mean(stepVelCorr, axis=0), np.std(stepVelCorr, axis=0)])
+        stepDecade *= 10
+        spacingDecade *= 10
+    timeList = np.array(timeList)
+    velCorr = np.array(velCorr).reshape((timeList.shape[0],2))
+    velCorr = velCorr[np.argsort(timeList)] / velSquared
+    timeList = np.sort(timeList)
+    np.savetxt(dirName + os.sep + "logVelTimeCorr.dat", np.column_stack((timeList*timeStep, velCorr)))
+    if(plot=='plot'):
+        uplot.plotCorrWithError(timeList*timeStep, velCorr[:,0]/velCorr[0,0], velCorr[:,1]/velCorr[0,0], ylabel="$C_{vv}(\\Delta t)$", xlabel="$Elapsed$ $time,$ $\\Delta t$", color='k', logx=True)
+        plt.show()
+        #plt.pause(0.5)
 
 ################################################################################
 ############################## Clustering algorithms ###########################
@@ -1701,7 +1781,6 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
         if(os.path.exists(dirSample + os.sep + "denseSimplexList!.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
@@ -1742,6 +1821,7 @@ def computeClusterDelaunayDensity(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, delaunayDensity[:,2], "$\\varphi^{Delaunay}$", xlabel = "$Time,$ $t$", color='k')
         plt.pause(0.5)
         #plt.show()
+    return np.column_stack((timeList, delaunayDensity))
 
 ######################## Compute cluster shape parameter #######################
 def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
@@ -1757,7 +1837,6 @@ def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
         # area
         if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
@@ -1838,28 +1917,27 @@ def computeClusterDelaunayShape(dirName, plot=False, dirSpacing=1):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        # perimeter
-        if(os.path.exists(dirSample + os.sep + "delaunayBorderLength.dat")):
-            shapeParam[d,0] = np.loadtxt(dirSample + os.sep + "delaunayBorderLength.dat")
-        else:
-            _, shapeParam[d,0] = computeDelaunayBorder(dirSample)
-        # area
-        if(os.path.exists(dirSample + os.sep + "denseSimplexList.dat")):
+        if(os.path.exists(dirSample + os.sep + "borderList.dat")):
+            borderSimplexList = np.loadtxt(dirSample + os.sep + "borderSimplexList.dat")
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexDensity = np.loadtxt(dirSample + os.sep + "simplexDensity.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
+            borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
         else:
             _, simplexDensity = computeDelaunayCluster(dirSample)
+            borderSimplexList = np.loadtxt(dirSample + os.sep + "borderSimplexList.dat")
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             simplexArea = np.loadtxt(dirSample + os.sep + "simplexArea.dat")
-        occupiedArea = simplexDensity * simplexArea
-        fluidArea = 0
+            borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
+        # perimeter
+        shapeParam[d,0] = np.sum(rad[borderList==1]) #correct for overlaps
+        # area
         for i in range(simplexDensity.shape[0]):
-            if(denseSimplexList[i]==1):
+            if(denseSimplexList[i]==1 and borderSimplexList[i]==0):
                 shapeParam[d,1] += simplexArea[i]
         # shape parameter
-        shapeParam[d,2] = shapeParam[d,0]**2 / (4 * np.pi * shapeParam[d,1])
+        if(shapeParam[d,1] > 1e-03):
+            shapeParam[d,2] = shapeParam[d,0]**2 / (4 * np.pi * shapeParam[d,1])
     np.savetxt(dirName + os.sep + "delaunayShape.dat", np.column_stack((timeList, shapeParam)))
     print("Cluster perimeter: ", np.mean(shapeParam[:,0]), " +- ", np.std(shapeParam[:,0]))
     print("Cluster area: ", np.mean(shapeParam[:,1]), " +- ", np.std(shapeParam[:,1]))
@@ -1870,6 +1948,33 @@ def computeClusterDelaunayShape(dirName, plot=False, dirSpacing=1):
         uplot.plotCorrelation(timeList, shapeParam[:,2], "$Perimeter,$ $Area,$ $Shape$", xlabel = "$Time,$ $t$", color='k')
         plt.pause(0.5)
     return shapeParam
+
+########################### Compute delaunay density ###########################
+def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    clusterVel = np.zeros((dirList.shape[0],3))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")==False):
+            computeDelaunayCluster(dirSample, threshold=0.76, filter='filter')
+        denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
+        clusterVel[d,0] = np.mean(np.linalg.norm(vel, axis=1))
+        clusterVel[d,1] = np.mean(np.linalg.norm(vel[denseList==1], axis=1))
+        clusterVel[d,2] = np.mean(np.linalg.norm(vel[denseList==0], axis=1))
+    np.savetxt(dirName + os.sep + "clusterVel.dat", np.column_stack((timeList, clusterVel)))
+    if(plot=='plot'):
+        uplot.plotCorrelation(timeList, clusterVel[:,2], "$l_p$", xlabel = "$Time,$ $t$", color='k')
+        plt.pause(0.5)
+    return np.column_stack((timeList, clusterVel))
 
 ######################### Cluster pressure components ##########################
 def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
@@ -1893,7 +1998,7 @@ def computeDelaunayClusterPressureVSTime(dirName, dirSpacing=1):
     boxLength = 2 * (boxSize[0] + boxSize[1])
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "delaunayList!.dat")):
+        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
             denseSimplexList = np.loadtxt(dirSample + os.sep + "denseSimplexList.dat")
             borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
@@ -3156,7 +3261,19 @@ if __name__ == '__main__':
 
     elif(whichCorr == "velpdf"):
         plot = sys.argv[3]
-        averageParticleVelPDFCluster(dirName, plot)
+        averageClusterVelPDF(dirName, plot)
+
+    elif(whichCorr == "velcorr"):
+        numBlocks = int(sys.argv[3])
+        plot = sys.argv[4]
+        computeClusterVelTimeCorr(dirName, numBlocks, plot)
+
+    elif(whichCorr == "logvelcorr"):
+        startBlock = int(sys.argv[3])
+        maxPower = int(sys.argv[4])
+        freqPower = int(sys.argv[5])
+        plot = sys.argv[6]
+        computeClusterLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot)
 
 ############################ clustering algorithms #############################
     elif(whichCorr == "cluster"):
@@ -3239,6 +3356,10 @@ if __name__ == '__main__':
     elif(whichCorr == "delshape"):
         plot = sys.argv[3]
         computeClusterDelaunayShape(dirName, plot)
+
+    elif(whichCorr == "delpers"):
+        plot = sys.argv[3]
+        computeDelaunayClusterVel(dirName, plot)
 
     elif(whichCorr == "clusterdptime"):
         computeDelaunayClusterPressureVSTime(dirName)

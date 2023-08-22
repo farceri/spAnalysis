@@ -141,7 +141,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     #pos = utils.centerPositions(pos, rad, boxSize)
-    pos = utils.shiftPositions(pos, boxSize, -0.5, 0)#1.35, 0 for box21 16k 0, 0.2 for 0.31 16k droplet
+    pos = utils.shiftPositions(pos, boxSize, 0, 0)#1.35, 0 for box21 16k 0, 0.2 for 0.31 16k droplet
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -433,15 +433,20 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
-    if(dense==True or border==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList!.dat")):
+    if(dense==True):
+        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
             denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
         else:
             denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
         colorId = getDenseColorList(denseList)
-        if(border==True):
+    if(border==True):
+        if(os.path.exists(dirName + os.sep + "borderList.dat")):
             borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
-            colorId = getBorderColorList(denseList, borderList)
+        else:
+            _,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
+            borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
+        denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
+        colorId = getBorderColorList(denseList, borderList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
@@ -556,19 +561,12 @@ def plotSoftParticles(ax, pos, rad, alpha = 0.6, colorMap = True, lw = 0.5):
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth = lw))
 
-def plotSoftParticlesSubSet(ax, pos, rad, tagList, alpha = 0.6, colorMap = True, lw = 0.5):
-    colorId = np.zeros((rad.shape[0], 4))
-    if(colorMap == True):
-        colorList = cm.get_cmap('viridis', rad.shape[0])
-    else:
-        colorList = cm.get_cmap('Reds', rad.shape[0])
-    count = 0
-    for particleId in np.argsort(rad):
-        colorId[particleId] = colorList(count/rad.shape[0])
-        count += 1
+def plotSoftParticlesSubSet(ax, pos, rad, tagList, alpha = 0.2, lw = 0.5):
+    colorId = np.ones((rad.shape[0], 4))
     colorId[tagList==1] = [0,0,0,1]
-    alphaId = np.ones(colorId.shape[0])
-    alphaId[tagList==1] = alpha
+    alphaId = np.zeros(rad.shape[0])
+    alphaId[tagList==1] = 1
+    alphaId[tagList==0] = alpha
     for particleId in range(pos.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
@@ -673,6 +671,7 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
     if(subSet == "subset"):
         tagList = np.zeros(rad.shape[0])
         tagList[:firstIndex] = 1
+        plotSoftParticlesSubSet(axFrame, pos, rad, tagList)
     elif(quiver == "quiver"):
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
         plotSoftParticleQuiverVel(axFrame, pos, vel, rad)

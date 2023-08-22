@@ -23,17 +23,21 @@ import spCluster as cluster
 ################################################################################
 def plotSimplexDensity(dirName, figureName, which = False, logy=False, pad = 1):
     fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi=150)
-    if(os.path.exists(dirName + os.sep + 'simplexDensity!.dat')):
+    if(os.path.exists(dirName + os.sep + 'simplexDensity.dat')):
         simplexDensity = np.loadtxt(dirName + os.sep + 'simplexDensity.dat')
     else:
-        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.78, filter='filter')
+        _, simplexDensity = cluster.computeDelaunayCluster(dirName, threshold=0.76, filter='filter')
     denseSimplexList = np.loadtxt(dirName + os.sep + 'denseSimplexList.dat')
+    borderSimplexList = np.loadtxt(dirName + os.sep + 'borderSimplexList.dat')
     if(which == 'fluid'):
         simplexDensity = simplexDensity[denseSimplexList==1]
         figureName = figureName + '-' + which
     elif(which == 'gas'):
+        simplexDensity[borderSimplexList==1] = 0
         simplexDensity = simplexDensity[denseSimplexList==0]
-        figureName = figureName + '-' + which
+    elif(which == 'border'):
+        simplexDensity = simplexDensity[borderSimplexList==1]
+    figureName = figureName + '-' + which
     ax[0].plot(np.arange(1, simplexDensity.shape[0]+1, 1), np.sort(simplexDensity), color='k', marker='.', markersize=8, lw=0.8, fillstyle='none')
     ax[0].tick_params(axis='both', labelsize=12)
     ax[0].set_xlabel('$Simplex$ $index$', fontsize=16)
@@ -759,7 +763,7 @@ def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
     taup = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         if(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-long/"
         elif(fixed=="Dr"):
             #dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
@@ -768,9 +772,9 @@ def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
             #print(phi[d], utils.readFromParams(dirSample, "phi"))
             if(d==0):
                 numParticles = utils.readFromParams(dirSample, "numParticles")
-        if(os.path.exists(dirSample + "shapeParameter.dat")):
+        if(os.path.exists(dirSample + "delaunayShape.dat")):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-            data = np.loadtxt(dirSample + "shapeParameter.dat")
+            data = np.loadtxt(dirSample + "delaunayShape.dat")
             meanShape[d,0] = np.mean(data[:,1])
             errorShape[d,0] = np.std(data[:,1])
             meanShape[d,1] = np.mean(data[:,2])
@@ -788,10 +792,11 @@ def plotSPClusterShape(dirName, figureName, fixed=False, which='1e-03'):
         figureName = "/home/francesco/Pictures/soft/mips/pClusterShape-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Shape$ $parameter$", fontsize=18)
-    ax.errorbar(x[meanShape[:,2]>0], meanShape[meanShape[:,2]>0,2], errorShape[meanShape[:,2]>0,2], color='k', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4)
+    ax.set_ylabel("$Liquid$ $shape$", fontsize=18)
+    ax.errorbar(x[meanShape[:,2]>0], meanShape[meanShape[:,2]>0,2], errorShape[meanShape[:,2]>0,2], color='b', lw=1.2, marker='s', markersize = 8, fillstyle='none', elinewidth=1, capsize=4)
     if(fixed!="Dr"):
         ax.set_xscale('log')
+        ax.set_yscale('log')
     #ax.set_xlim(5.8e-06, 2.8e03)
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
@@ -853,6 +858,97 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
     ax.set_xlabel("$Elapsed$ $time,$ $\\Delta t$", fontsize=18)
     ax.set_ylabel("$Mixing$ $ratio$", fontsize=18)
     fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterPersistence(dirName, figureName, fixed=False, which='1e-03'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(fixed=="phi"):
+        dirList = np.array(['100', '10', '5', '1', '5e-01', '1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
+    elif(fixed=="Dr"):
+        #dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
+        dirList = np.array(['25', '27', '30', '35', '40', '45', '52', '57', '62', '67', '72', '78', '82', '85', '88', '91', '94'])
+    else:
+        print('please specify fixed parameter')
+    liquidlp = np.zeros((dirList.shape[0],2))
+    gaslp = np.zeros((dirList.shape[0],2))
+    taup = np.zeros(dirList.shape[0])
+    phi = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        if(fixed=="phi"):
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
+        elif(fixed=="Dr"):
+            #dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
+            dirSample = dirName + os.sep + "thermal" + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
+            if not(os.path.exists(dirSample + "delaunayDensity.dat")):
+                density = cluster.computeClusterDelaunayDensity(dirSample)
+            else:
+                density = np.loadtxt(dirSample + os.sep + "delaunayDensity.dat")
+            phi[d] = np.mean(density[:,3])
+        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+        if not(os.path.exists(dirSample + "clusterVel.dat")):
+            persistence = cluster.computeDelaunayClusterVel(dirSample)*taup[d]
+        else:
+            persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")*taup[d]
+        liquidlp[d,0] = np.mean(persistence[:,2])
+        liquidlp[d,1] = np.std(persistence[:,2])
+        gaslp[d,0] = np.mean(persistence[:,3])
+        gaslp[d,1] = np.std(persistence[:,3])
+    if(fixed=="Dr"):
+        x = phi
+        xlabel = "$Density,$ $\\varphi$"
+        figureName = "/home/francesco/Pictures/soft/mips/pPers-vsPhi-" + figureName
+    elif(fixed=="phi"):
+        x = taup
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        figureName = "/home/francesco/Pictures/soft/mips/pPers-vsDr-" + figureName
+        t = np.linspace(2e03,3e06,100)
+        ax.plot(t, 0.9*t, ls='dashed', color='k', lw=1.3)
+        t = np.linspace(2e-03,2,100)
+        ax.plot(t, t**1.2, ls='dashdot', color='k', lw=1.3)
+    ax.errorbar(x, liquidlp[:,0], liquidlp[:,1], capsize=3, color='b', marker='s', markersize=8, lw=1.2, fillstyle='none', label='$Liquid$')
+    ax.errorbar(x, gaslp[:,0], gaslp[:,1], capsize=3, color=[1,0.5,0], marker='o', markersize=8, lw=1.2, fillstyle='none', label='$Gas$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=18)
+    ax.set_ylabel("$Persistence$ $length,$ $l_p$", fontsize=18)
+    ax.legend(fontsize=14, loc='best')
+    fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterPersistenceVSSystemSize(dirName, figureName, which='1e-07'):
+    fig, ax = plt.subplots(figsize = (7,3.5), dpi = 120)
+    numParticles = np.array([1024, 2048, 4096, 8192, 16384, 32768])
+    dirList = np.array(['1024', '2048', '4096', '8192', '16384', '32768'])
+    labelList = np.array(['$N = 1024$', '$N = 2048$', '$N = 4096$', '$N = 8192$', '$N = 16384$', '$N = 32768$'])
+    liquidlp = np.zeros((dirList.shape[0],2))
+    gaslp = np.zeros((dirList.shape[0],2))
+    taup = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d] + "-2d/thermal45/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
+        if(os.path.exists(dirSample)):
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+            if not (os.path.exists(dirSample + "clusterVel.dat")):
+                persistence = cluster.computeDelaunayClusterVel(dirSample)*taup[d]
+            else:
+                persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")*taup[d]
+            liquidlp[d,0] = np.mean(persistence[:,2])
+            liquidlp[d,1] = np.std(persistence[:,2])
+            gaslp[d,0] = np.mean(persistence[:,3])
+            gaslp[d,1] = np.std(persistence[:,3])
+    ax.errorbar(numParticles[gaslp[:,0]>0], liquidlp[gaslp[:,0]>0,0], liquidlp[gaslp[:,0]>0,1], capsize=3, color='b', marker='s', markersize=8, lw=1.2, fillstyle='none', label='$Liquid$')
+    ax.errorbar(numParticles[gaslp[:,0]>0], gaslp[gaslp[:,0]>0,0], gaslp[gaslp[:,0]>0,1], capsize=3, color=[1,0.5,0], marker='o', markersize=8, lw=1.2, fillstyle='none', label='$Gas$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xscale('log', basex=2)
+    ax.set_xlabel('$System$ $size,$ $N$', fontsize=18)
+    ax.set_ylabel('$Persistence$ $length,$ $l_p$', fontsize=18)
+    ax.legend(fontsize=12, loc='best')
+    ax.set_xticks(numParticles)
+    ax.set_xticklabels(dirList)
+    fig.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/pPers-vsSystemSize-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1748,7 +1844,7 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
-            dirList = np.array(['1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
+            dirList = np.array(['100', '10', '1', '5e-01', '1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
     elif(fixed=="Dr"):
@@ -2513,6 +2609,17 @@ if __name__ == '__main__':
         fixed = sys.argv[4]
         which = sys.argv[5]
         plotSPClusterMixingTime(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "clusterpers"):
+        figureName = sys.argv[3]
+        fixed = sys.argv[4]
+        which = sys.argv[5]
+        plotSPClusterPersistence(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "perssize"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterPersistenceVSSystemSize(dirName, figureName, which)
 
     elif(whichPlot == "colpers"):
         figureName = sys.argv[3]
