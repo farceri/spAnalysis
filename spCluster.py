@@ -636,7 +636,8 @@ def computeClusterMixingTime(dirName, plot=False, dirSpacing=1):
     initDenseList -= 1
     initParticlesInCluster = initDenseList[initDenseList==1].shape[0]
     fraction = np.zeros(dirList.shape[0])
-    denseFraction = np.zeros((dirList.shape[0],2))
+    denseFraction = np.zeros(dirList.shape[0])
+    denseFractionSq = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         sharedParticles = np.zeros(numParticles)
         dirSample = dirName + os.sep + dirList[d]
@@ -646,13 +647,13 @@ def computeClusterMixingTime(dirName, plot=False, dirSpacing=1):
             denseList,_ = computeDelaunayCluster(dirSample)
         denseList *= 2
         denseList -= 1
-        denseFraction[d,0] = np.mean(denseList)
-        denseFraction[d,1] = np.mean(denseList**2)
+        denseFraction[d] = np.mean(denseList)
+        denseFractionSq[d] = np.mean(denseList**2)
         # check whether the particles in the cluster have changed by threshold
         for i in range(numParticles):
                 sharedParticles[i] = denseList[i] * initDenseList[i]
         fraction[d] = np.mean(sharedParticles)
-    fraction = (fraction - np.mean(denseFraction[:,0])**2) / np.mean(denseFraction[:,1])
+    fraction = (fraction - np.mean(denseFraction)**2) / (np.mean(denseFractionSq) - np.mean(denseFraction)**2)
     np.savetxt(dirName + os.sep + "mixingTime.dat", np.column_stack((timeList, fraction)))
     if(plot=='plot'):
         uplot.plotCorrelation(timeList[fraction>0], fraction[fraction>0], "$N_c^0(t) / N_c^0$", xlabel = "$Simulation$ $time$", color='k')
@@ -680,7 +681,8 @@ def computeClusterBlockMixingTime(dirName, numBlocks, plot=False, dirSpacing=1):
         initDenseList *= 2
         initDenseList -= 1
         initParticlesInCluster = initDenseList[initDenseList==1].shape[0]
-        denseFraction = np.zeros((blockFreq,2))
+        denseFraction = np.zeros(blockFreq)
+        denseFractionSq = np.zeros(blockFreq)
         for d in range(blockFreq):
             sharedParticles = np.zeros(numParticles)
             dirSample = dirName + os.sep + dirList[block*blockFreq + d]
@@ -690,13 +692,13 @@ def computeClusterBlockMixingTime(dirName, numBlocks, plot=False, dirSpacing=1):
                 denseList,_ = computeDelaunayCluster(dirSample)
             denseList *= 2
             denseList -= 1
-            denseFraction[d,0] = np.mean(denseList)
-            denseFraction[d,1] = np.mean(denseList**2)
+            denseFraction[d] = np.mean(denseList)
+            denseFractionSq[d] = np.mean(denseList**2)
             # check whether the particles in the cluster have changed by threshold
             for i in range(numParticles):
                 sharedParticles[i] = denseList[i] * initDenseList[i]
             fraction[d, block] = np.mean(sharedParticles)
-        fraction[:, block] = (fraction[:,block] - np.mean(denseFraction[:,0])**2) / np.mean(denseFraction[:,1])
+        fraction[:, block] = (fraction[:,block] - np.mean(denseFraction)**2) / (np.mean(denseFractionSq) - np.mean(denseFraction)**2)
     blockFraction = np.column_stack((np.mean(fraction, axis=1), np.std(fraction, axis=1)))
     np.savetxt(dirName + os.sep + "blockMixingTime.dat", np.column_stack((timeList, blockFraction)))
     if(plot=='plot'):
@@ -705,7 +707,7 @@ def computeClusterBlockMixingTime(dirName, numBlocks, plot=False, dirSpacing=1):
         plt.pause(0.5)
 
 ############ Time-averaged cluster mixing in log-spaced time window ############
-def computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower):
+def computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower, plot=False):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     timeStep = utils.readFromParams(dirName, "dt")
     phi = int(utils.readFromParams(dirName, "phi"))
@@ -720,21 +722,28 @@ def computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower):
     for power in range(maxPower):
         for spacing in range(1,decadeSpacing):
             stepRange = np.arange(0,stepDecade,spacing*spacingDecade,dtype=int)
-            stepFraction = []
             numPairs = 0
+            stepFraction = []
+            denseFraction = []
+            denseFractionSq = []
             for multiple in range(startBlock, numBlocks):
                 for i in range(stepRange.shape[0]-1):
                     if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
                         denseList1, denseList2 = utils.readDenseListPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
-                        sharedParticles = 0
-                        initClusterParticles = denseList1[denseList1==1].shape[0]
-                        if(initClusterParticles > 0):
-                            for i in range(numParticles):
-                                if(denseList1[i] == 1 and denseList2[i] == 1):
-                                    sharedParticles += 1
-                            stepFraction.append(sharedParticles / initClusterParticles)
-                            numPairs += 1
+                        denseList1 *= 2
+                        denseList1 -= 1
+                        denseList2 *= 2
+                        denseList2 -= 1
+                        denseFraction.append(np.mean(denseList1))
+                        denseFractionSq.append(np.mean(denseList1**2))
+                        # check whether the particles in the cluster have changed by threshold
+                        sharedParticles = np.zeros(numParticles)
+                        for i in range(numParticles):
+                            sharedParticles[i] = denseList1[i] * denseList2[i]
+                        stepFraction.append(sharedParticles)
+                        numPairs += 1
             if(numPairs > 0):
+                stepFraction = (stepFraction - np.mean(denseFraction)**2)/(np.mean(denseFractionSq) - np.mean(denseFraction)**2)
                 stepList.append(spacing*spacingDecade)
                 fraction.append([np.mean(stepFraction), np.std(stepFraction)])
         stepDecade *= 10
@@ -744,8 +753,10 @@ def computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower):
     fraction = fraction[np.argsort(stepList)]
     stepList = np.sort(stepList)
     np.savetxt(dirName + os.sep + "logMixingTime.dat", np.column_stack((stepList*timeStep, fraction)))
-    uplot.plotCorrWithError(stepList*timeStep, fraction[:,0], fraction[:,1], ylabel="$C_{vv}(\\Delta t)$", logx = True, color = 'k')
-    plt.pause(0.5)
+    if(plot=='plot'):
+        uplot.plotCorrWithError(stepList*timeStep, fraction[:,0], fraction[:,1], ylabel="$C_{vv}(\\Delta t)$", logx = True, color = 'k')
+        #plt.pause(0.5)
+        plt.show()
 
 ############### Cluster evaporation time averaged in time blocks ###############
 def computeClusterBlockEvaporationTime(dirName, numBlocks, plot=False, dirSpacing=1):
@@ -850,6 +861,7 @@ def computeClusterVelTimeCorr(dirName, numBlocks, plot=False, dirSpacing=1):
     blockFreq = dirList.shape[0]//numBlocks
     timeList = timeList[:blockFreq]
     blockVelCorr = np.zeros((blockFreq, numBlocks))
+    blockDirCorr = np.zeros((blockFreq, numBlocks))
     for block in range(numBlocks):
         if(os.path.exists(dirName + os.sep + dirList[block*blockFreq] + "/delaunayList.dat")):
             initDenseList = np.loadtxt(dirName + os.sep + dirList[block*blockFreq] + "/delaunayList.dat")
@@ -859,18 +871,29 @@ def computeClusterVelTimeCorr(dirName, numBlocks, plot=False, dirSpacing=1):
         initVel = initVel[initDensitList==0]
         velMagnitude = np.column_stack((np.linalg.norm(initVel, axis=1), np.linalg.norm(initVel, axis=1)))
         initDir = initVel / velMagnitude
-        velSquared = np.mean(np.sum(initVel**2, axis=1))
+        meanVel = np.zeros(blockFreq)
+        meanVelSq = np.zeros(blockFreq)
+        meanDir = np.zeros(blockFreq)
+        meanDirSq = np.zeros(blockFreq)
         for d in range(blockFreq):
             vel = np.array(np.loadtxt(dirName + os.sep + dirList[block*blockFreq + d] + "/particleVel.dat"))
             vel = vel[initDensitList==0]
             velMagnitude = np.column_stack((np.linalg.norm(vel, axis=1), np.linalg.norm(vel, axis=1)))
             dir = vel / velMagnitude
             blockVelCorr[d, block] = np.mean(np.sum(vel*initVel, axis=1))
-        blockVelCorr[:, block] /= velSquared
+            meanVel[d] = np.mean(np.linalg.norm(vel,axis=1))
+            meanVelSq[d] = np.mean(np.linalg.norm(vel,axis=1)**2)
+            blockDirCorr[d, block] = np.mean(np.sum(dir*initDir, axis=1))
+            meanDir[d] = np.mean(np.linalg.norm(dir,axis=1))
+            meanDirSq[d] = np.mean(np.linalg.norm(dir,axis=1)**2)
+        blockVelCorr[:, block] = (blockVelCorr - np.mean(meanVel)**2) / (np.mean(meanVelSq) - np.mean(meanVel)**2)
+        blockDirCorr[:, block] = (blockDirCorr - np.mean(meanDir)**2) / (np.mean(meanDirSq) - np.mean(meanDir)**2)
     velCorr = np.column_stack((np.mean(blockVelCorr, axis=1), np.std(blockVelCorr, axis=1)))
-    np.savetxt(dirName + os.sep + "velTimeCorr.dat", np.column_stack((timeList*timeStep, velCorr)))
+    dirCorr = np.column_stack((np.mean(blockDirCorr, axis=1), np.std(blockDirCorr, axis=1)))
+    np.savetxt(dirName + os.sep + "velTimeCorr.dat", np.column_stack((timeList*timeStep, velCorr, velDir)))
     if(plot=='plot'):
         uplot.plotCorrWithError(timeList*timeStep, velCorr[:,0], velCorr[:,1], ylabel="$C_{vv}(\\Delta t)$", xlabel="$Elapsed$ $time,$ $\\Delta t$", color = 'k')
+        uplot.plotCorrWithError(timeList*timeStep, dirCorr[:,0], dirCorr[:,1], ylabel="$C_{vv}(\\Delta t)$", xlabel="$Elapsed$ $time,$ $\\Delta t$", color = 'r')
         plt.show()
         #plt.pause(0.5)
 
@@ -894,8 +917,10 @@ def computeClusterLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot=
     for power in range(maxPower):
         for spacing in range(1,decadeSpacing):
             stepRange = np.arange(0,stepDecade,spacing*spacingDecade,dtype=int)
-            stepVelCorr = []
             numPairs = 0
+            stepVelCorr = []
+            meanVel = []
+            meanVelSq = []
             for multiple in range(startBlock, numBlocks):
                 for i in range(stepRange.shape[0]-1):
                     if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
@@ -903,8 +928,11 @@ def computeClusterLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot=
                         vel1 = vel1[initDenseList==0]
                         vel2 = vel2[initDenseList==0]
                         stepVelCorr.append(np.mean(np.sum(vel1*vel2, axis=1)))
+                        meanVel.append(np.mean(np.linal.norm(vel1, axis=1)))
+                        meanVelSq.append(np.mean(np.linal.norm(vel1, axis=1)**2))
                         numPairs += 1
             if(numPairs > 0):
+                stepVelCorr = (stepVelCorr - np.mean(meanVel)**2)/(np.mean(meanVelSq) - np.mean(meanVel)**2)
                 timeList.append(spacing*spacingDecade)
                 velCorr.append([np.mean(stepVelCorr, axis=0), np.std(stepVelCorr, axis=0)])
         stepDecade *= 10
@@ -1981,7 +2009,7 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         vel = np.loadtxt(dirSample + "/particleVel.dat")
-        if(os.path.exists(dirSample + os.sep + "delaunayList.dat")==False):
+        if not(os.path.exists(dirSample + os.sep + "delaunayList.dat")):
             computeDelaunayCluster(dirSample, threshold=0.76, filter='filter')
         denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
         clusterVel[d,0] = np.mean(np.linalg.norm(vel, axis=1))
@@ -1998,7 +2026,7 @@ def averageDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     phi = int(utils.readFromParams(dirName, "phi"))
     rad = np.array(np.loadtxt(dirName + "/particleRad.dat"))
-    eps = 2 * np.max(rad)
+    eps = 1.8*np.max(rad)
     boxSize = np.loadtxt(dirName + "/boxSize.dat")
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
@@ -2014,8 +2042,8 @@ def averageDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
             computeDelaunayCluster(dirSample)
             denseList = np.loadtxt(dirSample + os.sep + "delaunayList.dat")
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
         denseRad = rad[denseList==1]
-        labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=10, denseList=denseList)
         numLabels = np.unique(labels).shape[0]-1
         for i in range(numLabels):
             clusterNumber = np.append(clusterNumber, labels[labels==i].shape[0])
@@ -2026,12 +2054,13 @@ def averageDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
     clusterArea = clusterArea[np.argsort(clusterNumber)]
     clusterNumber = np.sort(clusterNumber)
     np.savetxt(dirName + os.sep + "clusterDistribution.dat", np.column_stack((clusterNumber, clusterArea)))
-    print("Average number in cluster: ", np.mean(clusterNumber), " +- ", np.std(clusterNumber))
+    weight = clusterArea / np.sum(clusterArea)
+    print("Average number of particles in cluster: ", np.sum(clusterNumber * weight), " +- ", np.std(clusterNumber) * np.sqrt(np.sum(weight)))
     if(plot == 'plot'):
         numBins = 40
         pdf, edges = np.histogram(clusterNumber, bins=np.geomspace(np.min(clusterNumber), np.max(clusterNumber), numBins), density=True)
         edges = (edges[1:] + edges[:-1])/2
-        uplot.plotCorrelation(edges, pdf, "$PDF(N_c)$", xlabel = "$N_c$", color='k', logx=True, logy=True)
+        uplot.plotCorrelation(edges[pdf>0], pdf[pdf>0], "$PDF(N_c)$", xlabel = "$N_c$", color='k', logx=True, logy=True)
         #plt.show()
         plt.pause(0.5)
 
@@ -3311,7 +3340,8 @@ if __name__ == '__main__':
         startBlock = int(sys.argv[3])
         maxPower = int(sys.argv[4])
         freqPower = int(sys.argv[5])
-        computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower)
+        plot = sys.argv[6]
+        computeClusterLogMixingTime(dirName, startBlock, maxPower, freqPower, plot)
 
     elif(whichCorr == "bvapor"):
         numBlocks = int(sys.argv[3])
@@ -3419,7 +3449,7 @@ if __name__ == '__main__':
     elif(whichCorr == "delpers"):
         plot = sys.argv[3]
         computeDelaunayClusterVel(dirName, plot)
-        
+
     elif(whichCorr == "deldistro"):
         plot = sys.argv[3]
         averageDelaunayClusterDistribution(dirName, plot)

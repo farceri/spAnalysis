@@ -602,7 +602,7 @@ def plotSPNumberDensityFluctuations(dirName, figureName, fixed='Dr', which='1e-0
     ax.set_xlabel("$Cluster$ $size,$ $\\langle N_c \\rangle$", fontsize=18)
     if(fixed=="Dr"):
         ax.legend(fontsize=10, loc='lower left', ncol=3)
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pNumberPhiVar-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsPhi-" + figureName
     elif(fixed=="phi"):
         colorBar = cm.ScalarMappable(cmap=colorList)
         divider = make_axes_locatable(ax)
@@ -614,7 +614,7 @@ def plotSPNumberDensityFluctuations(dirName, figureName, fixed='Dr', which='1e-0
         ticklabels = ['$10^{-3}$', '$10^{1}$', '$10^3$']
         cb.set_ticklabels(ticklabels)
         cb.set_label(label="$\\tau_p$", fontsize=16, labelpad=-5, rotation='horizontal')
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pNumberPhiVar-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pNumberPhiVar-vsDr-" + figureName
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -649,10 +649,10 @@ def plotSPClusterDistribution(dirName, figureName, fixed=False, numBins=40):
     # make color bar for legend
     if(fixed=="iod"):
         label = "$\\varphi$"
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pClusterDistro-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterDistro-vsPhi-" + figureName
     elif(fixed=="phi"):
         label = "$D_r$"
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pClusterDistro-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterDistro-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Number$ $of$ $particles$ $in$ $cluster,$ $N_c$", fontsize=18)
     ax.set_ylabel("$Distribution,$ $P(N_c)$", fontsize=18)
@@ -693,18 +693,20 @@ def plotSPClusterSize(dirName, figureName, fixed=False, which='number'):
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         if(os.path.exists(dirSample + "clusterDistribution.dat")):
             data = np.loadtxt(dirSample + "clusterDistribution.dat")
-            clusterSize[d,0] = np.mean(data[:,0] / numParticles)
-            clusterSize[d,1] = np.std(data[:,0] / numParticles)
+            data[:,0] /= numParticles
+            weight = data[:,1] / np.sum(data[:,1])
+            clusterSize[d,0] = np.sum(data[:,0] * weight)
+            clusterSize[d,1] = np.std(data[:,0]) * np.sqrt(np.sum(weight))
             clusterArea[d,0] = np.mean(data[:,1])
             clusterArea[d,1] = np.std(data[:,1])
     if(fixed=="Dr"):
         x = phi
         label = "$\\varphi$"
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pClusterFrac-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterFrac-vsPhi-" + figureName
     elif(fixed=="phi"):
         x = taup
         label = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pClusterFrac-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pClusterFrac-vsDr-" + figureName
     ax.set_xscale('log')
     if(which=='number'):
         ax.errorbar(x[clusterSize[:,0]>0], clusterSize[clusterSize[:,0]>0,0], clusterSize[clusterSize[:,0]>0,1], lw=1.2, marker='o', fillstyle='none', capsize=3, color='b')
@@ -858,9 +860,7 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
-            #dirList = np.array(['1e-01', '2e-03', '1e-03', '7e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '5e-06', '1e-06', '1e-07'])
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
-
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
         colorList = cm.get_cmap('plasma', dirList.shape[0])
@@ -894,11 +894,11 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="Dr"):
         #x = phi
         #xlabel = "$Density,$ $\\varphi$"
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pMxingTime-vsPhi-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pMxingTime-vsPhi-" + figureName
     elif(fixed=="phi"):
         #x = taup
         #xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/thorsayshi/Pictures/soft/mips/pMixingTime-vsDr-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/pMixingTime-vsDr-" + figureName
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Elapsed$ $time,$ $\\Delta t$", fontsize=18)
     ax.set_ylabel("$Mixing$ $ratio$", fontsize=18)
@@ -998,6 +998,7 @@ def plotSPClusterPersistenceVSSystemSize(dirName, figureName, which='1e-07'):
                 persistence = cluster.computeDelaunayClusterVel(dirSample)*taup[d]
             else:
                 persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")*taup[d]
+            print(dirSample)
             liquidlp[d,0] = np.mean(persistence[:,2])
             liquidlp[d,1] = np.std(persistence[:,2])
             gaslp[d,0] = np.mean(persistence[:,3])
@@ -1993,8 +1994,8 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     if(fixed=="phi"):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figure1Name = "/home/thorsayshi/Pictures/soft/mips/pGasFluid-vsDr-" + figureName
-        figure2Name = "/home/thorsayshi/Pictures/soft/mips/pPressures-vsDr-" + figureName
+        figure1Name = "/home/francesco/Pictures/soft/mips/pGasFluid-vsDr-" + figureName
+        figure2Name = "/home/francesco/Pictures/soft/mips/pPressures-vsDr-" + figureName
         ax1.set_xscale('log')
         ax2.set_xscale('log')
         ax1.set_yscale('log')
@@ -2002,8 +2003,8 @@ def plotSPClusterPressure(dirName, figureName, fixed='Dr', inter=False, which='g
     else:
         x = phi
         xlabel = "$Density,$ $\\varphi$"
-        figure1Name = "/home/thorsayshi/Pictures/soft/mips/pGasFLuid-vsPhi-" + figureName + "-Dr" + which
-        figure2Name = "/home/thorsayshi/Pictures/soft/mips/pPressures-vsPhi-" + figureName + "-Dr" + which
+        figure1Name = "/home/francesco/Pictures/soft/mips/pGasFLuid-vsPhi-" + figureName + "-Dr" + which
+        figure2Name = "/home/francesco/Pictures/soft/mips/pPressures-vsPhi-" + figureName + "-Dr" + which
         #ax1.set_yscale('log')
         ax2.set_yscale('log')
     ax1.tick_params(axis='both', labelsize=14)
@@ -2127,7 +2128,7 @@ def plotSPPhaseDiagram(dirName, numBins, figureName, which='16', log=False):
     cb.set_ticklabels(ticklabels)
     cb.set_label(label=label, fontsize=28, labelpad=40, rotation='horizontal')
     fig.tight_layout()
-    figureName = "/home/thorsayshi/Pictures/soft/mips/pPhaseDiagram-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pPhaseDiagram-" + figureName
     if(log=='log'):
         figureName += "-" + log
     fig.savefig(figureName + ".png", transparent=True, format = "png")
@@ -2652,7 +2653,7 @@ if __name__ == '__main__':
         numBins = int(sys.argv[5])
         plotSPClusterDistribution(dirName, figureName, fixed, numBins)
 
-    elif(whichPlot == "delsize"):
+    elif(whichPlot == "clustersize"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
         which = sys.argv[5]
@@ -2826,7 +2827,7 @@ if __name__ == '__main__':
         which = sys.argv[4]
         plotSPDeltaPVSSystemSize(dirName, figureName, which)
 
-    elif(whichPlot == "clustersize"):
+    elif(whichPlot == "clustersystem"):
         figureName = sys.argv[3]
         which = sys.argv[4]
         plotSPClusterSystemSize(dirName, figureName, which)

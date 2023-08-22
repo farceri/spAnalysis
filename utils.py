@@ -1305,7 +1305,7 @@ def computeLocalTempGrid(pos, vel, xbin, ybin, localTemp): #this works only for 
     localTemp[localTemp>0] /= counts[localTemp>0]*2
 
 ################################ DB clustering #################################
-def getDBClusterLabels(pos, boxSize, eps, min_samples, denseList = np.empty(0)):
+def getDBClusterLabels(pos, boxSize, eps, min_samples = 2, denseList = np.empty(0)):
     numParticles = pos.shape[0]
     if(denseList.shape[0] > 0):
         distance = computeDistances(pos[denseList==1], boxSize)
