@@ -78,13 +78,14 @@ def plotCorrelation(x, y, ylabel, xlabel = "$Distance,$ $r$", logy = False, logx
     fig = plt.figure(0, dpi = 120)
     ax = fig.gca()
     ax.plot(x, y, color=color, marker='o', markersize=markersize, lw=lw, ls=ls)
+    #ax.plot(np.linspace(np.min(x), np.max(x), 100), np.ones(100)*1e07, lw=1.2, ls='dotted', color='k')
     if(logy == True):
         ax.set_yscale('log')
     if(logx == True):
         ax.set_xscale('log')
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel(xlabel, fontsize=17)
-    ax.set_ylabel(ylabel, fontsize=17)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel(xlabel, fontsize=14)
+    ax.set_ylabel(ylabel, fontsize=14)
     plt.tight_layout()
     if(show == True):
         plt.pause(0.5)

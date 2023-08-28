@@ -181,6 +181,9 @@ def computeNumberOfContacts(dirName):
             fparams.write("numContacts" + "\t" + str(nContacts) + "\n")
     return nContacts
 
+def calcLJgradMultiple(ec, distance, radSum):
+    return -24 * ec * radSum**6 * (1 / distance**6 - 2*radSum**6 / (distance**12)) / distance
+
 ############################ correlation functions #############################
 def computeIsoCorrFunctions(pos1, pos2, boxSize, waveVector, scale, oneDim = False):
     #delta = pbcDistance(pos1, pos2, boxSize)
@@ -282,6 +285,24 @@ def computeTau(data, index=2, threshold=np.exp(-1), normalized=False):
         return (np.exp(-1) - intercept)/slope
     else:
         return data[relStep,0]
+
+def computeDecay(x, y, threshold=np.exp(-1), normalize=False):
+    if(normalize == True):
+        y /= y[0]
+    decayStep = np.argwhere(y>threshold)
+    if(decayStep.shape[0] > 0):
+        decayStep = decayStep[-1,0]
+        if(decayStep + 1 < y.shape[0]):
+            x1 = x[decayStep]
+            x2 = x[decayStep+1]
+            y1 = y[decayStep]
+            y2 = y[decayStep+1]
+            slope = (y2 - y1)/(x2 - x1)
+            intercept = y2 - slope * x2
+            return (np.exp(-1) - intercept)/slope
+    else:
+        print("not enough time to compute decay")
+        return 0
 
 def computeDeltaChi(data):
     maxStep = np.argmax(data[:,5])
@@ -516,11 +537,11 @@ def readDirectorPair(dirName, index1, index2):
     return pDir1, pDir2
 
 def readDenseListPair(dirName, index1, index2):
-    if(os.path.exists(dirName + os.sep + "t" + str(index1) + os.sep + "delaunayList!.dat")):
+    if(os.path.exists(dirName + os.sep + "t" + str(index1) + os.sep + "delaunayList.dat")):
         denseList1 = np.loadtxt(dirName + os.sep + "t" + str(index1) + os.sep + "delaunayList.dat")
     else:
         denseList1,_ = cluster.computeDelaunayCluster(dirName + os.sep + "t" + str(index1))
-    if(os.path.exists(dirName + os.sep + "t" + str(index2) + os.sep + "delaunayList!.dat")):
+    if(os.path.exists(dirName + os.sep + "t" + str(index2) + os.sep + "delaunayList.dat")):
         denseList2 = np.loadtxt(dirName + os.sep + "t" + str(index2) + os.sep + "delaunayList.dat")
     else:
         denseList2,_ = cluster.computeDelaunayCluster(dirName + os.sep + "t" + str(index2))
@@ -531,6 +552,7 @@ def getPBCPositions(fileName, boxSize):
     pos = np.array(np.loadtxt(fileName), dtype=np.float64)
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
+    #pos -= np.floor(pos/boxSize)*boxSize
     return pos
 
 def centerPositions(pos, rad, boxSize, denseList=np.array([])):
@@ -736,7 +758,7 @@ def getUniqueRandomList(low, high, num):
             randomList.append(rand)
             numRandom += 1
     randomList = np.array(randomList)
-    print(randomList.shape[0], np.unique(randomList).shape[0])
+    #print(randomList.shape[0], np.unique(randomList).shape[0])
     return randomList
 
 def removeParticles(dirName, numRemove):
@@ -811,6 +833,14 @@ def augmentPacking(pos, rad, fraction=0.1, lx=1, ly=1):
     newIndices = np.concatenate((np.arange(0,rad.shape[0],1), leftIndices, rightIndices, bottomIndices, topIndices, bottomLeftIndices, bottomRightIndices, topLeftIndices, topRightIndices))
     return newPos, newRad, newIndices
 
+def isSimplexNearWall(simplex, pos, rad, boxSize):
+    isSimplexNearWall = False
+    for p in simplex:
+        isWall, _ = isNearWall(pos[p], 2*rad[p], boxSize)
+        if(isWall == True):
+            isSimplexNearWall = True
+    return isSimplexNearWall
+
 def isOutsideBox(pos, boxSize):
     isOutsideWall = 0
     if(pos[0] > boxSize[0] or pos[0] < 0):
@@ -854,7 +884,7 @@ def getPBCDelaunay(pos, rad, boxSize):
     delaunay = Delaunay(newPos)
     insideIndex = getInsideBoxDelaunaySimplices(delaunay.simplices, newPos, boxSize)
     simplices = wrapSimplicesAroundBox(delaunay.simplices[insideIndex==1], newIndices, rad.shape[0])
-    return np.unique(np.sort(simplices, axis=1), axis=0)
+    return np.unique(np.sort(simplices, axis=1), axis=0).astype(np.int64)
     #return np.unique(simplices), axis=0)
 
 def findNeighborSimplices(simplices, sIndex):
@@ -966,14 +996,6 @@ def findOppositeSimplexIndex(simplices, sIndex, indexA, indexB):
     # remove sIndex from indexList
     oppositeIndex = np.setdiff1d(indexList, sIndex)
     return oppositeIndex
-
-def isSimplexNearWall(pIndexList, pos, rad, boxSize):
-    isSimplexNearWall = False
-    for pIndex in pIndexList:
-        isWall, _ = isNearWall(pos[pIndex], 2*rad[pIndex], boxSize)
-        if(isWall == True):
-            isSimplexNearWall = True
-    return isSimplexNearWall
 
 def computeTriangleArea(pos0, pos1, pos2, boxSize):
     delta01 = np.linalg.norm(pbcDistance(pos0, pos1, boxSize))
@@ -1306,13 +1328,17 @@ def computeLocalTempGrid(pos, vel, xbin, ybin, localTemp): #this works only for 
 
 ################################ DB clustering #################################
 def getDBClusterLabels(pos, boxSize, eps, min_samples = 2, denseList = np.empty(0)):
-    numParticles = pos.shape[0]
     if(denseList.shape[0] > 0):
         distance = computeDistances(pos[denseList==1], boxSize)
     db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
     labels = db.labels_
     return labels
 
+def computeSimplexPos(simplices, pos):
+    simplexPos = np.zeros((simplices.shape[0],2))
+    for sIndex in range(simplices.shape[0]):
+        simplexPos[sIndex] = np.mean(pos[simplices[sIndex]], axis=0)
+    return simplexPos
 
 if __name__ == '__main__':
     print("library for correlation function utilities")

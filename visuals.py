@@ -141,7 +141,7 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     #pos = utils.centerPositions(pos, rad, boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0, 0)#1.35, 0 for box21 16k 0, 0.2 for 0.31 16k droplet
+    pos = utils.shiftPositions(pos, boxSize, 0, 0.2)#1.35, 0 for box21 16k 0, 0.2 for 0.31 16k droplet
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -189,6 +189,8 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
             ax.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)#width=0.002, scale=3)20
         else:
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth='0.3'))
+            #if(particleId == 81):
+            #    ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth='0.3'))
     if(border==True):
         plt.tight_layout()
         plt.pause(1)
@@ -545,7 +547,7 @@ def plotSPDelaunayLabels(dirName, figureName, dense=False, threshold=0.78, filte
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
 
-def plotSPDelaunayClusters(dirName, figureName, threshold=0.76, filter='filter', alpha=0.7, simplices=False, paused=False):
+def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='filter', alpha=0.7, paused=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
@@ -568,9 +570,10 @@ def plotSPDelaunayClusters(dirName, figureName, threshold=0.76, filter='filter',
     labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
     #labels = utils.getAffinityClusterLabels(pos, boxSize, denseList=denseList)
     labels = labels + np.ones(labels.shape[0])
-    allLabels = -1*np.ones(rad.shape[0])
+    allLabels = -1*np.ones(denseList.shape[0])
     allLabels[denseList==1] = labels
-    labels = allLabels
+    labels = allLabels.astype(np.int64)
+    print(np.unique(labels))
     colorId = getColorListFromLabels(labels)
     if(paused=='paused'):
         for label in np.unique(labels):
@@ -587,12 +590,72 @@ def plotSPDelaunayClusters(dirName, figureName, threshold=0.76, filter='filter',
             y = pos[particleId,1]
             r = rad[particleId]
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
-    if(simplices == 'simplices'):
-        newPos, simplices, colorId, borderColorId = cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, shiftx, shifty) # colorId is 0 for dense and 1 for dilute
-        plt.tripcolor(newPos[:,0], newPos[:,1], simplices[colorId==0], lw=0.3, facecolors=colorId[colorId==0], edgecolors='k', alpha=0.5, cmap='bwr')
-        figureName = "/home/francesco/Pictures/soft/packings/del-clusters-" + figureName + ".png"
+    figureName = "/home/francesco/Pictures/soft/packings/clusters-" + figureName + ".png"
+    plt.tight_layout()
+    plt.savefig(figureName, transparent=False, format = "png")
+    plt.show()
+
+def getColorListFromSimplexLabels(labels):
+    numLabels = np.unique(labels).shape[0]-1
+    colorId = np.zeros(labels.shape[0])
+    colors = utils.getUniqueRandomList(0, np.max(labels), numLabels)
+    for label in range(numLabels):
+        colorId[labels==label] = colors[label]
+    return colorId
+
+def plotSPDelaunaySimplexClusters(dirName, figureName, threshold=0.76, filter='filter', alpha=0.7, paused=False):
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
+    xBounds = np.array([0, boxSize[0]])
+    yBounds = np.array([0, boxSize[1]])
+    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
+    eps = np.max(rad)
+    pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
+    shiftx = 0
+    shifty = -0.2
+    pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, 0, -0.2 for 8k -0.4 0.05
+    fig = plt.figure(0, dpi = 150)
+    ax = fig.gca()
+    ax.set_xlim(xBounds[0], xBounds[1])
+    ax.set_ylim(yBounds[0], yBounds[1])
+    ax.set_aspect('equal', adjustable='box')
+    setPackingAxes(boxSize, ax)
+    dirAugment = dirName + os.sep + 'augmented'
+    if not(os.path.exists(dirAugment)):
+        cluster.computeAugmentedDelaunayCluster(dirName, threshold, filter, shiftx, shifty)
+    newPos = np.loadtxt(dirAugment + os.sep + 'augmentedPos.dat')
+    newRad = np.loadtxt(dirAugment + os.sep + 'augmentedRad.dat')
+    simplices = np.loadtxt(dirAugment + os.sep + 'simplices.dat').astype(np.int64)
+    denseSimplexList = np.loadtxt(dirAugment + os.sep + 'denseSimplexList-filter.dat')
+    # compute simplex positions for clustering algorithm
+    if not(os.path.exists(dirAugment + os.sep + 'simplexLabels.dat')):
+        simplexPos = utils.computeSimplexPos(simplices, newPos)
+        labels = utils.getDBClusterLabels(simplexPos, boxSize*1.1, eps, min_samples=1, denseList=denseSimplexList)
+        labels = labels + np.ones(labels.shape[0])
+        allLabels = -1*np.ones(denseSimplexList.shape[0])
+        allLabels[denseSimplexList==1] = labels
+        labels = allLabels.astype(np.int64)
+        np.savetxt(dirAugment + os.sep + 'simplexLabels.dat', labels)
     else:
-        figureName = "/home/francesco/Pictures/soft/packings/clusters-" + figureName + ".png"
+        labels = np.loadtxt(dirAugment + os.sep + 'simplexLabels.dat').astype(np.int64)
+    print(np.unique(labels))
+    colorId = getColorListFromSimplexLabels(labels)
+    # plot particles
+    for particleId in range(newRad.shape[0]):
+        x = newPos[particleId,0]
+        y = newPos[particleId,1]
+        r = newRad[particleId]
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='none', alpha=alpha, linewidth=0.3))
+    # plot simplex clusters
+    if(paused=='paused'):
+        for label in np.unique(labels):
+            if(label!=-1):
+                plt.tripcolor(newPos[:,0], newPos[:,1], simplices[labels==label], facecolors=labels[labels==label], lw=0.3, edgecolors='k', alpha=alpha, cmap='tab20')
+                plt.tight_layout()
+                plt.pause(0.5)
+    else:
+        plt.tripcolor(newPos[:,0], newPos[:,1], simplices[labels!=-1], facecolors=colorId[labels!=-1], lw=0.2, edgecolors='k', alpha=0.9, cmap='tab20c')
+    figureName = "/home/francesco/Pictures/soft/packings/simplexClusters-" + figureName + ".png"
     plt.tight_layout()
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
@@ -625,24 +688,33 @@ def plotSoftParticlesSubSet(ax, pos, rad, tagList, alpha = 0.2, lw = 0.5):
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alphaId[particleId], linewidth = lw))
 
-def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, alpha = 0.6, maxVelList = []):#122, 984, 107, 729, 59, 288, 373, 286, 543, 187, 6, 534, 104, 347]):
+def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList = np.array([]), alpha = '0.6'):#122, 984, 107, 729, 59, 288, 373, 286, 543, 187, 6, 534, 104, 347]):
     colorId = np.zeros((rad.shape[0], 4))
     colorList = cm.get_cmap('viridis', rad.shape[0])
     count = 0
     for particleId in np.argsort(rad):
         colorId[particleId] = colorList(count/rad.shape[0])
         count += 1
-    for particleId in range(pos.shape[0]):
-        x = pos[particleId,0]
-        y = pos[particleId,1]
-        r = rad[particleId]
-        vx = vel[particleId,0]
-        vy = vel[particleId,1]
-        axFrame.add_artist(plt.Circle([x, y], r, edgecolor=colorId[particleId], facecolor='none', alpha=alpha, linewidth = 0.7))
-        axFrame.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)#width=0.003, scale=1, headwidth=5)
-        #for j in range(13):
-        #    if(particleId == maxVelList[j]):
-        #        axFrame.quiver(x, y, vx, vy, facecolor='k', width=0.003, scale=1, headwidth=5)
+    if(tagList.size > 0):
+        color = np.array(['g', 'b', 'k'])
+        d = 0
+        for particleId in range(tagList.shape[0]):
+            if(tagList[particleId]==1):
+                x = pos[particleId,0]
+                y = pos[particleId,1]
+                vx = vel[particleId,0]
+                vy = vel[particleId,1]
+                axFrame.quiver(x, y, vx, vy, facecolor=color[d], width=0.008, minshaft=3, scale=3, headwidth=5)
+                d += 1
+    else:
+        for particleId in range(pos.shape[0]):
+            x = pos[particleId,0]
+            y = pos[particleId,1]
+            r = rad[particleId]
+            vx = vel[particleId,0]
+            vy = vel[particleId,1]
+            axFrame.add_artist(plt.Circle([x, y], r, edgecolor=colorId[particleId], facecolor='none', alpha=alpha, linewidth = 0.7))
+            axFrame.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)#width=0.003, scale=1, headwidth=5)
 
 def plotSoftParticlePressureMap(axFrame, pos, pressure, rad, alpha = 0.7):
     colorId = np.zeros((rad.shape[0], 4))
@@ -714,16 +786,21 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
 
 def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = False, firstIndex = 10, npt = False, quiver = False, dense = False, pmap = False, droplet = False, l1=0.03):
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    #pos = utils.shiftPositions(pos, boxSize, -0.5, -0.1)
-    pos = utils.centerPositions(pos, rad, boxSize)
+    pos = utils.shiftPositions(pos, boxSize, 0, 0.5)
+    #pos = utils.centerPositions(pos, rad, boxSize)
     gcfFrame = plt.gcf()
     gcfFrame.clear()
     axFrame = figFrame.gca()
     setPackingAxes(boxSize, axFrame)
     if(subSet == "subset"):
-        tagList = np.zeros(rad.shape[0])
-        tagList[:firstIndex] = 1
+        tagList = np.zeros(rad.shape[0], dtype=int)
+        #tagList[:firstIndex] = 1
+        tagList[38] = 1
+        tagList[60] = 1
+        tagList[81] = 1
         plotSoftParticlesSubSet(axFrame, pos, rad, tagList)
+        vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
+        plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList)
     elif(quiver == "quiver"):
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
         plotSoftParticleQuiverVel(axFrame, pos, vel, rad)
@@ -791,6 +868,8 @@ def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepF
         figureName = "velmap-" + figureName
     if(pmap=="pmap"):
         figureName = "pmap-" + figureName
+    if(subSet=="subset"):
+        figureName = "tracer-" + figureName
     anim.save("/home/francesco/Pictures/soft/packings/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
 def makeVelFieldFrame(dirName, numBins, bins, boxSize, numParticles, figFrame, frames):
@@ -905,13 +984,19 @@ if __name__ == '__main__':
         label = sys.argv[6]
         plotSPDelaunayLabels(dirName, figureName, dense=False, threshold=threshold, filter=filter, label=label)
 
-    elif(whichPlot == "ssdelclusters"):
+    elif(whichPlot == "ssdelparticle"):
         np.seterr(divide='ignore', invalid='ignore')
         threshold = float(sys.argv[4])
         filter = sys.argv[5]
-        simplices = sys.argv[6]
-        paused = sys.argv[7]
-        plotSPDelaunayClusters(dirName, figureName, threshold=threshold, filter=filter, simplices=simplices, paused=paused)
+        paused = sys.argv[6]
+        plotSPDelaunayParticleClusters(dirName, figureName, threshold=threshold, filter=filter, paused=paused)
+
+    elif(whichPlot == "ssdelsimplex"):
+        np.seterr(divide='ignore', invalid='ignore')
+        threshold = float(sys.argv[4])
+        filter = sys.argv[5]
+        paused = sys.argv[6]
+        plotSPDelaunaySimplexClusters(dirName, figureName, threshold=threshold, filter=filter, paused=paused)
 
     elif(whichPlot == "ssvideo"):
         numFrames = int(sys.argv[4])
