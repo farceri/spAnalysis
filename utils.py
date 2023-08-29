@@ -761,7 +761,7 @@ def getUniqueRandomList(low, high, num):
     #print(randomList.shape[0], np.unique(randomList).shape[0])
     return randomList
 
-def removeParticles(dirName, numRemove):
+def removeGasParticles(dirName, numRemove):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
@@ -781,6 +781,36 @@ def removeParticles(dirName, numRemove):
     if(numRemove < maxRemove):
         randomList = getUniqueRandomList(0, maxRemove, numRemove)
         removeIndices = gasIndices[randomList]
+        rad = np.delete(rad, removeIndices)
+        pos = np.delete(pos, removeIndices, axis=0)
+        vel = np.delete(vel, removeIndices)
+        angle = np.delete(angle, removeIndices)
+        # save to new directory
+        dirSave = dirName + os.sep + str(numRemove) + "removed"
+        if(os.path.isdir(dirSave)==False):
+            os.mkdir(dirSave)
+        np.savetxt(dirSave + '/boxSize.dat', boxSize)
+        np.savetxt(dirSave + '/particleRad.dat', rad)
+        np.savetxt(dirSave + '/particlePos.dat', pos)
+        np.savetxt(dirSave + '/particleVel.dat', vel)
+        np.savetxt(dirSave + '/particleAngles.dat', angle)
+        density = np.sum(np.pi*rad**2)
+        print("Density after removing " + str(numRemove) + " particles: ", density)
+    else:
+        print("Please remove a number of particles smaller than", maxRemove)
+
+def removeParticles(dirName, numRemove):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    density = np.sum(np.pi*rad**2)
+    print("Current density: ", density)
+    maxRemove = rad.shape[0]-1
+    if(numRemove < maxRemove):
+        removeIndices = getUniqueRandomList(0, maxRemove, numRemove)
         rad = np.delete(rad, removeIndices)
         pos = np.delete(pos, removeIndices, axis=0)
         vel = np.delete(vel, removeIndices)

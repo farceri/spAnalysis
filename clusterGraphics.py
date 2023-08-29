@@ -620,7 +620,7 @@ def plotSPNumberDensityFluctuations(dirName, figureName, fixed='Dr', which='1e-0
     plt.show()
 
 def plotSPClusterPDF(dirName, figureName, numBins=40, which='simplex', cdf='cdf'):
-    print(1/(utils.readFromDynParams(dirName, "Dr")*utils.readFromDynParams(dirName, "sigma")))
+    print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")*utils.readFromDynParams(dirName, "sigma")))
     fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
     if(which=='simplex'):
         if not(os.path.exists(dirName + "simplexDistribution.dat")):
@@ -639,11 +639,9 @@ def plotSPClusterPDF(dirName, figureName, numBins=40, which='simplex', cdf='cdf'
         ax.set_ylabel("$Cluster$ $area,$ $A_c$", fontsize=16)
         ax.set_xticks(np.linspace(np.min(x), np.max(x), 4))
     else:
-        pdf, edges = np.histogram(data[:,0], bins=np.geomspace(np.min(data[:,0]), np.max(data[:,0]), numBins), density=True)
+        pdf, edges = np.histogram(data[:,1], bins=np.linspace(np.min(data[:,1]), np.max(data[:,1]), numBins), density=True)
         edges = (edges[1:] + edges[:-1])/2
-        data = np.column_stack((edges, pdf))
-        data = data[data[:,1]>0]
-        ax.loglog(data[:,0], data[:,1]/data[0,1], lw=1.2, color='k', marker='o', fillstyle='none')
+        ax.plot(edges, pdf, lw=1.2, color='k', marker='o', fillstyle='none')
         ax.set_xlabel("$Cluster$ $area,$ $A_c$", fontsize=16)
         ax.set_ylabel("$Distribution,$ $P(A_c)$", fontsize=16)
     ax.tick_params(axis='both', labelsize=12)
@@ -660,7 +658,8 @@ def plotSPClusterDistribution(dirName, figureName, fixed=False, numBins=20, whic
         colorList = cm.get_cmap('viridis', dirList.shape[0])
         phi = np.zeros(dirList.shape[0])
     elif(fixed=="phi"):
-        dirList = np.array(['100', '10', '1', '1e-01', '1e-02', '1e-03', '3e-04', '1e-04', '2e-05', '1e-05', '2e-06', '1e-06', '2e-07', '1e-07'])
+        #dirList = np.array(['100', '10', '1', '1e-01', '1e-02', '1e-03', '3e-04', '1e-04', '2e-05', '1e-05', '2e-06', '1e-06', '2e-07', '1e-07'])
+        dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         colorList = cm.get_cmap('plasma', dirList.shape[0])
         taup = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
@@ -668,7 +667,7 @@ def plotSPClusterDistribution(dirName, figureName, fixed=False, numBins=20, whic
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr2e-04/dynamics/"
             phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-long/"
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
             taup[d] = 1/(utils.readFromDynParams(dirSample, "Dr")*utils.readFromDynParams(dirSample, "sigma"))
         if(which=='simplex'):
             if not(os.path.exists(dirSample + "simplexDistribution.dat")):
@@ -678,11 +677,9 @@ def plotSPClusterDistribution(dirName, figureName, fixed=False, numBins=20, whic
             if not(os.path.exists(dirSample + "clusterDistribution.dat")):
                 cluster.computeDelaunayClusterDistribution(dirSample)
             data = np.loadtxt(dirSample + "clusterDistribution.dat")
-        pdf, edges = np.histogram(data[:,0], bins=np.geomspace(np.min(data[:,0]), np.max(data[:,0]), numBins), density=True)
+        pdf, edges = np.histogram(data[:,1], bins=np.geomspace(np.min(data[:,1]), np.max(data[:,1]), numBins), density=True)
         edges = (edges[1:] + edges[:-1])/2
-        data = np.column_stack((edges, pdf))
-        data = data[data[:,1]>0]
-        ax.loglog(data[:,0], data[:,1]/data[0,1], lw=1.2, color=colorList(d/dirList.shape[0]), marker='o', fillstyle='none')#, label='$D_r=$' + labelList[d])
+        ax.plot(edges, data[:,1], lw=1.2, color=colorList(d/dirList.shape[0]), marker='o', fillstyle='none')#, label='$D_r=$' + labelList[d])
     # make color bar for legend
     if(fixed=="Dr"):
         x = phi
@@ -728,13 +725,12 @@ def plotSPClusterSize(dirName, figureName, fixed=False, which='fraction'):
         taup = np.zeros(dirList.shape[0])
     clusterSize = np.zeros((dirList.shape[0], 2))
     clusterArea = np.zeros((dirList.shape[0], 2))
-    numParticles = 8192
     for d in range(dirList.shape[0]):
         if(fixed=="Dr"):
             dirSample = dirName + os.sep + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr2e-04/dynamics/"
             phi[d] = utils.readFromParams(dirSample, "phi")
         elif(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-long/"
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
             taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         if not(os.path.exists(dirSample + "simplexDistribution.dat")):
             cluster.computeSimplexClusterDistribution(dirSample)
@@ -906,7 +902,7 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
-            dirList = np.array(['1', '1e-01', '1e-02', '1e-03', '1e-04', '1e-05', '1e-06', '1e-07'])
+            dirList = np.array(['1e-02', '3e-03', '1e-04', '1e-05', '1e-06', '1e-07'])
             #dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
@@ -929,20 +925,16 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/short/"
             phi[d] = np.loadtxt(dirSample + 'localDensity-N16-stats.dat')[0]
         sigma = utils.readFromDynParams(dirSample, 'sigma')
-        if not(os.path.exists(dirSample + "logMixingTime.dat")):
-            cluster.computeClusterLogMixingTime(dirSample, 0, 8, 7)
-        data = np.loadtxt(dirSample + "logMixingTime.dat")
-        #if not(os.path.exists(dirSample + "blockMixingTime.dat")):
-        #    cluster.computeClusterBlockMixingTime(dirSample, 2)
-        #data = np.loadtxt(dirSample + "blockMixingTime.dat")
-        data[:,0] *= utils.readFromParams(dirSample, 'dt')/sigma
+        if not(os.path.exists(dirSample + "clusterMixing.dat")):
+            cluster.computeClusterMixing(dirSample, 10, 7)
+        data = np.loadtxt(dirSample + "clusterMixing.dat")
+        data[:,0] /= sigma
         if(fixed=='phi'):
             label = "$D_r=$" + dirList[d]
         elif(fixed=='Dr'):
             label = "$\\varphi=$" + dirList[d]
-        #ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', capsize=3, label=label)
-        ax.plot(data[:,0], data[:,1], color=colorList(d/dirList.shape[0]), lw=1, marker='o', markersize=3, label=label)
-        tau[d] = utils.computeTau(data, index=1, normalized=True)
+        ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', markersize=5, capsize=3, elinewidth=0.8, fillstyle='none', label=label)
+        tau[d] = utils.computeTau(data, index=1, normalized=False)
     ax.set_xscale('log')
     if(fixed=="Dr"):
         #x = phi
@@ -986,7 +978,7 @@ def plotSPClusterVelTimeCorr(dirName, figureName, fixed=False, which='1e-03'):
     if(fixed=="phi"):
         phi = utils.readFromParams(dirName, "phi")
         if(phi == 0.45):
-            dirList = np.array(['1', '1e-01', '1e-02', '1e-03', '1e-04', '1e-05', '1e-06', '1e-07'])
+            dirList = np.array(['1e-02', '3e-03', '1e-04', '1e-05', '1e-06', '1e-07'])
             #dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
             dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
@@ -1010,29 +1002,16 @@ def plotSPClusterVelTimeCorr(dirName, figureName, fixed=False, which='1e-03'):
             dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/short/"
             phi[d] = np.loadtxt(dirSample + 'localDensity-N16-stats.dat')[0]
         sigma = utils.readFromDynParams(dirSample, 'sigma')
-        #tmax = float(utils.readFromParams(dirSample, 'dt')*1e08/sigma)
-        if not(os.path.exists(dirSample + "logVelTimeCorr.dat")):
-            cluster.computeClusterLogMixingTime(dirSample, 0, 8, 7)
-        data = np.loadtxt(dirSample + "logVelTimeCorr.dat")
-        #if not(os.path.exists(dirSample + "blockMixingTime.dat")):
-        #    cluster.computeClusterBlockMixingTime(dirSample, 2)
-        #data = np.loadtxt(dirSample + "blockMixingTime.dat")
-        data[:,0] *= utils.readFromParams(dirSample, 'dt')/sigma
-        data[:,1] /= data[0,1]
+        if not(os.path.exists(dirSample + "clusterVelCorr.dat")):
+            cluster.computeClusterVelCorr(dirSample, 10, 7)
+        data = np.loadtxt(dirSample + "clusterVelCorr.dat")
+        data[:,0] /= sigma
         if(fixed=='phi'):
             label = "$D_r=$" + dirList[d]
         elif(fixed=='Dr'):
             label = "$\\varphi=$" + dirList[d]
-        #ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', capsize=3, label=label)
-        ax.plot(data[:,0], data[:,1], color=colorList(d/dirList.shape[0]), lw=1, marker='o', markersize=3, label=label)
-        tau[d] = utils.computeTau(data, index=1, normalized=True)
-        dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
-        if not(os.path.exists(dirSample + "clusterVel.dat")):
-            persistence = cluster.computeDelaunayClusterVel(dirSample)*tau[d]
-        else:
-            persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")*tau[d]
-        gaslp[d,0] = np.mean(persistence[:,3])
-        gaslp[d,1] = np.std(persistence[:,3])
+        ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', markersize=5, capsize=3, elinewidth=0.8, fillstyle='none', label=label)
+        tau[d] = utils.computeTau(data, index=1)
     ax.set_xscale('log')
     if(fixed=="Dr"):
         #x = phi
@@ -1064,47 +1043,139 @@ def plotSPClusterVelTimeCorr(dirName, figureName, fixed=False, which='1e-03'):
     # plot relaxation time
     fig, ax = plt.subplots(figsize = (6,4), dpi = 120)
     ax.tick_params(axis='both', labelsize=12)
-    #ax.semilogx(taup, tau, color='k', marker='o', markersize=8, fillstyle='none', lw=1)
-    ax.errorbar(taup, gaslp[:,0], gaslp[:,1], capsize=3, color='k', marker='o', markersize=8, fillstyle='none', lw=1)
-    ax.set_yscale('log')
-    ax.set_xscale('log')
+    ax.semilogx(taup, tau, color='k', marker='o', markersize=8, fillstyle='none', lw=1)
     #ax.plot(np.linspace(np.min(taup), np.max(taup), 100), np.ones(100)*tmax, ls='dotted', color='k')
     ax.set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=16)
-    #ax.set_ylabel("$\\tau_{vv}^{Gas}$", fontsize=16)
-    ax.set_ylabel("$\\langle s \\rangle \\tau_{vv}^{Gas}$", fontsize=16)
+    ax.set_ylabel("$\\tau_{vv}^{Gas}$", fontsize=16)
     fig.tight_layout()
-    fig.savefig(figureName + "-tau-lp.png", transparent=True, format = "png")
+    fig.savefig(figureName + "-tau.png", transparent=True, format = "png")
     plt.show()
 
 def plotSPClusterPersistence(dirName, figureName, fixed=False, which='1e-03'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(fixed=="phi"):
-        dirList = np.array(['100', '10', '5', '1', '5e-01', '1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
+        phi = utils.readFromParams(dirName, "phi")
+        if(phi == 0.45):
+            dirList = np.array(['1e-02', '3e-03', '1e-04', '1e-05', '1e-06', '1e-07'])
+            #dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
+        else:
+            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
+        colorList = cm.get_cmap('plasma', dirList.shape[0])
     elif(fixed=="Dr"):
-        #dirList = np.array(['0.25', '0.26', '0.27', '0.28', '0.29', '0.30', '0.32', '0.35', '0.40', '0.45', '0.50', '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
-        dirList = np.array(['25', '27', '30', '35', '40', '45', '52', '58', '62', '67', '72', '78', '82', '85', '88', '91', '94'])
+        dirList = np.array(['0.26', '0.28', '0.30', '0.32', '0.35', '0.40', '0.45', '0.50'])#, '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
+        colorList = cm.get_cmap('viridis', dirList.shape[0])
+        phi = np.zeros(dirList.shape[0])
     else:
         print('please specify fixed parameter')
     liquidlp = np.zeros((dirList.shape[0],2))
     gaslp = np.zeros((dirList.shape[0],2))
     taup = np.zeros(dirList.shape[0])
-    phi = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         if(fixed=="phi"):
-            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-log/"
+            sigma = utils.readFromDynParams(dirSample, 'sigma')
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*sigma)
         elif(fixed=="Dr"):
-            #dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/"
-            dirSample = dirName + os.sep + "thermal" + dirList[d] + "/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
-            if not(os.path.exists(dirSample + "delaunayDensity.dat")):
-                density = cluster.computeClusterDelaunayDensity(dirSample)
-            else:
-                density = np.loadtxt(dirSample + os.sep + "delaunayDensity.dat")
-            phi[d] = np.mean(density[:,3])
-        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-        if not(os.path.exists(dirSample + "clusterVel.dat")):
-            persistence = cluster.computeDelaunayClusterVel(dirSample)*taup[d]
+            dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/short/"
+            phi[d] = np.loadtxt(dirSample + 'localDensity-N16-stats.dat')[0]
+        sigma = utils.readFromDynParams(dirSample, 'sigma')
+        if not (os.path.exists(dirSample + "clusterDecayLength.dat")):
+            cluster.computeClusterVelCorr(dirSample, 10, 7)
+        data = np.loadtxt(dirSample + os.sep + "clusterDecayLength.dat")
+        gaslp[d,0] = data[0]
+        gaslp[d,1] = data[1]
+        liquidlp[d,0] = data[2]
+        liquidlp[d,1] = data[3]
+    if(fixed=="Dr"):
+        x = phi
+        xlabel = "$Density,$ $\\varphi$"
+        figureName = "/home/francesco/Pictures/soft/mips/pPers-vsPhi-" + figureName
+    elif(fixed=="phi"):
+        x = taup
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        figureName = "/home/francesco/Pictures/soft/mips/pPers-vsDr-" + figureName
+        #t = np.linspace(2e03,3e06,100)
+        #ax.plot(t, 0.9*t, ls='dashed', color='k', lw=1.3)
+        #t = np.linspace(2e-03,2,100)
+        #ax.plot(t, t**1.2, ls='dashdot', color='k', lw=1.3)
+    ax.errorbar(x, liquidlp[:,0], liquidlp[:,1], capsize=3, color='b', marker='s', markersize=8, lw=1.2, fillstyle='none', label='$Liquid$')
+    ax.errorbar(x, gaslp[:,0], gaslp[:,1], capsize=3, color=[1,0.5,0], marker='o', markersize=8, lw=1.2, fillstyle='none', label='$Gas$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=18)
+    ax.set_ylabel("$Persistence$ $length,$ $l_p$", fontsize=18)
+    #ax.set_ylabel("$Typical$ $speed,$ $\\langle s \\rangle$", fontsize=18)
+    ax.legend(fontsize=14, loc='best')
+    fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterPersistenceVSSystemSize(dirName, figureName, which='1e-05'):
+    fig, ax = plt.subplots(figsize = (7,3.5), dpi = 120)
+    numParticles = np.array([1024, 2048, 4096, 8192])#, 16384, 32768])
+    dirList = np.array(['1024', '2048', '4096', '8192'])#, '16384', '32768'])
+    labelList = np.array(['$N = 1024$', '$N = 2048$', '$N = 4096$', '$N = 8192$'])#, '$N = 16384$', '$N = 32768$'])
+    gaslp = np.zeros((dirList.shape[0],2))
+    liquidlp = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d] + "-2d/thermal45/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics-log/"
+        if(os.path.exists(dirSample)):
+            sigma = utils.readFromDynParams(dirSample, 'sigma')
+            if not (os.path.exists(dirSample + "clusterDecayLength.dat")):
+                cluster.computeClusterVelCorr(dirSample, 10, 7)
+            data = np.loadtxt(dirSample + os.sep + "clusterDecayLength.dat")
+            print(dirSample)
+            gaslp[d,0] = data[0]
+            gaslp[d,1] = data[1]
+            liquidlp[d,0] = data[2]
+            liquidlp[d,1] = data[3]
+    ax.errorbar(numParticles[gaslp[:,0]>0], liquidlp[gaslp[:,0]>0,0], liquidlp[gaslp[:,0]>0,1], capsize=3, color='b', marker='s', markersize=8, lw=1.2, fillstyle='none', label='$Liquid$')
+    ax.errorbar(numParticles[gaslp[:,0]>0], gaslp[gaslp[:,0]>0,0], gaslp[gaslp[:,0]>0,1], capsize=3, color=[1,0.5,0], marker='o', markersize=8, lw=1.2, fillstyle='none', label='$Gas$')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xscale('log', basex=2)
+    ax.set_xlabel('$System$ $size,$ $N$', fontsize=16)
+    ax.set_ylabel('$Persistence$ $length,$ $l_p$', fontsize=16)
+    ax.legend(fontsize=12, loc='best')
+    ax.set_xticks(numParticles)
+    ax.set_xticklabels(dirList)
+    fig.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/pPers-vsSystemSize-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterVel(dirName, figureName, fixed=False, which='1e-03'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(fixed=="phi"):
+        phi = utils.readFromParams(dirName, "phi")
+        if(phi == 0.45):
+            dirList = np.array(['1e-02', '3e-03', '1e-04', '1e-05', '1e-06', '1e-07'])
+            #dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '3e-03', '2e-03', '1.5e-03', '1.2e-03', '1e-03', '7e-04', '5e-04', '3e-04', '2e-04', '1.5e-04', '1e-04', '7e-05', '5e-05', '3e-05', '2e-05', '1.5e-05', '1e-05', '5e-06', '2e-06', '1.5e-06', '1e-06', '5e-07', '2e-07', '1.5e-07', '1e-07'])
         else:
-            persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")*taup[d]
+            dirList = np.array(['1e-01', '5e-02', '2e-02', '1e-02', '5e-03', '2e-03', '1e-03', '7e-04', '5e-04', '2e-04', '1e-04', '7e-05', '5e-05', '2e-05', '1e-05', '5e-06', '2e-06', '1e-06', '5e-07', '2e-07', '1e-07'])
+        colorList = cm.get_cmap('plasma', dirList.shape[0])
+    elif(fixed=="Dr"):
+        dirList = np.array(['0.26', '0.28', '0.30', '0.32', '0.35', '0.40', '0.45', '0.50'])#, '0.55', '0.60', '0.65', '0.70', '0.75', '0.80', '0.82', '0.84', '0.86', '0.88', '0.90', '0.92', '0.94', '0.96'])
+        colorList = cm.get_cmap('viridis', dirList.shape[0])
+        phi = np.zeros(dirList.shape[0])
+    else:
+        print('please specify fixed parameter')
+    liquidlp = np.zeros((dirList.shape[0],2))
+    gaslp = np.zeros((dirList.shape[0],2))
+    taup = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        if(fixed=="phi"):
+            dirSample = dirName + os.sep + "iod10/active-langevin/Dr" + dirList[d] + "/dynamics-log/"
+            sigma = utils.readFromDynParams(dirSample, 'sigma')
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*sigma)
+        elif(fixed=="Dr"):
+            dirSample = dirName + os.sep + dirList[d] + "/active-langevin/Dr" + which + "/dynamics/short/"
+            phi[d] = np.loadtxt(dirSample + 'localDensity-N16-stats.dat')[0]
+        sigma = utils.readFromDynParams(dirSample, 'sigma')
+        if not(os.path.exists(dirSample + "clusterVel.dat")):
+            persistence = cluster.computeDelaunayClusterVel(dirSample)#*taup[d]
+        else:
+            persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")#*taup[d]
         liquidlp[d,0] = np.mean(persistence[:,2])
         liquidlp[d,1] = np.std(persistence[:,2])
         gaslp[d,0] = np.mean(persistence[:,3])
@@ -1127,45 +1198,10 @@ def plotSPClusterPersistence(dirName, figureName, fixed=False, which='1e-03'):
     ax.errorbar(x, gaslp[:,0], gaslp[:,1], capsize=3, color=[1,0.5,0], marker='o', markersize=8, lw=1.2, fillstyle='none', label='$Gas$')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=18)
-    ax.set_ylabel("$Persistence$ $length,$ $l_p$", fontsize=18)
-    #ax.set_ylabel("$Typical$ $speed,$ $\\langle s \\rangle$", fontsize=18)
+    #ax.set_ylabel("$Persistence$ $length,$ $l_p$", fontsize=18)
+    ax.set_ylabel("$Typical$ $speed,$ $\\langle s \\rangle$", fontsize=18)
     ax.legend(fontsize=14, loc='best')
     fig.tight_layout()
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPClusterPersistenceVSSystemSize(dirName, figureName, which='1e-07'):
-    fig, ax = plt.subplots(figsize = (7,3.5), dpi = 120)
-    numParticles = np.array([1024, 2048, 4096, 8192, 16384, 32768])
-    dirList = np.array(['1024', '2048', '4096', '8192', '16384', '32768'])
-    labelList = np.array(['$N = 1024$', '$N = 2048$', '$N = 4096$', '$N = 8192$', '$N = 16384$', '$N = 32768$'])
-    liquidlp = np.zeros((dirList.shape[0],2))
-    gaslp = np.zeros((dirList.shape[0],2))
-    taup = np.zeros(dirList.shape[0])
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d] + "-2d/thermal45/langevin/T0.001/iod10/active-langevin/Dr" + which + "/dynamics/"
-        if(os.path.exists(dirSample)):
-            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-            if not (os.path.exists(dirSample + "clusterVel.dat")):
-                persistence = cluster.computeDelaunayClusterVel(dirSample)*taup[d]
-            else:
-                persistence = np.loadtxt(dirSample + os.sep + "clusterVel.dat")*taup[d]
-            print(dirSample)
-            liquidlp[d,0] = np.mean(persistence[:,2])
-            liquidlp[d,1] = np.std(persistence[:,2])
-            gaslp[d,0] = np.mean(persistence[:,3])
-            gaslp[d,1] = np.std(persistence[:,3])
-    ax.errorbar(numParticles[gaslp[:,0]>0], liquidlp[gaslp[:,0]>0,0], liquidlp[gaslp[:,0]>0,1], capsize=3, color='b', marker='s', markersize=8, lw=1.2, fillstyle='none', label='$Liquid$')
-    ax.errorbar(numParticles[gaslp[:,0]>0], gaslp[gaslp[:,0]>0,0], gaslp[gaslp[:,0]>0,1], capsize=3, color=[1,0.5,0], marker='o', markersize=8, lw=1.2, fillstyle='none', label='$Gas$')
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xscale('log', basex=2)
-    ax.set_xlabel('$System$ $size,$ $N$', fontsize=18)
-    ax.set_ylabel('$Persistence$ $length,$ $l_p$', fontsize=18)
-    ax.legend(fontsize=12, loc='best')
-    ax.set_xticks(numParticles)
-    ax.set_xticklabels(dirList)
-    fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pPers-vsSystemSize-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -2248,8 +2284,8 @@ def plotSPPhaseDiagram(dirName, numBins, figureName, variance='density'):
                 if not(os.path.exists(deltaFile)):
                     cluster.computeSimplexClusterDistribution(dirSample)
                 data = np.loadtxt(deltaFile)
-                weight = data[:,1] / np.sum(data[:,1])
-                deltaPhi[i,j] = np.std(data[:,0]) * np.sqrt(np.sum(weight))
+                weight = data[:,0] / np.sum(data[:,0])
+                deltaPhi[i,j] = np.std(data[:,1]) * np.sqrt(np.sum(weight))
             # compute density values from average of delaunay density
             phiFile = dirSample + 'delaunayDensity.dat'
             if not(os.path.exists(phiFile)):
@@ -2853,6 +2889,12 @@ if __name__ == '__main__':
         fixed = sys.argv[4]
         which = sys.argv[5]
         plotSPClusterVelTimeCorr(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "clustervel"):
+        figureName = sys.argv[3]
+        fixed = sys.argv[4]
+        which = sys.argv[5]
+        plotSPClusterVel(dirName, figureName, fixed, which)
 
     elif(whichPlot == "clusterpers"):
         figureName = sys.argv[3]
