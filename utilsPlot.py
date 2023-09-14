@@ -59,10 +59,10 @@ def plotErrorBar(ax, x, y, err, xlabel, ylabel, logx = False, logy = False):
         ax.set_yscale('log')
     plt.tight_layout()
 
-def plotCorrWithError(x, y, err, ylabel, xlabel = "$Time$ $interval,$ $\\Delta t$", logx = False, logy = False, color = 'k', show = True):
+def plotCorrWithError(x, y, err, ylabel, xlabel = "$Time$ $interval,$ $\\Delta t$", logx = False, logy = False, color = 'k', show = True, marker='o'):
     fig = plt.figure(0, dpi = 120)
     ax = fig.gca()
-    ax.errorbar(x, y, err, marker='o', color=color, markersize=4, markeredgecolor='k', markeredgewidth=0.7, linewidth=1.2, elinewidth=1, capsize=4)
+    ax.errorbar(x, y, err, marker=marker, fillstyle='none', color=color, markersize=6, markeredgewidth=1, linewidth=1.2, elinewidth=1, capsize=4)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=17)
     ax.set_ylabel(ylabel, fontsize=17)
@@ -74,10 +74,10 @@ def plotCorrWithError(x, y, err, ylabel, xlabel = "$Time$ $interval,$ $\\Delta t
     if(show == True):
         plt.pause(0.5)
 
-def plotCorrelation(x, y, ylabel, xlabel = "$Distance,$ $r$", logy = False, logx = False, color = 'k', markersize = 4, lw = 1.2, ls='solid', show = True):
+def plotCorrelation(x, y, ylabel, xlabel = "$Distance,$ $r$", logy = False, logx = False, color = 'k', markersize = 4, lw = 1.2, ls='solid', show = True, marker='o'):
     fig = plt.figure(0, dpi = 120)
     ax = fig.gca()
-    ax.plot(x, y, color=color, marker='o', markersize=markersize, lw=lw, ls=ls)
+    ax.plot(x, y, color=color, marker=marker, markersize=markersize, lw=lw, ls=ls)
     #ax.plot(np.linspace(np.min(x), np.max(x), 100), np.ones(100)*1e07, lw=1.2, ls='dotted', color='k')
     if(logy == True):
         ax.set_yscale('log')

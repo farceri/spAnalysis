@@ -101,7 +101,7 @@ def plotEnergy(dirName, figureName):
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Simulation$ $step$", fontsize=16)
     ax.set_ylabel("$Energy$", fontsize=16)
-    ax.legend(("$E_{pot}$", "$E_{kin}$", "$E_{tot}$"), fontsize=15, loc=(0.75, 0.45))
+    ax.legend(("$E_{pot}$", "$E_{kin}$", "$E_{tot}$"), fontsize=14, loc='best')
     #ax.set_ylim(50, 700)
     #ax.set_yscale('log')
     plt.tight_layout()

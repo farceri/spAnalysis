@@ -555,6 +555,81 @@ def getPBCPositions(fileName, boxSize):
     #pos -= np.floor(pos/boxSize)*boxSize
     return pos
 
+def isOutsideWhichWall(pos, boxSize):
+    isOutsideWhichWall = np.zeros((2,2))
+    if(pos[0] < 0):
+        isOutsideWhichWall[0,0] = 1
+    elif(pos[0] > boxSize[0]):
+        isOutsideWhichWall[0,1] = 1
+    if(pos[1] < 0):
+        isOutsideWhichWall[1,0] = 1
+    elif(pos[1] > boxSize[1]):
+        isOutsideWhichWall[1,1] = 1
+    return isOutsideWhichWall
+
+def getDropletPosRad(pos, rad, boxSize, labelList):
+    # this positions are augmented to avoid wrong computation of droplet center
+    # of mass for droplets sitting on a boundary
+    dropletPos = np.zeros((np.unique(labelList).shape[0]-1,2)) # discard label = -1
+    dropletRad = np.zeros(np.unique(labelList).shape[0]-1)
+    labelIndex = 0
+    for label in np.unique(labelList):
+        if(label!=-1):
+            # check that all positions of particles in the droplet are inside the box
+            # if not, get the indices and compute the droplet center of mass position
+            # from the augmented positions
+            dropletIndices = np.argwhere(labelList==label)[:,0]
+            dropletRad[labelIndex] = np.sqrt(np.sum(rad[dropletIndices]**2)) # pi cancels out
+            dropletPos[labelIndex] = getSingleDropletPosFromReference(pos, dropletRad[labelIndex], boxSize, dropletIndices)
+            labelIndex += 1
+    return dropletPos, dropletRad
+
+def getSingleDropletPosFromReference(pos, dropletRad, boxSize, dropletIndices):
+    thisDropletPos = np.mean(pos[dropletIndices], axis=0)
+    dropletPosList = pos[dropletIndices]
+    shift = False
+    for d in range(2): # check if the droplet is sitting on the boundary
+        shiftPlusL = False
+        shiftMinusL = False
+        nearLNum = 0
+        near0Num = 0
+        for index in dropletIndices:
+            if(pos[index,d] > (boxSize[d] - dropletRad)):
+                nearLNum += 1
+            elif(pos[index,d] < dropletRad):
+                near0Num += 1
+        if(nearLNum != 0 and near0Num != 0):
+            if(nearLNum >= near0Num):
+                shiftPlusL = True
+                shift = True
+            else:
+                shiftMinusL = True
+                shift = True
+        if(shiftPlusL == True):
+            #print(label, "shiftPlusL", d)
+            particleId = 0
+            for index in dropletIndices:
+                if(pos[index,d] < 2*dropletRad):
+                    dropletPosList[particleId,d] = pos[index,d] + boxSize[d]
+                else:
+                    dropletPosList[particleId,d] = pos[index,d]
+                particleId += 1
+        elif(shiftMinusL == True):
+            #print(label, "shiftMinusL", d)
+            particleId = 0
+            for index in dropletIndices:
+                if(pos[index,d] > (boxSize[d] - 2*dropletRad)):
+                    dropletPosList[particleId,d] = pos[index,d] - boxSize[d]
+                else:
+                    dropletPosList[particleId,d] = pos[index,d]
+                particleId += 1
+        else:
+            #print(label, "no shift", d)
+            dropletPosList[:,d] = pos[dropletIndices,d]
+    if(shift == True):
+        thisDropletPos = np.mean(dropletPosList, axis=0)
+    return thisDropletPos
+
 def centerPositions(pos, rad, boxSize, denseList=np.array([])):
     # first check if it needs to be shifted
     if(denseList.shape[0] != 0):
@@ -692,7 +767,7 @@ def increaseDensity(dirName, dirSave, targetDensity):
     currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     print("Current density: ", currentDensity)
 
-def initializeRectangle(dirName, dirSave):
+def initializeRectangle(dirName, dirSave, ratio):
     # load all the packing files
     numParticles = int(readFromParams(dirName, "numParticles"))
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
@@ -707,7 +782,7 @@ def initializeRectangle(dirName, dirSave):
     np.savetxt(dirSave + '/particleVel.dat', vel)
     np.savetxt(dirSave + '/particleAngles.dat', angle)
     # increase boxsize along the x direction and pbc particles in new box
-    boxSize[0] *= 2
+    boxSize[0] *= ratio
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
