@@ -182,7 +182,7 @@ def computeNumberOfContacts(dirName):
     return nContacts
 
 def calcLJgradMultiple(ec, distance, radSum):
-    return -24 * ec * radSum**6 * (1 / distance**6 - 2*radSum**6 / (distance**12)) / distance
+    return (24 * ec / distance) * (2 * (radSum / distance)**12 - (radSum / distance)**6)
 
 ############################ correlation functions #############################
 def computeIsoCorrFunctions(pos1, pos2, boxSize, waveVector, scale, oneDim = False):
@@ -769,12 +769,12 @@ def increaseDensity(dirName, dirSave, targetDensity):
 
 def initializeRectangle(dirName, dirSave, ratio):
     # load all the packing files
-    numParticles = int(readFromParams(dirName, "numParticles"))
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     pos = np.loadtxt(dirName + '/particlePos.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
     angle = np.loadtxt(dirName + '/particleAngles.dat')
+    numParticles = rad.shape[0]
     density = np.sum(np.pi*rad**2)
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):

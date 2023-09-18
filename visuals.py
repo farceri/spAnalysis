@@ -152,14 +152,14 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.05)
     if(dense==True):
-        if not(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+        if not(os.path.exists(dirName + os.sep + "particleList.dat")):
             cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-        denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
+        denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         colorId = getDenseColorList(denseList)
     elif(border==True):
-        if not(os.path.exists(dirName + os.sep + "borderList.dat")):
+        if not(os.path.exists(dirName + os.sep + "particleList.dat")):
             cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-        borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
+        borderList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,1]
         colorId = getDenseColorList(borderList)
     elif(ekmap==True):
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
@@ -408,8 +408,8 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = -0.5
-    shifty = 0
+    shiftx = 1.5
+    shifty = 0.2
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -420,18 +420,15 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
     if(dense==True):
-        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
-            denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
-        else:
-            denseList,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
+        if(os.path.exists(dirName + os.sep + "particleList.dat")):
+            cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
+        denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         colorId = getDenseColorList(denseList)
     if(border==True):
-        if(os.path.exists(dirName + os.sep + "borderList.dat")):
-            borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
-        else:
-            _,_ = cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-            borderList = np.loadtxt(dirName + os.sep + "borderList.dat")
-        denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
+        if(os.path.exists(dirName + os.sep + "particleList.dat")):
+            cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
+        borderList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,1]
+        denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         colorId = getBorderColorList(denseList, borderList)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -539,8 +536,8 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     eps = 1.8*np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = 0#0.25
-    shifty = 0#0.15
+    shiftx = 1.7
+    shifty = 0.2
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, 0, -0.2 for 8k -0.4 0.05
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -549,9 +546,9 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='
     ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.1)
-    if not(os.path.exists(dirName + os.sep + "delaunayList.dat")):
+    if not(os.path.exists(dirName + os.sep + "particleList.dat")):
         cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-    denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
+    denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
     labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
     #labels = utils.getAffinityClusterLabels(pos, boxSize, denseList=denseList)
     labels = labels + np.ones(labels.shape[0])
@@ -603,8 +600,8 @@ def plotSPDelaunaySimplexClusters(dirName, figureName, threshold=0.76, filter='f
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     eps = np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = 0
-    shifty = -0.2
+    shiftx = 1.7
+    shifty = 0.2
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, 0, -0.2 for 8k -0.4 0.05
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -806,10 +803,9 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
                 pressure = cluster.computeParticleStress(dirName)
         plotSoftParticlePressureMap(axFrame, pos, pressure, rad)
     elif(dense == "dense"):
-        if(os.path.exists(dirName + os.sep + "delaunayList.dat")):
-            denseList = np.loadtxt(dirName + os.sep + "delaunayList.dat")
-        else:
-            denseList,_ = cluster.computeDelaunayCluster(dirName)
+        if(os.path.exists(dirName + os.sep + "particleList.dat")):
+            cluster.computeDelaunayCluster(dirName)
+        denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         plotSoftParticleCluster(axFrame, pos, rad, denseList)
     else:
         if(npt == "npt"):
@@ -909,9 +905,9 @@ def makeSPPackingDropletVideo(dirName, figureName, numFrames = 20, firstStep = 0
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
     eps = 1.8*np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "t0/particlePos.dat", boxSize)
-    if not(os.path.exists(dirName + os.sep + "t0/delaunayList.dat")):
+    if not(os.path.exists(dirName + os.sep + "t0/particleList.dat")):
         cluster.computeDelaunayCluster(dirName + os.sep + "t0/", threshold, filter=filter)
-    denseList = np.loadtxt(dirName + os.sep + "t0/delaunayList.dat")
+    denseList = np.loadtxt(dirName + os.sep + "t0/particleList.dat")[:,0]
     labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
     labels = labels + np.ones(labels.shape[0])
     allLabels = -1*np.ones(denseList.shape[0])

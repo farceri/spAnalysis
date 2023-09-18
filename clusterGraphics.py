@@ -795,7 +795,7 @@ def plotSPClusterSize(dirName, figureName, fixed=False, which='fraction'):
 ################################################################################
 ############################# Cluster correlations #############################
 ################################################################################
-def plotSPClusterSizeVSTime(dirName, figureName, fixed=False, which='10'):
+def plotSPClusterFluctuationsVSTime(dirName, figureName, fixed=False, which='10'):
     fig, ax = plt.subplots(figsize=(7.5,5), dpi = 120)
     if(fixed=="iod"):
         dirList = np.array(['thermal45',  'thermal58', 'thermal67', 'thermal72',  'thermal78',  'thermal80',  'thermal83', 'thermal85',  'thermal88',  'thermal94', 'thermal1'])#, 'thermal1'])
@@ -1984,7 +1984,7 @@ def plotClusterPressureVSTime(dirName, figureName, bound=False, prop=False):
     plt.show()
 
 def plotSPPressureProfile(dirName, figureName, shiftx=0, which='pressure', simplex=True):
-    fig, ax = plt.subplots(figsize = (8,3), dpi = 120)
+    fig, ax = plt.subplots(figsize = (11,4), dpi = 120)
     if(simplex=='simplex'):
         fileName = "simplexProfile.dat"
     else:
@@ -1995,44 +1995,47 @@ def plotSPPressureProfile(dirName, figureName, shiftx=0, which='pressure', simpl
         else:
             cluster.averageLinearPressureProfile(dirName, shiftx=shiftx)
     data = np.loadtxt(dirName + os.sep + fileName)
+    if(simplex=='simplex'):
+        data = data[3:-3,:]
     sigma = float(utils.readFromDynParams(dirName, 'sigma'))
     binWidth = (data[1,0] - data[0,0])
-    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth / sigma))
-    print("surface tension over temperature: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth / (data[:,10]*sigma)))
+    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth) / sigma)
     if(which=='pressure'):
-        ax.plot(data[:,0], data[:,9], lw=1.5, color='k', ls='--', label='$Steric$')
+        ax.plot(data[:,0], data[:,9]/2, lw=1.5, color='k', ls='--', label='$Steric$')
         ax.plot(data[:,0], data[:,10], lw=1.5, color='r', ls='dotted', label='$Thermal$')
         ax.plot(data[:,0], data[:,11], lw=1.5, color=[1,0.5,0], label='$Active$')
         ax.plot(data[:,0], np.sum(data[:,9:],axis=1), lw=1.5, color='b', ls='dashdot', label='$Total$')
     elif(which=='delta'):
-        ax.plot(data[:,0], data[:,3] - data[:,4], lw=1.5, color='k', ls='solid', label='$Steric$')
+        ax.plot(data[:,0], (data[:,3] - data[:,4])/2, lw=1.5, color='k', ls='solid', label='$Steric$')
+        ax.plot(data[:,0], data[:,5] - data[:,6], lw=1.5, color='r', ls='dotted', label='$Thermal$')
         ax.plot(data[:,0], data[:,7] - data[:,8], lw=1.5, color=[1,0.5,0], ls='dashed', label='$Active$')
-        ax.plot(data[:,0], data[:,3] + data[:,7] - data[:,4] - data[:,8], lw=1.5, color='b', ls='dashdot', label='$Total$')
+        #ax.plot(data[:,0], data[:,3] + data[:,7] - data[:,4] - data[:,8], lw=1.5, color='b', ls='dashdot', label='$Total$')
     elif(which=='component'):
-        ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='solid', label='$Normal,$ $\\sigma_N$')
-        ax.plot(data[:,0], data[:,2], lw=1.5, color='b', ls='dashdot', label='$Tangential,$ $\\sigma_T$')
+        gamma = np.cumsum((data[:,1]-data[:,2])*binWidth)
+        ax.plot(data[:,0], data[:,1] - data[:,2], lw=1.5, color='k', ls='solid')
+        ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='solid')
     ax.tick_params(axis='both', labelsize=14)
-    #ax.set_xlabel("$Radial$ $distance,$ $r$", fontsize=18)
-    ax.set_xlabel("$Position,$ $x$", fontsize=18)
+    ax.set_xlabel("$Position,$ $x$", fontsize=16)
     if(which=="pressure"):
-        ax.set_ylabel("$Stress,$ $\\sigma \\sigma^2$", fontsize=18)
+        ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=16)
         ax.set_ylim(np.min(data[:,9])-0.2, np.max(data[:,11])+0.6)
         figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
+        ax.legend(fontsize=12, loc='best', ncol=4)
     elif(which=="delta"):
-        ax.set_ylabel("$\\Delta \\sigma^\\ast = (\\sigma_N - \\sigma_T) \\sigma^2$", fontsize=18)
-        ax.set_ylim(np.min(data[:,3] - data[:,4])-0.2, np.max(data[:,7] - data[:,8])+0.6)
+        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
+        ax.set_ylim(np.min(data[:,7] - data[:,8])-0.2, np.max(data[:,7] - data[:,8])+0.6)
         figureName = "/home/francesco/Pictures/soft/mips/deltapProfile-" + figureName + ".png"
+        ax.legend(fontsize=12, loc='best', ncol=4)
     elif(which=="component"):
-        ax.set_ylabel("$Stress$", fontsize=18)
-        ax.set_ylim(np.min(data[:,1])-0.2, np.max(data[:,2])+0.6)
+        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
+        ax.set_ylim(np.min(data[:,1] - data[:,2])-0.2, np.max(data[:,1] - data[:,2])+0.6)
         figureName = "/home/francesco/Pictures/soft/mips/pcompProfile-" + figureName + ".png"
-    ax.legend(fontsize=13, loc='best', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
 def plotSPLJPressureProfile(dirName, figureName, shift=0, which='pressure', simplex=True):
-    fig, ax = plt.subplots(figsize = (8,3), dpi = 120)
+    fig, ax = plt.subplots(figsize = (7,4), dpi = 120)
     if(simplex=='simplex'):
         fileName = "simplexProfile.dat"
     else:
@@ -2045,8 +2048,7 @@ def plotSPLJPressureProfile(dirName, figureName, shift=0, which='pressure', simp
     data = np.loadtxt(dirName + os.sep + fileName)
     sigma = float(utils.readFromDynParams(dirName, 'sigma'))
     binWidth = (data[1,0] - data[0,0])
-    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth / sigma))
-    print("surface tension over temperature: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth / (data[:,8]*sigma)))
+    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth) / sigma)
     if(which=='pressure'):
         ax.plot(data[:,0], data[:,7], lw=1.5, color='k', ls='--', label='$Steric$')
         ax.plot(data[:,0], data[:,8], lw=1.5, color='r', ls='dotted', label='$Thermal$')
@@ -2056,24 +2058,27 @@ def plotSPLJPressureProfile(dirName, figureName, shift=0, which='pressure', simp
         ax.plot(data[:,0], data[:,5] - data[:,6], lw=1.5, color='r', ls='dotted', label='$Thermal$')
         ax.plot(data[:,0], data[:,3] + data[:,5] - data[:,4] - data[:,6], lw=1.5, color='b', ls='dashdot', label='$Total$')
     elif(which=='component'):
-        ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='solid', label='$Normal,$ $\\sigma_N$')
-        ax.plot(data[:,0], data[:,2], lw=1.5, color='b', ls='dashdot', label='$Tangential,$ $\\sigma_T$')
+        gamma = np.cumsum((data[:,1]-data[:,2])*binWidth)
+        #ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='dashed')
+        #ax.plot(data[:,0], data[:,2], lw=1.5, color='k', ls='dashdot')
+        ax.plot(data[:,0], data[:,1] - data[:,2], lw=1.5, color='k', ls='solid')
+        ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='solid')
     ax.tick_params(axis='both', labelsize=14)
-    #ax.set_xlabel("$Radial$ $distance,$ $r$", fontsize=18)
-    ax.set_xlabel("$Position,$ $x$", fontsize=18)
+    ax.set_xlabel("$Position,$ $x$", fontsize=16)
     if(which=="pressure"):
-        ax.set_ylabel("$Stress,$ $\\sigma \\sigma^2$", fontsize=18)
-        ax.set_ylim(np.min(data[:,7])-0.2, np.max(data[:,8])+0.6)
+        ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=16)
+        ax.set_ylim(np.min(data[:,7])-0.1, np.max(data[:,8])+0.2)
         figureName = "/home/francesco/Pictures/soft/mips/pLJProfile-" + figureName + ".png"
+        ax.legend(fontsize=13, loc='best', ncol=4)
     elif(which=="delta"):
-        ax.set_ylabel("$\\Delta \\sigma^\\ast = (\\sigma_N - \\sigma_T) \\sigma^2$", fontsize=18)
-        ax.set_ylim(np.min(data[:,3] - data[:,4])-0.2, np.max(data[:,5] - data[:,6])+0.6)
+        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
+        ax.set_ylim(np.min(data[:,3] - data[:,4])-0.1, np.max(data[:,5] - data[:,6])+0.2)
         figureName = "/home/francesco/Pictures/soft/mips/deltapLJProfile-" + figureName + ".png"
+        ax.legend(fontsize=13, loc='best', ncol=4)
     elif(which=="component"):
-        ax.set_ylabel("$Stress$", fontsize=18)
-        ax.set_ylim(np.min(data[:,1])-0.2, np.max(data[:,2])+0.6)
+        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
+        ax.set_ylim(np.min(data[:,1] - data[:,2])-0.1, np.max(data[:,1] - data[:,2])+0.2)
         figureName = "/home/francesco/Pictures/soft/mips/pcompLJProfile-" + figureName + ".png"
-    ax.legend(fontsize=13, loc='best', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
@@ -2122,19 +2127,55 @@ def plotSPClusterSurfaceTension(dirName, figureName, fixed='Dr'):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterSurfaceTensionVSTime(dirName, figureName):
+def plotSPClusterBorderWorkVSTime(dirName, figureName):
     #numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    data = np.loadtxt(dirName + os.sep + "surfaceWork.dat")
+    data = np.loadtxt(dirName + os.sep + "borderWork.dat")
+    data = data[1:,:]
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
-    ax.plot(data[1:,0], (data[1:,3] - data[:-1,3]) / (data[1:,4] - data[:-1,4]), linewidth=1.2, color='k')
+    ax.plot(data[:,0], data[:,1]/data[:,4], linewidth=1.2, color='k')
+    ax.plot(data[:,0], data[:,2]/data[:,4], linewidth=1.2, ls='dotted', color='r')
+    ax.plot(data[:,0], data[:,3]/data[:,4], linewidth=1.2, ls='dashed', color=[1,0.5,0])
+    ax.plot(data[:,0], (data[:,1]+data[:,2]+data[:,3])/data[:,4], linewidth=1.2, ls='dashdot', color='b')
+    ax.set_yscale('log')
     # plotting settings
     ax.tick_params(axis='both', labelsize=12)
     ax.set_xlabel("$Simulation$ $step$", fontsize=15)
-    ax.set_ylabel("$Surface$ $tension,$ $\\Delta W / \\Delta l_c$", fontsize=15)
-    ax.legend(fontsize=12, loc='best')
-    #ax.set_ylim(50, 700)
+    ax.set_ylabel("$Line$ $tension,$ $W / L_c$", fontsize=15)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pSurfaceTensionVSTime-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/pLineTensionVSTime-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterLJBorderWorkVSTime(dirName, figureName):
+    #numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    data = np.loadtxt(dirName + os.sep + "borderWork.dat")
+    fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
+    ax.plot(data[:,0], data[:,1]/data[:,3], linewidth=1.2, color='k')
+    ax.plot(data[:,0], data[:,2]/data[:,3], linewidth=1.2, ls='dotted', color='r')
+    ax.plot(data[:,0], (data[:,1]+data[:,2])/data[:,3], linewidth=1.2, ls='dashdot', color='b')
+    # plotting settings
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Simulation$ $step$", fontsize=15)
+    ax.set_ylabel("$Line$ $tension,$ $W / L_c$", fontsize=15)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/pLineTensionLJVSTime-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterSizeVSTime(dirName, figureName):
+    timeStep = float(utils.readFromParams(dirName, "dt"))
+    data = np.loadtxt(dirName + os.sep + "clusterSizeVSTime.dat")
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    #ax.errorbar(data[1:,0]*timeStep, data[1:,1], data[1:,2], linewidth=1.2, color='k', capsize=3)
+    ax.plot(data[1:,0]*timeStep, data[1:,1], linewidth=1.2, color='k', marker='o', fillstyle='none')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    # plotting settings
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Time,$ $t$", fontsize=15)
+    ax.set_ylabel("$Cluster$ $size,$ $\\langle l_c \\rangle$", fontsize=15)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/pClusterSizeVSTime-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -3046,11 +3087,11 @@ if __name__ == '__main__':
         which = sys.argv[5]
         plotSPClusterSize(dirName, figureName, fixed, which)
 
-    elif(whichPlot == "clustertime"):
+    elif(whichPlot == "clusterflutime"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
         which = sys.argv[5]
-        plotSPClusterSizeVSTime(dirName, figureName, fixed, which)
+        plotSPClusterFluctuationsVSTime(dirName, figureName, fixed, which)
 
     elif(whichPlot == "shapetime"):
         figureName = sys.argv[3]
@@ -3178,9 +3219,17 @@ if __name__ == '__main__':
         which = sys.argv[4]
         plotSPClusterDensityVSTime(dirName, figureName, which)
 
-    elif(whichPlot == "gammatime"):
+    elif(whichPlot == "worktime"):
         figureName = sys.argv[3]
-        plotSPClusterSurfaceTensionVSTime(dirName, figureName)
+        plotSPClusterBorderWorkVSTime(dirName, figureName)
+
+    elif(whichPlot == "ljworktime"):
+        figureName = sys.argv[3]
+        plotSPClusterLJBorderWorkVSTime(dirName, figureName)
+
+    elif(whichPlot == "sizetime"):
+        figureName = sys.argv[3]
+        plotSPClusterSizeVSTime(dirName, figureName)
 
     elif(whichPlot == "clustergamma"):
         figureName = sys.argv[3]
