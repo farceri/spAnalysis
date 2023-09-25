@@ -1999,43 +1999,84 @@ def plotSPPressureProfile(dirName, figureName, shiftx=0, which='pressure', simpl
         data = data[3:-3,:]
     sigma = float(utils.readFromDynParams(dirName, 'sigma'))
     binWidth = (data[1,0] - data[0,0])
-    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth) / sigma)
-    if(which=='pressure'):
-        ax.plot(data[:,0], data[:,9]/2, lw=1.5, color='k', ls='--', label='$Steric$')
-        ax.plot(data[:,0], data[:,10], lw=1.5, color='r', ls='dotted', label='$Thermal$')
-        ax.plot(data[:,0], data[:,11], lw=1.5, color=[1,0.5,0], label='$Active$')
-        ax.plot(data[:,0], np.sum(data[:,9:],axis=1), lw=1.5, color='b', ls='dashdot', label='$Total$')
+    print("surface tension: ", 0.5 * np.sum((data[:,2] + data[:,4] - data[:,3] - data[:,5]) * binWidth) / sigma)
+    if(which=='component'):
+        ax.plot(data[:,0], data[:,2] + data[:,3], lw=1.5, color='k', ls='--', label='$Steric$')
+        ax.plot(data[:,0], data[:,1], lw=1.5, color='r', ls='dotted', label='$Thermal$')
+        ax.plot(data[:,0], data[:,4] + data[:,5], lw=1.5, color=[1,0.5,0], label='$Active$')
+        ax.plot(data[:,0], np.sum(data[:,1:],axis=1), lw=1.5, color='b', ls='dashdot', label='$Total$')
     elif(which=='delta'):
-        ax.plot(data[:,0], (data[:,3] - data[:,4])/2, lw=1.5, color='k', ls='solid', label='$Steric$')
-        ax.plot(data[:,0], data[:,5] - data[:,6], lw=1.5, color='r', ls='dotted', label='$Thermal$')
-        ax.plot(data[:,0], data[:,7] - data[:,8], lw=1.5, color=[1,0.5,0], ls='dashed', label='$Active$')
-        #ax.plot(data[:,0], data[:,3] + data[:,7] - data[:,4] - data[:,8], lw=1.5, color='b', ls='dashdot', label='$Total$')
+        gamma = np.cumsum((data[:,2]+data[:,4]-data[:,3]-data[:,5])*binWidth)
+        ax.plot(data[:,0], data[:,1] + data[:,2] + data[:,4], lw=1.5, color='b', ls='solid', label='$p_N$')
+        ax.plot(data[:,0], data[:,1] + data[:,3] + data[:,5], lw=1.5, color='g', ls='solid', label='$p_T$')
+        #ax.plot(data[:,0], data[:,1] + data[:,2], lw=1.5, color='b', ls='solid', label='$p_N - steric$')
+        #ax.plot(data[:,0], data[:,1] + data[:,3], lw=1.5, color='g', ls='solid', label='$p_T - steric$')
+        #ax.plot(data[:,0], data[:,1] + data[:,4], lw=1.5, color='b', ls='dashed', label='$p_N - active$')
+        #ax.plot(data[:,0], data[:,1] + data[:,5], lw=1.5, color='g', ls='dashed', label='$p_T - active$')
+        ax.plot(data[:,0], data[:,2] + data[:,4] - data[:,3] - data[:,5], lw=1.5, color='k', ls='solid', label='$p_N - p_T$')
+        ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='dotted', label='$\int_0^L (p_N - p_T) dx$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Position,$ $x$", fontsize=16)
+    if(which=="component"):
+        #ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=16)
+        #ax.set_ylim(np.min(data[:,9])-0.2, np.max(data[:,11])+0.6)
+        figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
+    elif(which=="delta"):
+        #ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
+        #ax.set_ylim(np.min(data[:,1] - data[:,2])-0.2, np.max(data[:,1] - data[:,2])+0.6)
+        figureName = "/home/francesco/Pictures/soft/mips/pcompProfile-" + figureName + ".png"
+    ax.legend(fontsize=12, loc='best', ncol=4)
+    fig.tight_layout()
+    fig.savefig(figureName, transparent=True, format = "png")
+    plt.show()
+
+def plotSPRadialPressureProfile(dirName, figureName, which='pressure', simplex=True):
+    fig, ax = plt.subplots(figsize = (6.5,5), dpi = 120)
+    if(simplex=='simplex'):
+        fileName = "simplexProfile.dat"
+    else:
+        fileName = "pressureProfile.dat"
+    if not(os.path.exists(dirName + os.sep + fileName)):
+        if(simplex=='simplex'):
+            cluster.averageRadialPressureProfile(dirName)
+        else:
+            cluster.averageRadialPressureProfile(dirName)
+    data = np.loadtxt(dirName + os.sep + fileName)
+    data = data[1:,:]
+    sigma = float(utils.readFromDynParams(dirName, 'sigma'))
+    binWidth = (data[1,0] - data[0,0])
+    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth) / (np.pi*sigma))
+    if(which=='pressure'):
+        ax.plot(data[:,0], data[:,3], lw=1.5, color='k', ls='--', label='$Steric$')
+        ax.plot(data[:,0], data[:,4], lw=1.5, color='r', ls='dotted', label='$Thermal$')
+        ax.plot(data[:,0], data[:,5], lw=1.5, color=[1,0.5,0], label='$Active$')
+        ax.plot(data[:,0], np.sum(data[:,3:],axis=1), lw=1.5, color='b', ls='dashdot', label='$Total$')
     elif(which=='component'):
-        gamma = np.cumsum((data[:,1]-data[:,2])*binWidth)
-        ax.plot(data[:,0], data[:,1] - data[:,2], lw=1.5, color='k', ls='solid')
-        ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='solid')
+        #gamma = np.cumsum((data[:,1]-data[:,2])*binWidth)
+        ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='solid', label='$p_N(r)$')
+        x = (data[1:,0] + data[:-1,0])/2
+        y = (data[1:,1] - data[:-1,1])/(data[1:,0] - data[:-1,0])
+        ax.plot(x, y, lw=1.5, color='k', ls='dashed', label='$dp_N(r) / dr$')
+        #ax.plot(data[:,0], data[:,2], lw=1.5, color='g', ls='dashdot', label='$p_T$')
+        #ax.plot(data[:,0], data[:,1] - data[:,2], lw=1.5, color='b', ls='solid', label='$p_N - p_T$')
+        #ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='solid')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Position,$ $x$", fontsize=16)
     if(which=="pressure"):
         ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=16)
         ax.set_ylim(np.min(data[:,9])-0.2, np.max(data[:,11])+0.6)
-        figureName = "/home/francesco/Pictures/soft/mips/pProfile-" + figureName + ".png"
-        ax.legend(fontsize=12, loc='best', ncol=4)
-    elif(which=="delta"):
-        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
-        ax.set_ylim(np.min(data[:,7] - data[:,8])-0.2, np.max(data[:,7] - data[:,8])+0.6)
-        figureName = "/home/francesco/Pictures/soft/mips/deltapProfile-" + figureName + ".png"
-        ax.legend(fontsize=12, loc='best', ncol=4)
+        figureName = "/home/francesco/Pictures/soft/mips/pRadProfile-" + figureName + ".png"
     elif(which=="component"):
-        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
-        ax.set_ylim(np.min(data[:,1] - data[:,2])-0.2, np.max(data[:,1] - data[:,2])+0.6)
-        figureName = "/home/francesco/Pictures/soft/mips/pcompProfile-" + figureName + ".png"
+        ax.set_ylabel("$Normal$ $pressure,$  $p_N \\sigma^2$", fontsize=16)
+        #ax.set_ylim(np.min(data[:,2])-0.4, np.max(data[:,1])+0.6)
+        figureName = "/home/francesco/Pictures/soft/mips/pRadDeltaProfile-" + figureName + ".png"
+    ax.legend(fontsize=14, loc='best', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
 def plotSPLJPressureProfile(dirName, figureName, shift=0, which='pressure', simplex=True):
-    fig, ax = plt.subplots(figsize = (7,4), dpi = 120)
+    fig, ax = plt.subplots(figsize = (11,4), dpi = 120)
     if(simplex=='simplex'):
         fileName = "simplexProfile.dat"
     else:
@@ -2048,37 +2089,74 @@ def plotSPLJPressureProfile(dirName, figureName, shift=0, which='pressure', simp
     data = np.loadtxt(dirName + os.sep + fileName)
     sigma = float(utils.readFromDynParams(dirName, 'sigma'))
     binWidth = (data[1,0] - data[0,0])
-    print("surface tension: ", 0.5 * np.sum((data[:,1] - data[:,2]) * binWidth) / sigma)
-    if(which=='pressure'):
-        ax.plot(data[:,0], data[:,7], lw=1.5, color='k', ls='--', label='$Steric$')
-        ax.plot(data[:,0], data[:,8], lw=1.5, color='r', ls='dotted', label='$Thermal$')
-        ax.plot(data[:,0], np.sum(data[:,7:],axis=1), lw=1.5, color='b', ls='dashdot', label='$Total$')
+    print("surface tension: ", 0.5 * np.sum((data[:,2] - data[:,3]) * binWidth) / sigma)
+    if(which=='component'):
+        ax.plot(data[:,0], -0.5*(data[:,2] + data[:,3]), lw=1.5, color='k', ls='solid', label='$Steric$')
+        ax.plot(data[:,0], data[:,1], lw=1.5, color='r', ls='dashed', label='$Thermal$')
+        ax.plot(data[:,0], data[:,1] - 0.5*(data[:,2]+data[:,3]), lw=1.5, color='b', ls='dashdot', label='$Total$')
     elif(which=='delta'):
-        ax.plot(data[:,0], data[:,3] - data[:,4], lw=1.5, color='k', ls='solid', label='$Steric$')
-        ax.plot(data[:,0], data[:,5] - data[:,6], lw=1.5, color='r', ls='dotted', label='$Thermal$')
-        ax.plot(data[:,0], data[:,3] + data[:,5] - data[:,4] - data[:,6], lw=1.5, color='b', ls='dashdot', label='$Total$')
+        gamma = np.cumsum((data[:,2]-data[:,3])*binWidth)
+        ax.plot(data[:,0], data[:,1] + data[:,2], lw=1.5, color='b', ls='dashed', label='$p_N$')
+        ax.plot(data[:,0], data[:,1] + data[:,3], lw=1.5, color='g', ls='dashdot', label='$p_T$')
+        ax.plot(data[:,0], data[:,2] - data[:,3], lw=1.5, color='k', ls='solid', label='$p_N - p_T$')
+        ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='dotted', label='$\int_0^L (p_N - p_T) dx$')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Position,$ $x$", fontsize=16)
+    if(which=="component"):
+        ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=16)
+        #ax.set_ylim(np.min(data[:,7])-0.1, np.max(data[:,8])+0.2)
+        figureName = "/home/francesco/Pictures/soft/mips/pLJProfile-" + figureName + ".png"
+    elif(which=="delta"):
+        #ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
+        #ax.set_ylim(np.min(data[:,1] - data[:,2])-0.1, np.max(data[:,1] - data[:,2])+0.2)
+        figureName = "/home/francesco/Pictures/soft/mips/pcompLJProfile-" + figureName + ".png"
+    ax.legend(fontsize=12, loc='best', ncol=2)
+    fig.tight_layout()
+    fig.savefig(figureName, transparent=True, format = "png")
+    plt.show()
+
+def plotSPLJRadialPressureProfile(dirName, figureName, which='pressure', simplex=True):
+    fig, ax = plt.subplots(figsize = (6.5,5), dpi = 120)
+    if(simplex=='simplex'):
+        fileName = "simplexProfile.dat"
+    else:
+        fileName = "pressureProfile.dat"
+    if not(os.path.exists(dirName + os.sep + fileName)):
+        if(simplex=='simplex'):
+            cluster.averageRadialLJPressureProfile(dirName)
+        else:
+            cluster.averageRadialLJPressureProfile(dirName)
+    data = np.loadtxt(dirName + os.sep + fileName)
+    print(data.shape[0])
+    data = data[2:30,:]
+    sigma = float(utils.readFromDynParams(dirName, 'sigma'))
+    if(which=='pressure'):
+        ax.plot(data[:,0], data[:,3], lw=1.2, color='k', ls='--', label='$Steric$')
+        ax.plot(data[:,0], data[:,4], lw=1.2, color='r', ls='dotted', label='$Thermal$')
+        ax.plot(data[:,0], np.sum(data[:,3:],axis=1), lw=1.2, color='b', ls='dashdot', label='$Total$')
     elif(which=='component'):
-        gamma = np.cumsum((data[:,1]-data[:,2])*binWidth)
-        #ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='dashed')
-        #ax.plot(data[:,0], data[:,2], lw=1.5, color='k', ls='dashdot')
-        ax.plot(data[:,0], data[:,1] - data[:,2], lw=1.5, color='k', ls='solid')
-        ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='solid')
+        #gamma = np.cumsum((data[:,1]-data[:,2])*binWidth)
+        ax.plot(data[:,0], data[:,1], lw=1.5, color='k', ls='solid', label='$p_N(r)$')
+        x = (data[1:,0] + data[:-1,0])/2
+        y = (data[1:,1] - data[:-1,1])/(data[1:,0] - data[:-1,0])
+        ax.plot(x, y, lw=1.5, color='k', ls='dashed', label='$dp_N(r) / dr$')
+        #ax.plot(data[:,0], data[:,2], lw=1.2, color='g', ls='dashdot', label='$p_T$')
+        #ax.plot(data[:,0], data[:,1] - data[:,2], lw=1.2, color='b', ls='solid', label='$p_N - p_T$')
+        #ax.plot(data[:,0], gamma, lw=1.5, color='r', ls='solid')
+        centers = (x[1:] + x[:-1])/2
+        binWidth = centers[1] - centers[0]
+        print("surface tension: ", 0.5 * np.sum((y[1:] - y[:-1]) * centers * binWidth) / sigma)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Position,$ $x$", fontsize=16)
     if(which=="pressure"):
         ax.set_ylabel("$Pressure,$ $p \\sigma^2$", fontsize=16)
         ax.set_ylim(np.min(data[:,7])-0.1, np.max(data[:,8])+0.2)
-        figureName = "/home/francesco/Pictures/soft/mips/pLJProfile-" + figureName + ".png"
-        ax.legend(fontsize=13, loc='best', ncol=4)
-    elif(which=="delta"):
-        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
-        ax.set_ylim(np.min(data[:,3] - data[:,4])-0.1, np.max(data[:,5] - data[:,6])+0.2)
-        figureName = "/home/francesco/Pictures/soft/mips/deltapLJProfile-" + figureName + ".png"
-        ax.legend(fontsize=13, loc='best', ncol=4)
+        figureName = "/home/francesco/Pictures/soft/mips/pRadLJProfile-" + figureName + ".png"
     elif(which=="component"):
-        ax.set_ylabel("$\\Delta p^\\ast = (p_N - p_T) \\sigma^2$", fontsize=16)
-        ax.set_ylim(np.min(data[:,1] - data[:,2])-0.1, np.max(data[:,1] - data[:,2])+0.2)
-        figureName = "/home/francesco/Pictures/soft/mips/pcompLJProfile-" + figureName + ".png"
+        ax.set_ylabel("$Normal$ $pressure,$  $p_N \\sigma^2$", fontsize=16)
+        #ax.set_ylim(np.min(data[:,1])-0.05, np.max(data[:,1])+0.)
+        figureName = "/home/francesco/Pictures/soft/mips/pRadDeltaLJProfile-" + figureName + ".png"
+    ax.legend(fontsize=14, loc='best', ncol=4)
     fig.tight_layout()
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
@@ -3183,12 +3261,24 @@ if __name__ == '__main__':
         simplex = sys.argv[6]
         plotSPPressureProfile(dirName, figureName, shiftx, which, simplex)
 
+    elif(whichPlot == "radprofile"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        simplex = sys.argv[5]
+        plotSPRadialPressureProfile(dirName, figureName, which, simplex)
+
     elif(whichPlot == "ljprofile"):
         figureName = sys.argv[3]
         shiftx = float(sys.argv[4])
         which = sys.argv[5]
         simplex = sys.argv[6]
         plotSPLJPressureProfile(dirName, figureName, shiftx, which, simplex)
+
+    elif(whichPlot == "radljprofile"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        simplex = sys.argv[5]
+        plotSPLJRadialPressureProfile(dirName, figureName, which, simplex)
 
     elif(whichPlot == "remove"):
         figureName = sys.argv[3]

@@ -116,7 +116,7 @@ def getColorListFromLabels(labels):
     colorList = cm.get_cmap('tab20', numLabels)
     colorId = np.zeros((labels.shape[0], 4))
     for particleId in range(labels.shape[0]):
-        if(labels[particleId]==-1): # particles not in a cluster
+        if(labels[particleId]==-1 or labels[particleId]==0): # particles not in a cluster
             colorId[particleId] = [1,1,1,1]
         else:
             colorId[particleId] = colorList(labels[particleId]/numLabels)
@@ -251,47 +251,51 @@ def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, 
     plt.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def getPressureColorList(pressure, which='total'):
-    colorList = cm.get_cmap('viridis', pressure.shape[0])
-    colorId = np.zeros((pressure.shape[0], 4))
+def getStressColorList(stress, which='total', droplet='lj'):
+    colorList = cm.get_cmap('viridis', stress.shape[0])
+    colorId = np.zeros((stress.shape[0], 4))
     count = 0
     if(which=='total'):
-        p = pressure[:,0] + pressure[:,1] + pressure[:,2]
+        if(droplet=='lj' or droplet=='ra'):
+            p = np.sum(stress[:,0:2], axis=1)
+        else:
+            p = np.sum(stress[:,0:3], axis=1)
     elif(which=='steric'):
-        p = pressure[:,0]
+        p = stress[:,0]
     elif(which=='thermal'):
-        p = pressure[:,1]
+        p = stress[:,1]
     elif(which=='active'):
-        p = pressure[:,2]
-    elif(which=='epot'):
-        p = pressure[:,3]
+        p = stress[:,2]
+    elif(which=='etot'):
+        p = stress[:,3]
     for particleId in np.argsort(p):
         colorId[particleId] = colorList(count/p.shape[0])
         count += 1
     return colorId, colorList
 
-def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1=0.035, alpha=0.7):
+def plotSPStressMapPacking(dirName, figureName, which='total', droplet='lj', l1=0.035, shiftx=0, shifty=0, alpha=0.7):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0.5, 0.5)
+    pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
     ax.set_ylim(yBounds[0], yBounds[1])
     ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
-    if(os.path.exists(dirName + os.sep + "particleStress.dat")):
-        pressure = np.loadtxt(dirName + os.sep + "particleStress.dat")
-    else:
-        if(droplet == 'droplet'):
-            pressure = cluster.computeDropletParticleStress(dirName, l1)
+    if not(os.path.exists(dirName + os.sep + "particleStress!.dat")):
+        if(droplet == 'lj'):
+            stress = cluster.computeLJParticleStress(dirName)
+        elif(droplet == 'ra'):
+            stress = cluster.computeRAParticleStress(dirName, l1)
         else:
-            pressure = cluster.computeParticleStress(dirName)
-    colorId, colorList = getPressureColorList(pressure, which)
+            stress = cluster.computeParticleStress(dirName)
+    stress = np.loadtxt(dirName + os.sep + "particleStress.dat")
+    colorId, colorList = getStressColorList(stress, which, droplet)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
@@ -299,49 +303,51 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet=False, l1
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth='0.3'))
     colorBar = cm.ScalarMappable(cmap=colorList)
     divider = make_axes_locatable(ax)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
+    cax = divider.append_axes('right', size='2%', pad=0.05)
     cb = plt.colorbar(colorBar, cax=cax)
     cb.set_ticks(np.linspace(0, 1, 5))
     cb.ax.tick_params(labelsize=10)
     if(which=='total'):
-        mintick = np.min(pressure[:,0] + pressure[:,1] + pressure[:,2])
-        maxtick = np.max(pressure[:,0] + pressure[:,1] + pressure[:,2])
+        mintick = np.min(stress[:,0] + stress[:,1] + stress[:,2])
+        maxtick = np.max(stress[:,0] + stress[:,1] + stress[:,2])
         label = "$ Total$\n$stress$"
     elif(which=='steric'):
-        mintick = np.min(pressure[:,0])
-        maxtick = np.max(pressure[:,0])
+        mintick = np.min(stress[:,0])
+        maxtick = np.max(stress[:,0])
         label = "$ Steric$\n$stress$"
     elif(which=='thermal'):
-        mintick = np.min(pressure[:,1])
-        maxtick = np.max(pressure[:,1])
+        mintick = np.min(stress[:,1])
+        maxtick = np.max(stress[:,1])
         label = "$ Thermal$\n$stress$"
     elif(which=='active'):
-        mintick = np.min(pressure[:,2])
-        maxtick = np.max(pressure[:,2])
+        mintick = np.min(stress[:,2])
+        maxtick = np.max(stress[:,2])
         label = "$ Active$\n$stress$"
-    elif(which=='epot'):
-        mintick = np.min(pressure[:,3])
-        maxtick = np.max(pressure[:,3])
-        label = "$E_{pot}$"
+    elif(which=='etot'):
+        mintick = np.min(stress[:,3])
+        maxtick = np.max(stress[:,3])
+        label = "$E_{tot}$"
     tickList = np.linspace(mintick, maxtick, 5)
     for i in range(tickList.shape[0]):
         #tickList[i] = np.format_float_positional(tickList[i], precision=0)
         tickList[i] = np.format_float_scientific(tickList[i], precision=0)
     cb.set_ticklabels(tickList)
-    cb.set_label(label=label, fontsize=14, labelpad=25, rotation='horizontal')
+    cb.set_label(label=label, fontsize=12, labelpad=25, rotation='horizontal')
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/packings/pmap-" + figureName + ".png"
     plt.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filter=True, alpha=0.7):
+def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filter=True, alpha=0.7, shiftx=0, shifty=0, lj=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
+    if(lj==True):
+        rad *= 2**(1/6)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0.1, -0.3)
+    pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
     ax.set_xlim(xBounds[0], xBounds[1])
@@ -401,15 +407,15 @@ def getBorderColorList(denseList, borderList):
                 colorId[particleId] = [1,1,1,1]
     return colorId
 
-def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, threshold=0.76, filter='filter', alpha=0.8, colored=False):
+def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, threshold=0.76, filter='filter', alpha=0.8, colored=False, shiftx=0, shifty=0, lj=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     xBounds = np.array([0, boxSize[0]])
     yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
+    if(lj==True):
+        rad *= 2**(1/6)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = 1.5
-    shifty = 0.2
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -536,8 +542,8 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     eps = 1.8*np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = 1.7
-    shifty = 0.2
+    shiftx = 0#1.7
+    shifty = 0#0.2
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, 0, -0.2 for 8k -0.4 0.05
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -545,40 +551,36 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='
     ax.set_ylim(yBounds[0], yBounds[1])
     ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
-    #setBigBoxAxes(boxSize, ax, 0.1)
-    if not(os.path.exists(dirName + os.sep + "particleList.dat")):
-        cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
-    denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
-    labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
-    #labels = utils.getAffinityClusterLabels(pos, boxSize, denseList=denseList)
-    labels = labels + np.ones(labels.shape[0])
-    allLabels = -1*np.ones(denseList.shape[0])
-    allLabels[denseList==1] = labels
-    labels = allLabels.astype(np.int64)
-    dropletPos, dropletRad = utils.getDropletPosRad(pos, rad, boxSize, labels)
+    #setBigBoxAxes(boxSize, ax, 1)
+    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
+    #dropletPos, dropletRad = utils.getDropletPosRad(pos, rad, boxSize, labels)
     #print(np.unique(labels))
     colorId = getColorListFromLabels(labels)
+    maxLabel = utils.findLargestParticleCluster(rad, labels)
+    print("maxLabel:", maxLabel)
+    pos = utils.centerDroplet(pos, rad, boxSize, labels, maxLabel)
     if(paused=='paused'):
         #i = 0
         for label in np.unique(labels):
-            if(label==2):
-                print(label)
-                for particleId in np.argwhere(labels==label)[:,0]:
-                    x = pos[particleId,0]
-                    y = pos[particleId,1]
-                    r = rad[particleId]
-                    ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
-                plt.tight_layout()
-                #if(label!=-1):
-                #    print(label, np.mean(pos[np.argwhere(labels==label)], axis=0), "computed:", dropletPos[i])
-                #    i += 1
-                plt.pause(0.2)
+            #print(label)
+            for particleId in np.argwhere(labels==label)[:,0]:
+                x = pos[particleId,0]
+                y = pos[particleId,1]
+                r = rad[particleId]
+                ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
+            plt.tight_layout()
+            #if(label!=-1):
+            #    print(label, np.mean(pos[np.argwhere(labels==label)], axis=0), "computed:", dropletPos[i])
+            #    i += 1
+            plt.pause(0.5)
     else:
         for particleId in range(rad.shape[0]):
             x = pos[particleId,0]
             y = pos[particleId,1]
             r = rad[particleId]
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
+            if(labels[particleId]==maxLabel):
+                ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.3))
     figureName = "/home/francesco/Pictures/soft/packings/clusters-" + figureName + ".png"
     plt.tight_layout()
     plt.savefig(figureName, transparent=False, format = "png")
@@ -600,8 +602,8 @@ def plotSPDelaunaySimplexClusters(dirName, figureName, threshold=0.76, filter='f
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     eps = np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    shiftx = 1.7
-    shifty = 0.2
+    shiftx = 0#1.7
+    shifty = 0#0.2
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, 0, -0.2 for 8k -0.4 0.05
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
@@ -705,11 +707,14 @@ def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList = np.array([]), al
             axFrame.add_artist(plt.Circle([x, y], r, edgecolor=colorId[particleId], facecolor='none', alpha=alpha, linewidth = 0.7))
             axFrame.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)#width=0.003, scale=1, headwidth=5)
 
-def plotSoftParticlePressureMap(axFrame, pos, pressure, rad, alpha = 0.7):
+def plotSoftParticleStressMap(axFrame, pos, stress, rad, droplet='lj', alpha = 0.7):
     colorId = np.zeros((rad.shape[0], 4))
     colorList = cm.get_cmap('viridis', rad.shape[0])
     count = 0
-    p = pressure[:,0] + pressure[:,1] + pressure[:,2]
+    if(droplet=='lj' or droplet=='ra'):
+        p = np.sum(stress[:,0:2], axis=1)
+    else:
+        p = np.sum(stress[:,0:3], axis=1)
     for particleId in np.argsort(p):
         colorId[particleId] = colorList(count/p.shape[0])
         count += 1
@@ -794,14 +799,15 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
         plotSoftParticleQuiverVel(axFrame, pos, vel, rad)
     elif(pmap == "pmap"):
-        if(os.path.exists(dirName + os.sep + "particleStress!.dat")):
-            pressure = np.loadtxt(dirName + os.sep + "particleStress.dat")
-        else:
-            if(droplet == 'droplet'):
-                pressure = cluster.computeDropletParticleStress(dirName, l1)
+        if(os.path.exists(dirName + os.sep + "particleStress.dat")):
+            if(droplet == 'lj'):
+                stress = cluster.computeLJParticleStress(dirName)
+            elif(droplet == 'ra'):
+                stress = cluster.computeRAParticleStress(dirName, l1)
             else:
-                pressure = cluster.computeParticleStress(dirName)
-        plotSoftParticlePressureMap(axFrame, pos, pressure, rad)
+                stress = cluster.computeParticleStress(dirName)
+        stress = np.loadtxt(dirName + os.sep + "particleStress.dat")
+        plotSoftParticleStressMap(axFrame, pos, stress, rad, droplet)
     elif(dense == "dense"):
         if(os.path.exists(dirName + os.sep + "particleList.dat")):
             cluster.computeDelaunayCluster(dirName)
@@ -1007,17 +1013,23 @@ if __name__ == '__main__':
         alpha = float(sys.argv[4])
         plotSPPacking(dirName, figureName, ekmap=True, alpha=alpha)
 
-    elif(whichPlot == "ssstress"):
+    elif(whichPlot == "stress"):
         which = sys.argv[4]
         droplet = sys.argv[5]
         l1 = float(sys.argv[6])
-        plotSPStressMapPacking(dirName, figureName, which, droplet, l1)
+        plotSPStressMapPacking(dirName, figureName, which, droplet, l1, shiftx=float(sys.argv[7]), shifty=float(sys.argv[8]))
 
     elif(whichPlot == "ssvoro"):
-        plotSPVoronoiPacking(dirName, figureName)
+        plotSPVoronoiPacking(dirName, figureName, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]))
+
+    elif(whichPlot == "ljvoro"):
+        plotSPVoronoiPacking(dirName, figureName, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), lj=True)
 
     elif(whichPlot == "ssdel"):
-        plotSPDelaunayPacking(dirName, figureName)
+        plotSPDelaunayPacking(dirName, figureName, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]))
+
+    elif(whichPlot == "ljdel"):
+        plotSPDelaunayPacking(dirName, figureName, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), lj=True)
 
     elif(whichPlot == "ssdeldense"):
         np.seterr(divide='ignore', invalid='ignore')
@@ -1079,18 +1091,24 @@ if __name__ == '__main__':
         stepFreq = float(sys.argv[6])
         makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, quiver = "quiver")
 
-    elif(whichPlot == "pvideo"):
+    elif(whichPlot == "stressvideo"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
         makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap")
 
-    elif(whichPlot == "dropvideo"):
+    elif(whichPlot == "rastressvideo"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
         l1 = float(sys.argv[7])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap", droplet = "droplet", l1=l1)
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap", droplet = "ra", l1=l1)
+
+    elif(whichPlot == "ljstressvideo"):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap", droplet = "lj")
 
     elif(whichPlot == "clustervideo"):
         numFrames = int(sys.argv[4])

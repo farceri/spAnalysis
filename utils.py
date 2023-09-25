@@ -465,7 +465,7 @@ def getStepList(numFrames, firstStep, stepFreq):
 def getDirectories(dirName):
     listDir = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
     return listDir
 
@@ -473,7 +473,7 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)
@@ -706,6 +706,28 @@ def centerPositions(pos, rad, boxSize, denseList=np.array([])):
             pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     return pos
 
+def centerDroplet(pos, rad, boxSize, labels, maxLabel, nDim=2):
+    centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
+    #print("loaded center of mass:", centerOfMass[0], centerOfMass[1])
+    dropletPos = pos[labels==maxLabel]
+    dropletRad = np.sqrt(np.sum(rad[labels==maxLabel]**2))
+    shift = np.zeros(nDim)
+    isOutside = np.zeros(nDim)
+    for i in range(dropletPos.shape[0]):
+        delta = pbcDistance(centerOfMass, dropletPos[i], boxSize)
+        for d in range(nDim):
+            if(delta[d] > dropletRad):
+                isOutside[d] += 1
+    for d in range(nDim):
+        if(isOutside[d] > dropletPos.shape[0]*0.5):
+            shift[d] = 0.5
+    #print("correction shift: ", shift)
+    pos = shiftPositions(pos, boxSize, shift[0], shift[1])
+    centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
+    pos = shiftPositions(pos, boxSize, 0.5-centerOfMass[0], 0.5-centerOfMass[1])
+    #print("final center of mass:", np.mean(pos[labels==maxLabel], axis=0))
+    return pos
+
 def shiftPositions(pos, boxSize, xshift, yshift):
     pos[:,0] += xshift
     pos[:,1] += yshift
@@ -795,6 +817,53 @@ def initializeRectangle(dirName, dirSave, ratio):
     currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     print("Current density: ", currentDensity)
     np.savetxt(dirSave + '/particleRad.dat', rad)
+
+def findLargestParticleCluster(rad, labels):
+    uniqueLabels = np.unique(labels).astype(np.int64)
+    size = np.zeros(uniqueLabels.shape[0])
+    for i in range(uniqueLabels.shape[0]):
+        if(uniqueLabels[i]!=-1):
+            size[i] = np.sum(rad[labels==uniqueLabels[i]]**2)
+    return uniqueLabels[np.argmax(size)]
+
+def removeSmallClusters(dirName, dirSave, threshold=0.76):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    eps = 1.8*np.max(rad)
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    # save unchanged files to new directory
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
+    print(labels)
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    # make a list of indices to keep
+    if(np.unique(labels).shape[0]<2):
+        print("There is only one cluster here - keep all particles")
+        keepList = np.arange(0,labels.shape[0],1).astype(np.int64)
+    else:
+        keepList = np.empty(0)
+        keepList = np.append(keepList, np.argwhere(labels==-1))
+        maxLabel = findLargestParticleCluster(rad, labels)
+        keepList = np.append(keepList, np.argwhere(labels==maxLabel))
+        threshold = int(labels.shape[0] / 1000)
+        if(threshold < 3):
+            threshold = 3
+        for label in np.unique(labels):
+            if(label !=-1 or label != maxLabel):
+                if(np.argwhere(labels==label).shape[0] < threshold):
+                    keepList = np.append(keepList, np.argwhere(labels==label))
+                    print(label)
+    keepList = keepList.astype(np.int64)
+    np.savetxt(dirSave + '/particleRad.dat', rad[keepList])
+    np.savetxt(dirSave + '/particlePos.dat', pos[keepList])
+    np.savetxt(dirSave + '/particleVel.dat', vel[keepList])
+    np.savetxt(dirSave + '/particleAngles.dat', angle[keepList])
+    print("Number of particles left in the packing: ", keepList.shape[0])
+    print("Packing fraction: ", np.sum(rad[keepList]**2)*np.pi/(boxSize[0]*boxSize[1]))
 
 def initializeDroplet(dirName, dirSave):
     # load all the packing files
@@ -1003,19 +1072,26 @@ def findNeighborSimplices(simplices, sIndex):
     intersect12 = np.intersect1d(index1List, index2List)
     intersect20 = np.intersect1d(index2List, index0List)
     # need to subtract shorter array from larger array
+    neighbors = np.empty(0)
     if(intersect01.shape[0] >= intersect12.shape[0]):
-        firstNeighbor = np.setdiff1d(intersect01, intersect12)[0]
+        firstNeighborList = np.setdiff1d(intersect01, intersect12)
     else:
-        firstNeighbor = np.setdiff1d(intersect12, intersect01)[0]
+        firstNeighborList = np.setdiff1d(intersect12, intersect01)
+    if(firstNeighborList.shape[0] != 0):
+        neighbors = np.append(neighbors,firstNeighborList[0])
     if(intersect12.shape[0] >= intersect20.shape[0]):
-        secondNeighbor = np.setdiff1d(intersect12, intersect20)[0]
+        secondNeighborList = np.setdiff1d(intersect12, intersect20)
     else:
-        secondNeighbor = np.setdiff1d(intersect20, intersect12)[0]
+        secondNeighborList = np.setdiff1d(intersect20, intersect12)
+    if(secondNeighborList.shape[0] != 0):
+        neighbors = np.append(neighbors,secondNeighborList[0])
     if(intersect20.shape[0] >= intersect01.shape[0]):
-        thirdNeighbor = np.setdiff1d(intersect20, intersect01)[0]
+        thirdNeighborList = np.setdiff1d(intersect20, intersect01)
     else:
-        thirdNeighbor = np.setdiff1d(intersect01, intersect20)[0]
-    return np.array([firstNeighbor, secondNeighbor, thirdNeighbor])
+        thirdNeighborList = np.setdiff1d(intersect01, intersect20)
+    if(thirdNeighborList.shape[0] != 0):
+        neighbors = np.append(neighbors,thirdNeighborList[0])
+    return neighbors.astype(np.int64)
 
 def findAllNeighborSimplices(simplices, sIndex):
     neighborList = []

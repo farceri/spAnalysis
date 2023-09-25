@@ -1183,7 +1183,7 @@ def computeClusterMixingByLabel(dirName, numBlocks, blockPower, spacing='log', p
         plt.show()
 
 ############################ Velocity distribution #############################
-def averageClusterVelPDF(dirName, plot=False, dirSpacing=1):
+def averageClusterVelPDF(dirName, threshold=0.76, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
@@ -1191,16 +1191,18 @@ def averageClusterVelPDF(dirName, plot=False, dirSpacing=1):
     #dirList = dirList[-50:]
     velInCluster = np.empty(0)
     velOutCluster = np.empty(0)
+    velTotal = np.empty(0)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         if not(os.path.exists(dirSample + "/particleList.dat")):
-            computeDelaunayCluster(dirSample)
+            computeDelaunayCluster(dirSample, threshold=threshold)
         particleList = np.loadtxt(dirSample + "/particleList.dat")
         denseList = particleList[:,0]
         vel = np.loadtxt(dirSample + os.sep + "particleVel.dat")
         velNorm = np.linalg.norm(vel, axis=1)
         velInCluster = np.append(velInCluster, velNorm[denseList==1].flatten())
         velOutCluster = np.append(velOutCluster, velNorm[denseList!=1].flatten())
+        velTotal = np.append(velTotal, velNorm.flatten())
     # in cluster
     velInCluster = velInCluster[velInCluster>0]
     mean = np.mean(velInCluster)
@@ -1212,7 +1214,7 @@ def averageClusterVelPDF(dirName, plot=False, dirSpacing=1):
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity inside the cluster: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
     if(plot == "plot"):
-        uplot.plotCorrelation(edges, pdf, "$Velocity$ $distribution,$ $P(v)$", xlabel = "$Velocity,$ $v$", color='b')
+        uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
     np.savetxt(dirName + os.sep + "velPDFInCluster.dat", np.column_stack((edges, pdf)))
     # out of cluster
     velOutCluster = velOutCluster[velOutCluster>0]
@@ -1225,8 +1227,21 @@ def averageClusterVelPDF(dirName, plot=False, dirSpacing=1):
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity outside the cluster: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
     if(plot == "plot"):
-        uplot.plotCorrelation(edges, pdf, "$Velocity$ $distribution,$ $P(v)$", xlabel = "$Velocity,$ $v$", color='g')
+        uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
     np.savetxt(dirName + os.sep + "velPDFOutCluster.dat", np.column_stack((edges, pdf)))
+    # total
+    velTotal = velTotal[velTotal>0]
+    mean = np.mean(velTotal)
+    Temp = np.var(velTotal)
+    skewness = np.mean((velTotal - mean)**3)/Temp**(3/2)
+    kurtosis = np.mean((velTotal - mean)**4)/Temp**2
+    data = velTotal# / np.sqrt(2*Temp)
+    pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
+    edges = 0.5 * (edges[:-1] + edges[1:])
+    print("Variance of the velocity in the whole system: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    if(plot == "plot"):
+        uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='k')
+    np.savetxt(dirName + os.sep + "velPDF.dat", np.column_stack((edges, pdf)))
     if(plot == "plot"):
         #plt.pause(0.5)
         plt.show()
@@ -2292,8 +2307,34 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
         plt.pause(0.5)
     return np.column_stack((timeList, clusterVel))
 
+def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False):
+    if(compute==True):
+        computeDelaunayCluster(dirSample, threshold=threshold)
+        particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
+        denseList = particleList[:,0]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
+        allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
+        allLabels[denseList==1] = labels
+        np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
+    else:
+        if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
+            computeDelaunayCluster(dirSample, threshold=threshold)
+        particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
+        denseList = particleList[:,0]
+        if not(os.path.exists(dirSample + os.sep + "clusterLabels.dat")):
+            # compute simplex positions for clustering algorithm
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
+            allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
+            allLabels[denseList==1] = labels
+            np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
+        else:
+            allLabels = np.loadtxt(dirSample + os.sep + "clusterLabels.dat")
+    return allLabels
+
 ############################# Cluster distribution #############################
-def computeDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
+def computeDelaunayClusterDistribution(dirName, threshold=0.76, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     phi = int(utils.readFromParams(dirName, "phi"))
     rad = np.array(np.loadtxt(dirName + "/particleRad.dat"))
@@ -2308,25 +2349,12 @@ def computeDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
     for d in range(dirList.shape[0]):
         print(dirList[d])
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
-            computeDelaunayCluster(dirSample)
-        particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
-        denseList = particleList[:,0]
-        denseRad = rad[denseList==1]
-        if not(os.path.exists(dirSample + os.sep + "clusterLabels.dat")):
-            # compute simplex positions for clustering algorithm
-            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
-            allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
-            allLabels[denseList==1] = labels
-            np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
-        else:
-            allLabels = np.loadtxt(dirSample + os.sep + "clusterLabels.dat")
-            labels = allLabels[denseList==1]
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
         uniqueLabels = np.unique(labels).astype(np.int64)
         for label in uniqueLabels:
-            clusterNumber = np.append(clusterNumber, labels[labels==label].shape[0] / labels.shape[0])
-            clusterArea = np.append(clusterArea, np.sum(denseRad[labels==label]**2)*np.pi)
+            if(label!=-1 and label!=0):
+                clusterNumber = np.append(clusterNumber, labels[labels==label].shape[0] / labels.shape[0])
+                clusterArea = np.append(clusterArea, np.sum(denseRad[labels==label]**2)*np.pi)
     # in cluster
     clusterArea = clusterArea[clusterNumber>0]
     clusterNumber = clusterNumber[clusterNumber>0]
@@ -2343,6 +2371,38 @@ def computeDelaunayClusterDistribution(dirName, plot=False, dirSpacing=1):
         #plt.show()
         plt.pause(0.5)
 
+def getSimplexClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False):
+    if(compute==True):
+        computeDelaunayCluster(dirSample, threshold=threshold, save='save')
+        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
+        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
+        denseSimplexList = simplexList[:,0]
+        simplexArea = simplexList[:,2]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        simplexPos = utils.computeSimplexPos(simplices, pos)
+        labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
+        allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
+        allLabels[denseSimplexList==1] = labels
+        np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
+    else:
+        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
+            computeDelaunayCluster(dirSample, threshold=threshold, save='save')
+        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
+        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
+        denseSimplexList = simplexList[:,0]
+        simplexArea = simplexList[:,2]
+        if not(os.path.exists(dirSample + os.sep + "simplexLabels.dat")):
+            # compute simplex positions for clustering algorithm
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            simplexPos = utils.computeSimplexPos(simplices, pos)
+            labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
+            allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
+            allLabels[denseSimplexList==1] = labels
+            np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
+        else:
+            allLabels = np.loadtxt(dirSample + os.sep + "simplexLabels.dat")
+    return allLabels, simplexArea
+
 ######################### Simplex cluster distribution #########################
 def computeSimplexClusterDistribution(dirName, threshold=0.76, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
@@ -2357,30 +2417,12 @@ def computeSimplexClusterDistribution(dirName, threshold=0.76, plot=False, dirSp
     clusterArea = np.empty(0)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
-            computeDelaunayCluster(dirSample, threshold=threshold, save='save')
-        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
-        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
-        denseSimplexList = simplexList[:,0]
-        simplexArea = simplexList[:,2]
-        simplexArea = simplexArea[denseSimplexList==1]
-        if not(os.path.exists(dirSample + os.sep + "simplexLabels.dat")):
-            # compute simplex positions for clustering algorithm
-            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            simplexPos = utils.computeSimplexPos(simplices, pos)
-            labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
-            allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
-            allLabels[denseSimplexList==1] = labels
-            np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
-        else:
-            allLabels = np.loadtxt(dirSample + os.sep + "simplexLabels.dat")
-            labels = allLabels[denseSimplexList==1]
+        labels, simplexArea = getSimplexClusterLabels(dirSample, boxSize, eps, threshold)
         uniqueLabels = np.unique(labels).astype(np.int64)
-        if(uniqueLabels.shape[0] > 1):
-            uniqueLabels = uniqueLabels[uniqueLabels!=-1]
         for label in uniqueLabels:
-            clusterNumber = np.append(clusterNumber, labels[labels==label].shape[0] / labels.shape[0])
-            clusterArea = np.append(clusterArea, np.sum(simplexArea[labels==label]))
+            if(label!=-1 and label!=0):
+                clusterNumber = np.append(clusterNumber, labels[labels==label].shape[0] / labels.shape[0])
+                clusterArea = np.append(clusterArea, np.sum(simplexArea[labels==label]))
     # in cluster
     clusterArea = clusterArea[clusterNumber>0]
     clusterNumber = clusterNumber[clusterNumber>0]
@@ -2411,34 +2453,16 @@ def computeClusterSizeVSTime(dirName, threshold=0.76, plot=False, dirSpacing=1):
     clusterSize = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
-            computeDelaunayCluster(dirSample, threshold=threshold, save='save')
-        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
-        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
-        denseSimplexList = simplexList[:,0]
-        simplexArea = simplexList[:,2]
-        simplexArea = simplexArea[denseSimplexList==1]
-        if not(os.path.exists(dirSample + os.sep + "simplexLabels.dat")):
-            # compute simplex positions for clustering algorithm
-            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            simplexPos = utils.computeSimplexPos(simplices, pos)
-            labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
-            allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
-            allLabels[denseSimplexList==1] = labels
-            np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
-        else:
-            allLabels = np.loadtxt(dirSample + os.sep + "simplexLabels.dat")
-            labels = allLabels[denseSimplexList==1]
+        labels, simplexArea = getSimplexClusterLabels(dirSample, boxSize, eps, threshold)
         uniqueLabels = np.unique(labels).astype(np.int64)
-        if(uniqueLabels.shape[0] > 1):
-            uniqueLabels = uniqueLabels[uniqueLabels!=-1]
         number = np.empty(0)
         area = np.empty(0)
         size = np.empty(0)
         for label in uniqueLabels:
-            number = np.append(number, labels[labels==label].shape[0] / labels.shape[0])
-            area = np.append(area, np.sum(simplexArea[labels==label]))
-            size = np.append(size, np.sqrt(np.sum(simplexArea[labels==label]) / np.pi))
+            if(label!=-1):
+                number = np.append(number, labels[labels==label].shape[0] / labels.shape[0])
+                area = np.append(area, np.sum(simplexArea[labels==label]))
+                size = np.append(size, np.sqrt(np.sum(simplexArea[labels==label]) / np.pi))
         clusterNumber[d,0] = np.mean(number)
         clusterNumber[d,1] = np.std(number)
         clusterArea[d,0] = np.mean(area)
@@ -2504,23 +2528,207 @@ def computeDropletSizeVSTime(dirName, plot=False, dirSpacing=1):
         plt.show()
         #plt.pause(0.5)
 
-######################### Cluster pressure components ##########################
-def computeSimplexPressureVSTime(dirName, dirSpacing=1):
-    dim = 2
-    gamma = float(utils.readFromDynParams(dirName, "damping"))
+
+################################################################################
+############################### Cluster pressure ###############################
+################################################################################
+def computeParticleStress(dirName, nDim=2):
+    ec = 240
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
+    rad = np.loadtxt(dirName + sep + "particleRad.dat")
+    sigma = np.mean(rad)
+    Dr = float(utils.readFromDynParams(dirName + sep, "Dr"))
+    gamma = float(utils.readFromDynParams(dirName + sep, "damping"))
+    driving = float(utils.readFromDynParams(dirName + sep, "f0"))
+    stress = np.zeros((numParticles,4))
+    #pos = np.loadtxt(dirName + "/particlePos.dat")
+    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
+    vel = np.loadtxt(dirName + "/particleVel.dat")
+    angle = utils.getMOD2PIAngles(dirName + "/particleAngles.dat")
+    director = np.array([np.cos(angle), np.sin(angle)]).T
+    contacts = np.loadtxt(dirName + "/particleContacts.dat").astype(np.int64)
+    for i in range(numParticles):
+        virial = 0
+        #active = v0 - np.sum(vel[i]*director[i])
+        energy = 0
+        for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+            radSum = rad[i] + rad[c]
+            delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+            distance = np.linalg.norm(delta)
+            overlap = 1 - distance / radSum
+            if(overlap > 0):
+                gradMultiple = ec * overlap / radSum
+                force = gradMultiple * delta / distance
+                virial += 0.5 * np.sum(force * delta) # double counting
+                #active += np.sum(force * director[i]) / gamma
+                energy += 0.5 * ec * overlap**2 * 0.5 # double counting and e = k/2
+        stress[i,0] = virial
+        stress[i,1] = np.linalg.norm(vel[i])**2 / nDim
+        stress[i,2] = driving * np.sum(vel[i] * director[i]) / (2*Dr)
+        stress[i,3] = energy + 0.5 * np.linalg.norm(vel[i])**2
+    np.savetxt(dirName + os.sep + "particleStress.dat", stress)
+    print('virial: ', np.mean(stress[:,0]), ' +- ', np.std(stress[:,0]))
+    print('thermal: ', np.mean(stress[:,1]), ' +- ', np.std(stress[:,1]))
+    print('active: ', np.mean(stress[:,2]), ' +- ', np.std(stress[:,2]))
+    print('energy: ', np.mean(stress[:,3]), ' +- ', np.std(stress[:,3]))
+    return stress
+
+def computeParticleStressVSTime(dirName, dirSpacing=1):
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        computeParticleStress(dirSample)
+
+########################## Total pressure components ###########################
+def computePressureVSTime(dirName, dirSpacing=1, nDim=2):
+    ec = 240
     driving = float(utils.readFromDynParams(dirName, "f0"))
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
     sigma = np.mean(rad)
-    ec = 240
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    boxLength = 2 * (boxSize[0] + boxSize[1])
     wallPressure = np.zeros(dirList.shape[0])
+    pressure = np.zeros((dirList.shape[0],3))
+    boxLength = 2 * (boxSize[0] + boxSize[1])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
+        director = np.array([np.cos(angle), np.sin(angle)]).T
+        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
+        for i in range(numParticles):
+            # wall pressure
+            isWall, wallPos = utils.isNearWall(pos[i], rad[i], boxSize)
+            if(isWall == True):
+                delta = pos[i] - wallPos
+                distance = np.linalg.norm(delta)
+                overlap = 1 - distance / rad[i]
+                if(overlap > 0):
+                    gradMultiple = ec * overlap / rad[i]
+                    wallForce = gradMultiple * delta / distance
+                    if(bound == "bound"):
+                        wallPressure[d] -= np.sum(wallForce * pos[i]) / nDim
+                    else:
+                        wallPressure[d] += np.linalg.norm(wallForce) / boxLength
+            # particle pressure components
+            pressure[d,0] += np.linalg.norm(vel[i])**2
+            pressure[d,2] += driving * np.sum(vel[i] * director[i]) / (2*Dr*nDim)
+            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                radSum = rad[i] + rad[c]
+                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                distance = np.linalg.norm(delta)
+                overlap = 1 - distance / radSum
+                if(overlap > 0):
+                    gradMultiple = ec * overlap / radSum
+                    force = gradMultiple * delta / distance
+                    pressure[d,1] += 0.5 * np.sum(force * delta) / nDim # double counting
+    pressure *= sigma**2
+    wallPressure *= sigma**2
+    np.savetxt(dirName + os.sep + "pressure.dat", np.column_stack((timeList, pressure, wallPressure)))
+    print("bulk pressure: ", np.mean(np.sum(pressure, axis=1)), " +/- ", np.std(np.sum(pressure, axis=1)))
+    print("thermal pressure: ", np.mean(pressure[:,0]), " +/- ", np.std(pressure[:,0]))
+    print("virial pressure: ", np.mean(pressure[:,1]), " +/- ", np.std(pressure[:,1]))
+    print("active pressure: ", np.mean(pressure[:,2]), " +/- ", np.std(pressure[:,2]))
+    print("pressure on the wall: ", np.mean(wallPressure), " +/- ", np.std(wallPressure))
+
+######################### Cluster pressure components ##########################
+def computeClusterPressureVSTime(dirName, dirSpacing=1, nDim=2):
+    ec = 240
+    driving = float(utils.readFromDynParams(dirName, "f0"))
+    Dr = float(utils.readFromDynParams(dirName, "Dr"))
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    pressureIn = np.zeros((dirList.shape[0],3))
+    pressureOut = np.zeros((dirList.shape[0],3))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        if not(os.path.exists(dirSample + os.sep + "simplexList.dat")):
+            computeDelaunayCluster(dirSample, threshold=0.76, save='save')
+        simplices = np.loadtxt(dirSample + os.sep + "simplices.dat").astype(np.int64)
+        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
+        denseSimplexList = simplexList[:,0]
+        borderSimplexList = simplexList[:,1]
+        simplexArea = simplexList[:,2]
+        numSharedSimplices = np.zeros(numParticles)
+        for p in range(numParticles):
+            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
+        pos = np.loadtxt(dirSample + "/particlePos.dat")
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
+        angle = np.mod(angle, 2*np.pi)
+        director = np.array([np.cos(angle), np.sin(angle)]).T
+        # particle pressure components
+        areaIn = np.sum(simplexArea[denseSimplexList==1])
+        areaOut = np.sum(simplexArea[denseSimplexList==0])
+        for i in range(simplices.shape[0]):
+            if(denseSimplexList[i] == 1):
+                for p in simplices[i]:
+                    pressureIn[d,0] += np.linalg.norm(vel[p])**2
+                    pressureIn[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*nDim)
+            else:
+                for p in simplices[i]:
+                    pressureOut[d,0] += np.linalg.norm(vel[p])**2
+                    pressureOut[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*nDim)
+            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
+            for neighbor in simplexNeighbor:
+                edge = np.intersect1d(simplices[i], simplices[neighbor])
+                radSum = rad[edge[0]] + rad[edge[1]]
+                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
+                distance = np.linalg.norm(delta)
+                overlap = 1 - distance / radSum
+                if(overlap > 0):
+                    gradMultiple = ec * overlap / radSum
+                    force = 0.5 * gradMultiple * delta / distance
+            if(denseSimplexList[i] == 1):
+                pressureIn[d,1] += np.sum(force * delta) / nDim
+            else:
+                pressureOut[d,1] += np.sum(force * delta) / nDim
+        if(areaIn > 0):
+            pressureIn *= sigma**2 / areaIn
+        if(areaOut > 0):
+            pressureOut *= sigma**2 / areaOut
+    np.savetxt(dirName + os.sep + "clusterPressure.dat", np.column_stack((timeList, pressureIn, pressureOut)))
+    # pressure components in the fluid
+    print("dense pressure: ", np.mean(np.sum(pressureIn,axis=1)), " +/- ", np.std(np.sum(pressureIn,axis=1)))
+    print("dense thermal pressure: ", np.mean(pressureIn[:,0]), " +/- ", np.std(pressureIn[:,0]))
+    print("dense virial pressure: ", np.mean(pressureIn[:,1]), " +/- ", np.std(pressureIn[:,1]))
+    print("dense active pressure: ", np.mean(pressureIn[:,2]), " +/- ", np.std(pressureIn[:,2]))
+    # pressure components in the gas
+    print("\ndilute pressure: ", np.mean(np.sum(pressureOut,axis=1)), " +/- ", np.std(np.sum(pressureOut,axis=1)))
+    print("dilute thermal pressure: ", np.mean(pressureOut[:,0]), " +/- ", np.std(pressureOut[:,0]))
+    print("dilute virial pressure: ", np.mean(pressureOut[:,1]), " +/- ", np.std(pressureOut[:,1]))
+    print("dilute active pressure: ", np.mean(pressureOut[:,2]), " +/- ", np.std(pressureOut[:,2]), "\n")
+
+######################### Simplex pressure components ##########################
+def computeSimplexPressureVSTime(dirName, dirSpacing=1, nDim=2):
+    ec = 240
+    driving = float(utils.readFromDynParams(dirName, "f0"))
+    Dr = float(utils.readFromDynParams(dirName, "Dr"))
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     borderPressure = np.zeros((dirList.shape[0],3))
     fluidPressure = np.zeros((dirList.shape[0],3))
     gasPressure = np.zeros((dirList.shape[0],3))
@@ -2541,6 +2749,9 @@ def computeSimplexPressureVSTime(dirName, dirSpacing=1):
         denseSimplexList = simplexList[:,0]
         borderSimplexList = simplexList[:,1]
         simplexArea = simplexList[:,2]
+        numSharedSimplices = np.zeros(numParticles)
+        for p in range(numParticles):
+            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
         # first fill out the area occupied by fluid and the gas
         borderArea = 0
         fluidArea = 0
@@ -2555,32 +2766,19 @@ def computeSimplexPressureVSTime(dirName, dirSpacing=1):
                     gasArea += simplexArea[i]
         # compute stress components
         for i in range(simplexArea.shape[0]):
-             # wall pressure
-            isWallSimplex = utils.isSimplexNearWall(simplices[i], pos, rad, boxSize)
-            if(isWallSimplex == True):
-                for p in simplices[i]:
-                    isWall, wallPos = utils.isNearWall(pos[p], rad[p], boxSize)
-                    delta = utils.pbcDistance(pos[p], wallPos, boxSize)
-                    distance = np.linalg.norm(delta)
-                    overlap = 1 - distance / rad[p]
-                    if(overlap > 0):
-                        gradMultiple = ec * overlap / rad[p]
-                        wallForce = gradMultiple * delta / distance
-                        wallPressure[d] += np.linalg.norm(wallForce)
-            # simplex stress components
             if(borderSimplexList[i]==1):
                 for p in simplices[i]:
-                    borderPressure[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                    borderPressure[d,2] += np.sum(vel[p] * director[p]) / numSharedSimplices[p]
+                    borderPressure[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+                    borderPressure[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*numSharedSimplices[p])
             else:
                 if(denseSimplexList[i]==1):
                     for p in simplices[i]:
-                        fluidPressure[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                        fluidPressure[d,2] += np.sum(vel[p] * director[p]) / numSharedSimplices[p]
+                        fluidPressure[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+                        fluidPressure[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*numSharedSimplices[p])
                 else:
                     for p in simplices[i]:
-                        gasPressure[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                        gasPressure[d,2] += np.sum(vel[p] * director[p]) / numSharedSimplices[p]
+                        gasPressure[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+                        gasPressure[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*numSharedSimplices[p])
             simplexNeighbor = utils.findNeighborSimplices(simplices, i)
             for neighbor in simplexNeighbor:
                 edge = np.intersect1d(simplices[i], simplices[neighbor])
@@ -2590,686 +2788,44 @@ def computeSimplexPressureVSTime(dirName, dirSpacing=1):
                 overlap = 1 - distance / radSum
                 if(overlap > 0):
                     gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
+                    force = 0.5 * gradMultiple * delta / distance
                     if(borderSimplexList[i]==1):
-                        borderPressure[d,0] += 0.5 * np.sum(force * delta)
+                        borderPressure[d,1] += np.sum(force * delta)
                     else:
                         if(denseSimplexList[i]==1):
-                            fluidPressure[d,0] += 0.5 * np.sum(force * delta)
+                            fluidPressure[d,1] += np.sum(force * delta)
                         else:
-                            gasPressure[d,0] += 0.5 * np.sum(force * delta)
-        wallPressure[d] /= boxLength
+                            gasPressure[d,1] += np.sum(force * delta)
         if(borderArea > 0):
-            borderPressure[d,0] /= (dim * borderArea) # double counting
+            borderPressure[d,0] /= (nDim * borderArea)
             borderPressure[d,1] /= borderArea # dim k_B T / dim, dim cancels out
-            borderPressure[d,2] *= driving / (dim * 2*Dr * borderArea)
+            borderPressure[d,2] /= (nDim * borderArea)
         if(fluidArea > 0):
-            fluidPressure[d,0] /= (dim * fluidArea) # double counting
+            fluidPressure[d,0] /= (dim * fluidArea)
             fluidPressure[d,1] /= fluidArea # dim k_B T / dim, dim cancels out
-            fluidPressure[d,2] *= driving / (dim * 2*Dr * fluidArea)
+            fluidPressure[d,2] /= (dim * fluidArea)
         if(gasArea > 0):
-            gasPressure[d,0] /= (dim * gasArea) # double counting
+            gasPressure[d,0] /= (dim * gasArea)
             gasPressure[d,1] /= gasArea # dim k_B T / dim, dim cancels out
-            gasPressure[d,2] *= driving / (dim * 2*Dr * gasArea)
+            gasPressure[d,2] /= (dim * gasArea)
         #print(d, np.sum(fluidPressure[d])*sigma**2, np.sum(gasPressure[d])*sigma**2, np.sum(borderPressure[d])*sigma**2)
-    wallPressure *= sigma**2
     borderPressure *= sigma**2
     fluidPressure *= sigma**2
     gasPressure *= sigma**2
-    np.savetxt(dirName + os.sep + "simplexPressure.dat", np.column_stack((timeList, wallPressure, fluidPressure, gasPressure, borderPressure)))
+    np.savetxt(dirName + os.sep + "simplexPressure.dat", np.column_stack((timeList, fluidPressure, gasPressure, borderPressure)))
     # pressure components in the fluid
-    print("dense pressure: ", np.mean(fluidPressure[:,0] + fluidPressure[:,1] + fluidPressure[:,2]), " +/- ", np.std(fluidPressure[:,0] + fluidPressure[:,1] + fluidPressure[:,2]))
-    print("dense virial pressure: ", np.mean(fluidPressure[:,0]), " +/- ", np.std(fluidPressure[:,0]))
-    print("dense thermal pressure: ", np.mean(fluidPressure[:,1]), " +/- ", np.std(fluidPressure[:,1]))
+    print("dense pressure: ", np.mean(np.sum(fluidPressure,axis=1)), " +/- ", np.std(np.sum(fluidPressure,axis=1)))
+    print("dense thermal pressure: ", np.mean(fluidPressure[:,0]), " +/- ", np.std(fluidPressure[:,0]))
+    print("dense virial pressure: ", np.mean(fluidPressure[:,1]), " +/- ", np.std(fluidPressure[:,1]))
     print("dense active pressure: ", np.mean(fluidPressure[:,2]), " +/- ", np.std(fluidPressure[:,2]))
     # pressure components in the gas
-    print("\ndilute pressure: ", np.mean(gasPressure[:,0] + gasPressure[:,1] + gasPressure[:,2]), " +/- ", np.std(gasPressure[:,0] + gasPressure[:,1] + gasPressure[:,2]))
-    print("dilute virial pressure: ", np.mean(gasPressure[:,0]), " +/- ", np.std(gasPressure[:,0]))
-    print("dilute thermal pressure: ", np.mean(gasPressure[:,1]), " +/- ", np.std(gasPressure[:,1]))
+    print("\ndilute pressure: ", np.mean(np.sum(gasPressure,axis=1)), " +/- ", np.std(np.sum(gasPressure,axis=1)))
+    print("dilute thermal pressure: ", np.mean(gasPressure[:,0]), " +/- ", np.std(gasPressure[:,0]))
+    print("dilute virial pressure: ", np.mean(gasPressure[:,1]), " +/- ", np.std(gasPressure[:,1]))
     print("dilute active pressure: ", np.mean(gasPressure[:,2]), " +/- ", np.std(gasPressure[:,2]), "\n")
 
-######################## Cluster stress area components ########################
-def computeSimplexStressVSTime(dirName, dirSpacing=1):
-    dim = 2
-    gamma = float(utils.readFromDynParams(dirName, "damping"))
-    driving = float(utils.readFromDynParams(dirName, "f0"))
-    Dr = float(utils.readFromDynParams(dirName, "Dr"))
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
-    sigma = np.mean(rad)
-    ec = 240
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    borderStress = np.zeros((dirList.shape[0],3))
-    fluidStress = np.zeros((dirList.shape[0],3))
-    gasStress = np.zeros((dirList.shape[0],3))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        # load particle variables
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
-        director = np.array([np.cos(angle), np.sin(angle)]).T
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        # load simplices
-        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
-            computeDelaunayCluster(dirSample, threshold=0.76, save='save')
-        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
-        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
-        denseSimplexList = simplexList[:,0]
-        borderSimplexList = simplexList[:,1]
-        simplexArea = simplexList[:,2]
-        numSharedSimplices = np.zeros(numParticles)
-        for p in range(numParticles):
-            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
-        # first fill out the area occupied by fluid and the gas
-        for i in range(simplexArea.shape[0]):
-            if(borderSimplexList[i] == 1):
-                borderArea[d] += simplexArea[i]
-            else:
-                if(denseSimplexList[i]==1):
-                    fluidArea[d] += simplexArea[i]
-                else:
-                    gasArea[d] += simplexArea[i]
-        # compute stress components
-        for i in range(simplexArea.shape[0]):
-            # simplex stress components
-            if(borderSimplexList[i]==1):
-                for p in simplices[i]:
-                    borderStress[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                    borderStress[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*numSharedSimplices[p])
-            else:
-                if(denseSimplexList[i]==1):
-                    for p in simplices[i]:
-                        fluidStress[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                        fluidStress[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*numSharedSimplices[p])
-                else:
-                    for p in simplices[i]:
-                        gasStress[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                        gasStress[d,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*numSharedSimplices[p])
-            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
-            for neighbor in simplexNeighbor:
-                edge = np.intersect1d(simplices[i], simplices[neighbor])
-                radSum = rad[edge[0]] + rad[edge[1]]
-                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
-                    if(borderSimplexList[i]==1):
-                        borderStress[d,0] += 0.5 * np.sum(force * delta)
-                    else:
-                        if(denseSimplexList[i]==1):
-                            fluidStress[d,0] += 0.5 * np.sum(force * delta)
-                        else:
-                            gasStress[d,0] += 0.5 * np.sum(force * delta)
-    np.savetxt(dirName + os.sep + "simplexStressArea.dat", np.column_stack((timeList, fluidStress, fluidArea, gasStress, gasArea, borderStress, borderArea)))
-    # pressure components
-    print("Border excluded:")
-    print("fluid pressure: ", np.mean(np.sum(fluidStress,axis=1)/fluidArea), " +/- ", np.std(np.sum(fluidStress,axis=1)/fluidArea))
-    print("gas pressure: ", np.mean(np.sum(gasStress,axis=1)/gasArea), " +/- ", np.std(np.sum(gasStress,axis=1)/gasArea))
-    print("border pressure: ", np.mean(np.sum(borderStress,axis=1)/borderArea), " +/- ", np.std(np.sum(borderStress,axis=1)/borderArea))
-    print("\nBorder included in fluid:")
-    print("fluid pressure: ", np.mean((np.sum(fluidStress,axis=1) + np.sum(borderStress,axis=1))/(fluidArea+borderArea)), " +/- ", np.std((np.sum(fluidStress,axis=1) + np.sum(borderStress,axis=1))/(fluidArea+borderArea)))
-    print("gas pressure: ", np.mean(np.sum(gasStress,axis=1)/gasArea), " +/- ", np.std(np.sum(gasStress,axis=1)/gasArea))
-    print("\nBorder included in gas:")
-    print("fluid pressure: ", np.mean(np.sum(fluidStress,axis=1)/fluidArea), " +/- ", np.std(np.sum(fluidStress,axis=1)/fluidArea))
-    print("gas pressure: ", np.mean((np.sum(gasStress,axis=1) + np.sum(borderStress,axis=1))/(gasArea+borderArea)), " +/- ", np.std((np.sum(gasStress,axis=1) + np.sum(borderStress,axis=1))/(gasArea+borderArea)))
-
-####################### Average simplex pressure profile #######################
-def averageSimplexPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
-    ec = 240
-    Dr = float(utils.readFromDynParams(dirName, "Dr"))
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    sigma = float(utils.readFromDynParams(dirName, "sigma"))
-    driving = float(utils.readFromDynParams(dirName, "f0"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 0.02)
-    binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    virial = np.zeros((bins.shape[0]-1,2))
-    thermal = np.zeros((bins.shape[0]-1,2))
-    active = np.zeros((bins.shape[0]-1,2))
-    total = np.zeros((bins.shape[0]-1,3))
-    component = np.zeros((bins.shape[0]-1,2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
-        director = np.array([np.cos(angle), np.sin(angle)]).T
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        # load simplices
-        if not(os.path.exists(dirSample + "/simplices.dat")):
-            simplices = utils.getPBCDelaunay(pos, rad, boxSize)
-            np.savetxt(dirSample + "/simplices.dat", simplices)
-        else:
-            simplices = np.loadtxt(dirSample + "/simplices.dat").astype(np.int64)
-        simplexPos = utils.computeSimplexPos(simplices, pos)
-        numSharedSimplices = np.zeros(numParticles)
-        for p in range(numParticles):
-            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
-        for i in range(simplices.shape[0]):
-            work = np.zeros(nDim)
-            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
-            for neighbor in simplexNeighbor:
-                edge = np.intersect1d(simplices[i], simplices[neighbor])
-                radSum = rad[edge[0]] + rad[edge[1]]
-                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
-                    for dim in range(nDim):
-                        work[dim] += 0.5 * force[dim] * delta[dim]
-            for j in range(bins.shape[0]-1):
-                if(simplexPos[i,0] > bins[j] and simplexPos[i,0] < bins[j+1]):
-                    for dim in range(nDim):
-                        virial[j,dim] += work[dim]
-                        component[j,dim] += work[dim]
-                        for p in simplices[i]:
-                            thermal[j,dim] += vel[p,dim]**2 / numSharedSimplices[p]
-                            active[j,dim] += driving * vel[p,dim] * director[p,dim] / (2*Dr*numSharedSimplices[p])
-                            component[j,dim] += vel[p,dim]**2 / numSharedSimplices[p]
-                            component[j,dim] += driving * vel[p,dim] * director[p,dim] / (2*Dr*numSharedSimplices[p])
-                    total[j,0] += np.sum(work) / nDim
-                    for p in simplices[i]:
-                        total[j,1] += np.linalg.norm(vel[p])**2 / (nDim*numSharedSimplices[p])
-                        total[j,2] += driving * np.sum(vel[p] * director[p]) / (2*Dr*nDim*numSharedSimplices[p])
-    virial *= sigma**2/(binArea * dirList.shape[0])
-    thermal *= sigma**2/(binArea * dirList.shape[0])
-    active *= sigma**2/(binArea * dirList.shape[0])
-    total *= sigma**2/(binArea * dirList.shape[0])
-    component *= sigma**2/(binArea * dirList.shape[0])
-    np.savetxt(dirName + os.sep + "simplexProfile.dat", np.column_stack((centers, component, virial, thermal, active, total)))
-    print("average pressure: ", np.mean(np.sum(total,axis=1)), "+-", np.std(np.sum(total,axis=1)))
-    print("surface tension: ", np.sum((component[:,0]-component[:,1])*binWidth)/sigma)
-    uplot.plotCorrelation(centers, total[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, total[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
-    uplot.plotCorrelation(centers, total[:,2], "$Pressure$ $profile$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
-    uplot.plotCorrelation(centers, np.sum(total,axis=1), "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1)
-    uplot.plotCorrelation(centers, component[:,0]-component[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1)
-    plt.show()
-
-######################## Cluster LJ pressure components ########################
-def computeSimplexLJPressureVSTime(dirName, dirSpacing=1):
-    dim = 2
-    ec = 1
-    LJcutoff = 7
-    LJecut = 4 * (1 / LJcutoff**12 - 1 / LJcutoff**6)
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    boxLength = 2 * (boxSize[0] + boxSize[1])
-    wallPressure = np.zeros(dirList.shape[0])
-    borderPressure = np.zeros((dirList.shape[0],2))
-    fluidPressure = np.zeros((dirList.shape[0],2))
-    gasPressure = np.zeros((dirList.shape[0],2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        # load particle variables
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        # load simplices
-        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
-            computeDelaunayCluster(dirSample, threshold=0.3, save='save')
-        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
-        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
-        denseSimplexList = simplexList[:,0]
-        borderSimplexList = simplexList[:,1]
-        simplexArea = simplexList[:,2]
-        numSharedSimplices = np.zeros(numParticles)
-        for p in range(numParticles):
-            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
-        # first fill out the area occupied by fluid and the gas
-        borderArea = 0
-        fluidArea = 0
-        gasArea = 0
-        for i in range(simplexArea.shape[0]):
-            if(borderSimplexList[i] == 1):
-                borderArea += simplexArea[i]
-            else:
-                if(denseSimplexList[i]==1):
-                    fluidArea += simplexArea[i]
-                else:
-                    gasArea += simplexArea[i]
-        # compute stress components
-        for i in range(simplexArea.shape[0]):
-             # wall pressure
-            isWallSimplex = utils.isSimplexNearWall(simplices[i], pos, rad, boxSize)
-            if(isWallSimplex == True):
-                for p in simplices[i]:
-                    isWall, wallPos = utils.isNearWall(pos[p], rad[p], boxSize)
-                    delta = utils.pbcDistance(pos[p], wallPos, boxSize)
-                    distance = np.linalg.norm(delta)
-                    if(distance <= (LJcutoff * radSum)):
-                        gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                        wallForce = gradMultiple * delta / distance
-                        wallPressure[d] += np.linalg.norm(wallForce)
-            # simplex stress components
-            if(borderSimplexList[i]==1):
-                for p in simplices[i]:
-                    borderPressure[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-            else:
-                if(denseSimplexList[i]==1):
-                    for p in simplices[i]:
-                        fluidPressure[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-                else:
-                    for p in simplices[i]:
-                        gasPressure[d,1] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
-            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
-            for neighbor in simplexNeighbor:
-                edge = np.intersect1d(simplices[i], simplices[neighbor])
-                radSum = rad[edge[0]] + rad[edge[1]]
-                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
-                distance = np.linalg.norm(delta)
-                if(distance <= (LJcutoff * radSum)):
-                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                    force = gradMultiple * delta / distance
-                    if(borderSimplexList[i]==1):
-                        borderPressure[d,0] += 0.5 * np.sum(force * delta)
-                    else:
-                        if(denseSimplexList[i]==1):
-                            fluidPressure[d,0] += 0.5 * np.sum(force * delta)
-                        else:
-                            gasPressure[d,0] += 0.5 * np.sum(force * delta)
-        wallPressure[d] /= boxLength
-        if(borderArea > 0):
-            borderPressure[d,0] /= (dim * borderArea) # double counting
-            borderPressure[d,1] /= borderArea # dim k_B T / dim, dim cancels out
-        if(fluidArea > 0):
-            fluidPressure[d,0] /= (dim * fluidArea) # double counting
-            fluidPressure[d,1] /= fluidArea # dim k_B T / dim, dim cancels out
-        if(gasArea > 0):
-            gasPressure[d,0] /= (dim * gasArea) # double counting
-            gasPressure[d,1] /= gasArea # dim k_B T / dim, dim cancels out
-        #print(d, np.sum(fluidPressure[d])*sigma**2, np.sum(gasPressure[d])*sigma**2, np.sum(borderPressure[d])*sigma**2)
-    wallPressure *= sigma**2
-    borderPressure *= sigma**2
-    fluidPressure *= sigma**2
-    gasPressure *= sigma**2
-    np.savetxt(dirName + os.sep + "simplexLJPressure.dat", np.column_stack((timeList, wallPressure, fluidPressure, gasPressure, borderPressure)))
-    # pressure components in the fluid
-    print("dense pressure: ", np.mean(fluidPressure[:,0] + fluidPressure[:,1]), " +/- ", np.std(fluidPressure[:,0] + fluidPressure[:,1]))
-    print("dense virial pressure: ", np.mean(fluidPressure[:,0]), " +/- ", np.std(fluidPressure[:,0]))
-    print("dense thermal pressure: ", np.mean(fluidPressure[:,1]), " +/- ", np.std(fluidPressure[:,1]))
-    # pressure components in the gas
-    print("\ndilute pressure: ", np.mean(gasPressure[:,0] + gasPressure[:,1]), " +/- ", np.std(gasPressure[:,0] + gasPressure[:,1]))
-    print("dilute virial pressure: ", np.mean(gasPressure[:,0]), " +/- ", np.std(gasPressure[:,0]))
-    print("dilute thermal pressure: ", np.mean(gasPressure[:,1]), " +/- ", np.std(gasPressure[:,1]), "\n")
-
-###################### Average simplex LJ pressure profile #####################
-def averageSimplexLJPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
-    ec = 1
-    LJcutoff = 7
-    LJecut = 4 * (1 / LJcutoff**12 - 1 / LJcutoff**6)
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 0.05)
-    binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    virial = np.zeros((bins.shape[0]-1,2))
-    thermal = np.zeros((bins.shape[0]-1,2))
-    total = np.zeros((bins.shape[0]-1,2))
-    component = np.zeros((bins.shape[0]-1,2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
-        director = np.array([np.cos(angle), np.sin(angle)]).T
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        # load simplices
-        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
-            simplices = utils.getPBCDelaunay(pos, rad, boxSize)
-            np.savetxt(dirSample + os.sep + "simplices.dat", simplices)
-        else:
-            simplices = np.loadtxt(dirSample + os.sep + "simplices.dat").astype(np.int64)
-        simplexPos = utils.computeSimplexPos(simplices, pos)
-        numSharedSimplices = np.zeros(numParticles)
-        for p in range(numParticles):
-            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
-        for i in range(simplices.shape[0]):
-            work = np.zeros(nDim)
-            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
-            for neighbor in simplexNeighbor:
-                edge = np.intersect1d(simplices[i], simplices[neighbor])
-                radSum = rad[edge[0]] + rad[edge[1]]
-                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
-                distance = np.linalg.norm(delta)
-                if(distance <= (LJcutoff * radSum)):
-                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                    force = gradMultiple * delta / distance
-                    for dim in range(nDim):
-                        work[dim] += 0.5 * force[dim] * delta[dim]
-            for j in range(bins.shape[0]-1):
-                if(simplexPos[i,0] > bins[j] and simplexPos[i,0] < bins[j+1]):
-                    for dim in range(nDim):
-                        virial[j,dim] += work[dim]
-                        component[j,dim] += work[dim]
-                        for p in simplices[i]:
-                            thermal[j,dim] += vel[p,dim]**2 / numSharedSimplices[p]
-                            component[j,dim] += vel[p,dim]**2 / numSharedSimplices[p]
-                    total[j,0] += np.sum(work) / dim
-                    for p in simplices[i]:
-                        total[j,1] += np.linalg.norm(vel[p])**2 / (dim*numSharedSimplices[p])
-    virial *= sigma**2/(binArea * dirList.shape[0])
-    thermal *= sigma**2/(binArea * dirList.shape[0])
-    total *= sigma**2/(binArea * dirList.shape[0])
-    component *= sigma**2/(binArea * dirList.shape[0])
-    np.savetxt(dirName + os.sep + "simplexProfile.dat", np.column_stack((centers, component, virial, thermal, total)))
-    print("average pressure: ", np.mean(total), "+-", np.std(total))
-    print("surface tension: ", np.sum((component[:,0]-component[:,1])*binWidth/sigma))
-    uplot.plotCorrelation(centers, virial[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, thermal[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
-    uplot.plotCorrelation(centers, np.sum(total,axis=1), "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
-    uplot.plotCorrelation(centers, component[:,0]-component[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1)
-    plt.show()
-
-################################################################################
-############################### Cluster pressure ###############################
-################################################################################
-def computeParticleStress(dirName, prop='prop'):
-    dim = 2
-    sep = utils.getDirSep(dirName, "boxSize")
-    boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
-    rad = np.loadtxt(dirName + sep + "particleRad.dat")
-    sigma = np.mean(rad)
-    ec = 240
-    if(prop == 'prop'):
-        Dr = float(utils.readFromDynParams(dirName + sep, "Dr"))
-        gamma = float(utils.readFromDynParams(dirName + sep, "damping"))
-        driving = float(utils.readFromDynParams(dirName + sep, "f0"))
-    stress = np.zeros((numParticles,4))
-    #pos = np.loadtxt(dirName + "/particlePos.dat")
-    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
-    vel = np.loadtxt(dirName + "/particleVel.dat")
-    if(prop == 'prop'):
-        #angle = np.loadtxt(dirName + "/particleAngles.dat")
-        angle = utils.getMOD2PIAngles(dirName + "/particleAngles.dat")
-        director = np.array([np.cos(angle), np.sin(angle)]).T
-    contacts = np.loadtxt(dirName + "/particleContacts.dat").astype(np.int64)
-    for i in range(numParticles):
-        virial = 0
-        #active = v0 - np.sum(vel[i]*director[i])
-        energy = 0
-        for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-            radSum = rad[i] + rad[c]
-            delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-            distance = np.linalg.norm(delta)
-            overlap = 1 - distance / radSum
-            if(overlap > 0):
-                gradMultiple = ec * overlap / radSum
-                force = gradMultiple * delta / distance
-                virial += 0.5 * np.sum(force * delta) # double counting
-                #active += np.sum(force * director[i]) / gamma
-                energy += 0.5 * ec * overlap**2 * 0.5 # double counting and e = k/2
-        stress[i,0] = virial
-        stress[i,1] = np.linalg.norm(vel[i])**2
-        if(prop == 'prop'):
-            stress[i,2] = driving * np.sum(vel[i] * director[i]) / (2*Dr)
-        stress[i,3] = energy
-    np.savetxt(dirName + os.sep + "particleStress.dat", stress)
-    print('potential energy: ', np.mean(stress[:,3]), ' +- ', np.std(stress[:,3]))
-    print('kinetic energy: ', np.mean(stress[:,1]*0.5), ' +- ', np.std(stress[i,1]*0.5))
-    print('energy: ', np.mean(stress[:,1]*0.5 + stress[:,3]), ' +- ', np.std(stress[i,1]*0.5 + stress[:,3]))
-    return stress
-
-def computeParticleStressVSTime(dirName, dirSpacing=1):
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        computeParticleStress(dirSample)
-
-########################## Total pressure components ###########################
-def computePressureVSTime(dirName, bound = False, prop = False, dirSpacing=1):
-    dim = 2
-    if(prop == "prop"):
-        gamma = float(utils.readFromDynParams(dirName, "damping"))
-        driving = float(utils.readFromDynParams(dirName, "f0"))
-        Dr = float(utils.readFromDynParams(dirName, "Dr"))
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
-    sigma = np.mean(rad)
-    ec = 240
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    wallPressure = np.zeros(dirList.shape[0])
-    pressure = np.zeros((dirList.shape[0],3))
-    boxLength = 2 * (boxSize[0] + boxSize[1])
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        if(prop == "prop"):
-            angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
-            director = np.array([np.cos(angle), np.sin(angle)]).T
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        wall = 0
-        virial = 0
-        thermal = 0
-        active = 0
-        for i in range(numParticles):
-            # wall pressure
-            isWall, wallPos = utils.isNearWall(pos[i], rad[i], boxSize)
-            if(isWall == True):
-                delta = pos[i] - wallPos
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / rad[i]
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / rad[i]
-                    wallForce = gradMultiple * delta / distance
-                    if(bound == "bound"):
-                        wall -= np.sum(wallForce * pos[i]) / dim
-                        #if(prop == "prop"):
-                        #    active += np.sum(wallForce * director[i]) / gamma # wall director
-                    else:
-                        wall += np.linalg.norm(wallForce) / boxLength
-            # particle pressure components
-            thermal += np.linalg.norm(vel[i])**2
-            if(prop == "prop"):
-                #active += v0 - np.sum(vel[i] * director[i])
-                active += np.sum(vel[i] * director[i])
-            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
-                    virial += 0.5 * np.sum(force * delta) # double counting
-                    #if(prop == "prop"):
-                    #    active += 0.5 * np.sum(force * director[i]) / gamma # double counting
-        wallPressure[d] = wall
-        pressure[d,0] = virial / dim
-        pressure[d,1] = thermal # dim k_B T / dim, dim cancels out
-        if(prop == "prop"):
-            pressure[d,2] = driving * active / (dim * 2*Dr)
-    pressure *= sigma**2
-    wallPressure *= sigma**2
-    np.savetxt(dirName + os.sep + "pressure.dat", np.column_stack((timeList, wallPressure, pressure)))
-    print("bulk pressure: ", np.mean(pressure[:,0] + pressure[:,1] + pressure[:,2]), " +/- ", np.std(pressure[:,0] + pressure[:,1] + pressure[:,2]))
-    print("virial pressure: ", np.mean(pressure[:,0]), " +/- ", np.std(pressure[:,0]))
-    print("thermal pressure: ", np.mean(pressure[:,1]), " +/- ", np.std(pressure[:,1]))
-    if(prop == "prop"):
-        print("active pressure: ", np.mean(pressure[:,2]), " +/- ", np.std(pressure[:,2]))
-    print("pressure on the wall: ", np.mean(wallPressure), " +/- ", np.std(wallPressure))
-
-######################### Cluster pressure components ##########################
-def computeClusterPressureVSTime(dirName, bound = False, prop = False, dirSpacing=1):
-    dim = 2
-    if(prop == "prop"):
-        gamma = float(utils.readFromDynParams(dirName, "damping"))
-        driving = float(utils.readFromDynParams(dirName, "f0"))
-        Dr = float(utils.readFromDynParams(dirName, "Dr"))
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
-    sigma = np.mean(rad)
-    ec = 240
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    wallPressure = np.zeros(dirList.shape[0])
-    pressureIn = np.zeros((dirList.shape[0],3))
-    pressureOut = np.zeros((dirList.shape[0],3))
-    boxLength = 2 * (boxSize[0] + boxSize[1])
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
-            computeDelaunayCluster(dirSample, threshold=0.76, save='save')
-        particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
-        denseSimplexList = particleList[:,0]
-        borderSimplexList = simplexList[:,1]
-        simplexArea = simplexList[:,2]
-        if(os.path.exists(dirSample + os.sep + "voroDensity.dat")):
-            denseList = np.loadtxt(dirSample + os.sep + "denseList.dat")
-            voroDensity = np.loadtxt(dirSample + os.sep + "voroDensity.dat")
-        else:
-            denseList, voroDensity = computeVoronoiCluster(dirSample)
-        #if(os.path.exists(dirSample + os.sep + "borderList!.dat")):
-        #    borderList = np.loadtxt(dirSample + os.sep + "borderList.dat")
-        #else:
-        #    borderList,_ = computeVoronoiBorder(dirSample)
-        voroVolume = np.pi*rad**2/voroDensity
-        #pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = np.loadtxt(dirSample + "/particlePos.dat")
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        if(prop == "prop"):
-            angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
-            angle = np.mod(angle, 2*np.pi)
-            director = np.array([np.cos(angle), np.sin(angle)]).T
-            #activeForce = driving * np.array([np.cos(angle), np.sin(angle)]).T
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        wall = 0
-        volumeIn = 0
-        virialIn = 0
-        thermalIn = 0
-        activeIn = 0
-        volumeOut = 0
-        virialOut = 0
-        thermalOut = 0
-        activeOut = 0
-        for i in range(numParticles):
-            # wall pressure
-            isWall, wallPos = utils.isNearWall(pos[i], rad[i], boxSize)
-            if(isWall == True):
-                delta = pos[i] - wallPos
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / rad[i]
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / rad[i]
-                    wallForce = gradMultiple * delta / distance
-                    if(bound == "bound"):
-                        wall -= np.sum(wallForce * pos[i]) / dim
-                        #if(prop == "prop"):
-                        #    if(denseList[i] == 1):
-                        #        activeIn += np.sum(wallForce * director[i]) / gamma
-                        #    else:
-                        #        activeOut += np.sum(wallForce * director[i]) / gamma
-                    else:
-                        wall += np.linalg.norm(wallForce) / boxLength
-            #if(borderList[i] == 0):
-            # particle pressure components
-            if(denseList[i] == 1):
-                volumeIn += voroVolume[i]
-                thermalIn += np.linalg.norm(vel[i])**2
-                if(prop == "prop"):
-                #    activeIn += (v0 - np.sum(vel[i] * director[i]))
-                    activeIn += np.sum(vel[i] * director[i])
-            else:
-                volumeOut += voroVolume[i]
-                thermalOut += np.linalg.norm(vel[i])**2
-                if(prop == "prop"):
-                #    activeOut += (v0 - np.sum(vel[i] * director[i]))
-                    activeOut += np.sum(vel[i] * director[i])
-            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
-                    if(denseList[i] == 1):
-                        virialIn += 0.5 * np.sum(force * delta)
-                        #if(prop == "prop"):
-                        #    activeIn += 0.5 * np.sum(force * director[i]) / gamma
-                    else:
-                        virialOut += 0.5 * np.sum(force * delta)
-                        #if(prop == "prop"):
-                        #    activeOut += 0.5 * np.sum(force * director[i]) / gamma
-        wallPressure[d] = wall
-        if(volumeIn > 0):
-            pressureIn[d,0] = virialIn / (dim * volumeIn) # double counting
-            pressureIn[d,1] = thermalIn / volumeIn # dim k_B T / dim, dim cancels out
-            if(prop == "prop"):
-                pressureIn[d,2] = driving * activeIn / (dim * 2*Dr * volumeIn)
-        if(volumeOut > 0):
-            pressureOut[d,0] = virialOut / (dim * volumeOut) # double counting
-            pressureOut[d,1] = thermalOut / volumeOut # dim k_B T / dim, dim cancels out
-            if(prop == "prop"):
-                pressureOut[d,2] = driving * activeOut / (dim * 2*Dr * volumeOut)
-    pressureIn *= sigma**2
-    pressureOut *= sigma**2
-    wallPressure *= sigma**2
-    np.savetxt(dirName + os.sep + "clusterPressure.dat", np.column_stack((timeList, wallPressure, pressureIn, pressureOut)))
-    # pressure components in the fluid
-    print("dense pressure: ", np.mean(pressureIn[:,0] + pressureIn[:,1] + pressureIn[:,2]), " +/- ", np.std(pressureIn[:,0] + pressureIn[:,1] + pressureIn[:,2]))
-    print("dense virial pressure: ", np.mean(pressureIn[:,0]), " +/- ", np.std(pressureIn[:,0]))
-    print("dense thermal pressure: ", np.mean(pressureIn[:,1]), " +/- ", np.std(pressureIn[:,1]))
-    if(prop == "prop"):
-        print("dense active pressure: ", np.mean(pressureIn[:,2]), " +/- ", np.std(pressureIn[:,2]))
-    # pressure components in the gas
-    print("\ndilute pressure: ", np.mean(pressureOut[:,0] + pressureOut[:,1] + pressureOut[:,2]), " +/- ", np.std(pressureOut[:,0] + pressureOut[:,1] + pressureOut[:,2]))
-    print("dilute virial pressure: ", np.mean(pressureOut[:,0]), " +/- ", np.std(pressureOut[:,0]))
-    print("dilute thermal pressure: ", np.mean(pressureOut[:,1]), " +/- ", np.std(pressureOut[:,1]))
-    if(prop == "prop"):
-        print("dilute active pressure: ", np.mean(pressureOut[:,2]), " +/- ", np.std(pressureOut[:,2]), "\n")
-    if(bound == "bound"):
-        print("pressure on the wall: ", np.mean(wallPressure), " +/- ", np.std(wallPressure))
-
 ###################### Average radial pressure profile #########################
-def averageRadialPressureProfile(dirName, shiftx, shifty, dirSpacing=1, nDim=2):
+def averageRadialPressureProfile(dirName, dirSpacing=1, nDim=2):
     ec = 240
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
@@ -3277,39 +2833,46 @@ def averageRadialPressureProfile(dirName, shiftx, shifty, dirSpacing=1, nDim=2):
     driving = float(utils.readFromDynParams(dirName, "f0"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    eps = 1.8*np.max(rad)
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     # distance bins
-    bins = np.arange(0, boxSize[0]/2, 2*np.mean(rad))
+    bins = np.arange(0, np.sqrt(boxSize[0]**2 + boxSize[1]**2)/2, 2*np.max(rad))
     binArea = np.pi * (bins[1:]**2 - bins[:-1]**2)
     centers = (bins[1:] + bins[:-1])/2
     # pressure bins
-    virial = np.zeros(bins.shape[0]-1)
-    thermal = np.zeros(bins.shape[0]-1)
-    active = np.zeros(bins.shape[0]-1)
-    total = np.zeros(bins.shape[0]-1)
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    virial = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    active = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    normal = np.zeros((dirList.shape[0],bins.shape[0]-1))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "denseList.dat")):
-            denseList = np.loadtxt(dirSample + os.sep + "denseList.dat")
-            voroDensity = np.loadtxt(dirSample + os.sep + "voroDensity.dat")
-        else:
-            denseList, voroDensity = computeVoronoiCluster(dirSample)
-        # CENTER CLUSTER BY BRUTE FORCE - NEED TO IMPLEMENT SOMETHING BETTER
+        labels = getParticleClusterLabels(dirSample, boxSize, eps)
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        if(shiftx != 0 or shiftx != 0):
-            pos = utils.shiftPositions(pos, boxSize, -shiftx, -shifty)
-        #pos = utils.centerPositions(pos, rad, boxSize, denseList)
-        centerOfMass = np.mean(pos[denseList==1], axis=0)
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+        #print(dirList[d], "maxLabel", maxLabel, "clusterPos", centerOfMass)
+        #centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
+        #pos = utils.shiftPositions(pos, boxSize, 0.5-centerOfMass[0], 0.5-centerOfMass[1])
+        pos = utils.centerDroplet(pos, rad, boxSize, labels, maxLabel)
+        centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
         vel = np.loadtxt(dirSample + "/particleVel.dat")
         angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
         director = np.array([np.cos(angle), np.sin(angle)]).T
         contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
         for i in range(numParticles):
-            distanceToCOM = np.linalg.norm(utils.pbcDistance(pos[i], centerOfMass, boxSize))
-            work = 0
+            deltaCOM = utils.pbcDistance(pos[i], centerOfMass, boxSize)
+            distanceCOM = np.linalg.norm(deltaCOM)
+            # tangential unit vector
+            #tanCOM = np.array([-deltaCOM[1], deltaCOM[0]])
+            #tanCOM /= np.linalg.norm(tanCOM)
+            # normal unit vector
+            normCOM = deltaCOM / distanceCOM
+            normalForce = 0
+            #tangentialForce = 0
+            #normalWork = 0
+            #work = np.zeros(nDim)
             for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
                 radSum = rad[i] + rad[c]
                 delta = utils.pbcDistance(pos[i], pos[c], boxSize)
@@ -3317,27 +2880,106 @@ def averageRadialPressureProfile(dirName, shiftx, shifty, dirSpacing=1, nDim=2):
                 overlap = 1 - distance / radSum
                 if(overlap > 0):
                     gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
-                    work += 0.5 * np.sum(force * delta)
+                    normalForce += np.abs(np.sum(normCOM*delta)) * gradMultiple / distance
+                    #force = gradMultiple * delta / distance
+                    #work += 0.5 * force * delta
+                    #normalWork += np.dot(deltaCOM, work)
+            activeWork = driving * vel[i] * director[i] / (2*Dr)
+            activeWork = np.dot(normCOM, activeWork)
+            #normalWork = np.dot(deltaCOM,work)
             for j in range(bins.shape[0]-1):
-                if(distanceToCOM > bins[j] and distanceToCOM < bins[j+1]):
-                    virial[j] += work / nDim
-                    thermal[j] += np.linalg.norm(vel[i])**2 / nDim
-                    active[j] += driving * np.sum(vel[i] * director[i]) / (4*Dr * nDim)
-                    total[j] += (work + np.linalg.norm(vel[i])**2 + driving * np.sum(vel[i] * director[i]) / (4*Dr)) / nDim
-    virial *= sigma**2/(binArea * dirList.shape[0])
-    thermal *= sigma**2/(binArea * dirList.shape[0])
-    active *= sigma**2/(binArea * dirList.shape[0])
-    total *= sigma**2/(binArea * dirList.shape[0])
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, virial, thermal, active, total)))
-    uplot.plotCorrelation(centers, virial, "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, thermal, "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
-    uplot.plotCorrelation(centers, active, "$Pressure$ $profile$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
-    uplot.plotCorrelation(centers, total, "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1)
+                if(distanceCOM > bins[j] and distanceCOM < bins[j+1]):
+                    virial[d,j] += normalForce / (2*np.pi*distanceCOM)
+                    #virial[d,j] += normalWork / (np.pi*distanceCOM**2)
+                    thermal[d,j] += np.linalg.norm(vel[i])**2 / (np.pi*distanceCOM**2)
+                    #active[d,j] += driving * np.sum(vel[i] * director[i]) / (np.pi*distanceCOM**2)
+                    active[d,j] += activeWork / (np.pi*distanceCOM**2)
+                    #normal[d,j] += normalForce / (2*np.pi*distanceCOM) + (np.linalg.norm(vel[i])**2 + driving * np.sum(vel[i] * director[i]) / (2*Dr)) / (np.pi*distanceCOM**2)
+                    normal[d,j] += normalForce / (2*np.pi*distanceCOM) + (np.linalg.norm(vel[i])**2 + activeWork) / (np.pi*distanceCOM**2)
+    virial = np.mean(virial, axis=0)*sigma**2
+    thermal = np.mean(thermal, axis=0)*sigma**2
+    active = np.mean(active, axis=0)*sigma**2
+    normal = np.mean(normal, axis=0)*sigma**2
+    newCenters = (centers[1:] + centers[:-1]) / 2
+    tangential = (normal[1:] + normal[:-1])/2 + 0.5 * newCenters * (normal[1:] - normal[:-1]) / (centers[1:] - centers[:-1])
+    normal = (normal[1:] + normal[:-1])/2
+    virial = (virial[1:] + virial[:-1])/2
+    thermal = (thermal[1:] + thermal[:-1])/2
+    active = (active[1:] + active[:-1])/2
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((newCenters, normal, tangential, virial, thermal, active)))
+    uplot.plotCorrelation(newCenters[1:], normal[1:], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
+    uplot.plotCorrelation(newCenters[1:], tangential[1:], "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
+    uplot.plotCorrelation(newCenters[1:], normal[1:] - tangential[1:], "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
     plt.show()
 
 ####################### Average linear pressure profile ########################
 def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
+    ec = 240
+    Dr = float(utils.readFromDynParams(dirName, "Dr"))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    sigma = float(utils.readFromDynParams(dirName, "sigma"))
+    driving = float(utils.readFromDynParams(dirName, "f0"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, boxSize[0], 2*np.max(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # pressure bins
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    active = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
+        #pos = np.loadtxt(dirSample + "/particlePos.dat")
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
+        director = np.array([np.cos(angle), np.sin(angle)]).T
+        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
+        for j in range(bins.shape[0]-1):
+            for i in range(numParticles):
+                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                    thermal[d,j] += 0.5 * np.linalg.norm(vel[i])**2
+                    for dim in range(nDim):
+                        active[d,j,dim] += driving * vel[i,dim] * director[i,dim] / (2*Dr)
+                    for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                        radSum = rad[i] + rad[c]
+                        delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                        distance = np.linalg.norm(delta)
+                        overlap = 1 - distance / radSum
+                        if(overlap > 0):
+                            gradMultiple = ec * overlap / radSum
+                            if(pos[c,0] > bins[j] and pos[c,0] <= bins[j+1]):
+                                force = 0.5 * gradMultiple * delta / distance
+                            else:
+                                if(pos[c,0] > bins[j+1]):
+                                    delta[0] = bins[j+1] - pos[i,0]
+                                    delta[1] = (pos[c,1] - pos[i,1]) * (bins[j+1] - pos[i,0]) / (pos[c,0] - pos[i,0])
+                                elif(pos[c,0] <= bins[j]):
+                                    delta[0] = bins[j] - pos[i,0]
+                                    delta[1] = (pos[c,1] - pos[i,1]) * (bins[j] - pos[i,0]) / (pos[c,0] - pos[i,0])
+                                distance = np.linalg.norm(delta)
+                                force = gradMultiple * delta / distance
+                            for dim in range(nDim):
+                                virial[d,j,dim] += force[dim] * delta[dim]
+    thermal = np.mean(thermal,axis=0)*sigma**2 / binArea
+    virial = np.mean(virial,axis=0)*sigma**2 / binArea
+    active = np.mean(active,axis=0)*sigma**2 / binArea
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial, active)))
+    print("surface tension: ", np.sum((virial[:,0]+active[:,0]-virial[:,1]-active[:,1])*binWidth/sigma))
+    uplot.plotCorrelation(centers, thermal + virial[:,0] + active[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
+    uplot.plotCorrelation(centers, thermal + virial[:,1] + active[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1.5)
+    #plt.yscale('log')
+    plt.show()
+
+def averageLinearPressureProfile2(dirName, shiftx=0, dirSpacing=1, nDim=2):
     ec = 240
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
@@ -3378,10 +3020,10 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
                 overlap = 1 - distance / radSum
                 if(overlap > 0):
                     gradMultiple = ec * overlap / radSum
-                    force = gradMultiple * delta / distance
+                    force = 0.5 * gradMultiple * delta / distance
                     # diagonal components of work tensor
                     for dim in range(nDim):
-                        work[dim] += 0.5 * force[dim] * delta[dim]
+                        work[dim] += force[dim] * delta[dim]
             for j in range(bins.shape[0]-1):
                 if(pos[i,0] > bins[j] and pos[i,0] < bins[j+1]):
                     for dim in range(nDim):
@@ -3399,7 +3041,7 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
     active *= sigma**2/(binArea * dirList.shape[0])
     total *= sigma**2/(binArea * dirList.shape[0])
     component *= sigma**2/(binArea * dirList.shape[0])
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, component, virial, thermal, active, total)))
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial, active, total, component)))
     print("average pressure: ", np.mean(np.sum(total,axis=1)), "+-", np.std(np.sum(total,axis=1)))
     print("surface tension: ", np.sum((component[:,0]-component[:,1])*binWidth/sigma))
     uplot.plotCorrelation(centers, total[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
@@ -3450,173 +3092,6 @@ def averageClusterBorderWork(dirName, dirSpacing=1, nDim=2):
                     overlap = 1 - distance / radSum
                     if(overlap > 0):
                         gradMultiple = ec * overlap / radSum
-                        force = gradMultiple * delta / distance
-                        work[d,0] += 0.5 * np.sum(force * delta) / nDim
-    np.savetxt(dirName + os.sep + "borderWork.dat", np.column_stack((timeList, work, length)))
-    print("surface tension: ", np.mean(np.sum(work,axis=1)/length), "+-", np.std(np.sum(work,axis=1)/length))
-    uplot.plotCorrelation(timeList, np.sum(work,axis=1)/length, "$Surface$ $tension$", xlabel = "$Time$", color='k', lw=1)
-    plt.show()
-
-##################### Average LJ linear pressure profile #######################
-def averageLinearLJPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
-    ec = 1
-    LJcutoff = 7
-    LJecut = 4 * (1 / LJcutoff**12 - 1 / LJcutoff**6)
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 0.05)
-    binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
-    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
-    total = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
-    component = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        for i in range(numParticles):
-            work = np.zeros(nDim)
-            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                if(distance <= (LJcutoff * radSum)):
-                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                    force = gradMultiple * delta / distance
-                    # diagonal components of work tensor
-                    for dim in range(nDim):
-                        work[dim] += 0.5 * force[dim] * delta[dim]
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] < bins[j+1]):
-                    for dim in range(nDim):
-                        thermal[d,j,dim] += vel[i,dim]**2
-                        virial[d,j,dim] += work[dim]
-                        component[d,j,dim] += vel[i,dim]**2
-                        component[d,j,dim] += work[dim]
-                    total[d,j,0] += np.sum(work) / nDim
-                    total[d,j,1] += np.linalg.norm(vel[i])**2 / nDim
-    #virial *= sigma**2/(binArea * dirList.shape[0])
-    #thermal *= sigma**2/(binArea * dirList.shape[0])
-    #total *= sigma**2/(binArea * dirList.shape[0])
-    #component *= sigma**2/(binArea * dirList.shape[0])
-    virial = np.mean(virial,axis=0)*sigma**2/binArea
-    thermal = np.mean(thermal,axis=0)*sigma**2/binArea
-    total = np.mean(total,axis=0)*sigma**2/binArea
-    component = np.mean(component,axis=0)*sigma**2/binArea
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, component, virial, thermal, total)))
-    print("average pressure: ", np.mean(np.sum(total,axis=1)), "+-", np.std(np.sum(total,axis=1)))
-    print("surface tension: ", np.sum((component[:,0]-component[:,1])*binWidth/sigma))
-    uplot.plotCorrelation(centers, total[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, total[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
-    uplot.plotCorrelation(centers, np.sum(total,axis=1), "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1)
-    uplot.plotCorrelation(centers, component[:,0]-component[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1)
-    #plt.yscale('log')
-    plt.show()
-
-######################### Average IK LJ pressure profile #######################
-def averageIKLJPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
-    ec = 1
-    LJcutoff = 7
-    LJecut = 4 * (1 / LJcutoff**12 - 1 / LJcutoff**6)
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 0.05)
-    binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    pNormal = np.zeros(bins.shape[0]-1)
-    pTangential = np.zeros(bins.shape[0]-1)
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        # load simplices
-        for i in range(numParticles):
-            pIntNormal = 0
-            pIntTangential = 0
-            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                if(distance <= (LJcutoff * radSum)):
-                    dUdr = -utils.calcLJgradMultiple(ec, distance, radSum) + utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                    pIntNormal -= 0.5 * dUdr * delta[0]**2 / distance
-                    pIntTangential -= 0.5 * dUdr * delta[1]**2 / distance
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] < bins[j+1]):
-                    pNormal[j] += pIntNormal
-                    pTangential[j] += pIntTangential
-    pNormal *= sigma**2/dirList.shape[0]
-    pTangential *= sigma**2/dirList.shape[0]
-    np.savetxt(dirName + os.sep + "linearIKProfile.dat", np.column_stack((pNormal, pTangential)))
-    print("average normal pressure: ", np.mean(pNormal), "+-", np.std(pNormal))
-    print("average tangential pressure: ", np.mean(pTangential), "+-", np.std(pTangential))
-    print("surface tension: ", np.sum((pNormal-pTangential)*binWidth))
-    uplot.plotCorrelation(centers, pNormal, "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1)
-    uplot.plotCorrelation(centers, pTangential, "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1)
-    uplot.plotCorrelation(centers, pNormal - pTangential, "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1)
-    plt.show()
-
-######################### Average cluster border work ##########################
-def averageClusterLJBorderWork(dirName, dirSpacing=1, nDim=2):
-    ec = 1
-    LJcutoff = 7
-    LJecut = 4 * (1 / LJcutoff**12 - 1 / LJcutoff**6)
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # pressure bins
-    work = np.zeros((dirList.shape[0],2))
-    length = np.zeros(dirList.shape[0])
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        # load simplices
-        if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
-            computeDelaunayCluster(dirSample, threshold=0.3, filter='filter')
-        particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
-        borderList = particleList[:,1]
-        for i in range(numParticles):
-            if(borderList[i]==1):
-                length += rad[i]
-                work[d,1] += np.linalg.norm(vel[i])**2 / nDim
-                for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                    radSum = rad[i] + rad[c]
-                    delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                    distance = np.linalg.norm(delta)
-                    if(distance <= (LJcutoff * radSum)):
-                        #forceShift = utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                        #epot = 0.5 * ec * (4 * (radSum**12 / (distance**12) - radSum**6 / distance**6) - LJecut + forceShift * (distance - LJcutoff * radSum))
-                        gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
                         force = gradMultiple * delta / distance
                         work[d,0] += 0.5 * np.sum(force * delta) / nDim
     np.savetxt(dirName + os.sep + "borderWork.dat", np.column_stack((timeList, work, length)))
@@ -3757,10 +3232,377 @@ def computeClusterVelMagnitudeVSTime(dirName, plot=False, dirSpacing=1):
         plt.show()
 
 ################################################################################
-############################### Droplet pressure ###############################
+####################### Lennard-Jones potential pressure #######################
 ################################################################################
-def computeDropletParticleStress(dirName, l1 = 0.04):
-    dim = 2
+def computeLJParticleStress(dirName, nDim=2):
+    ec = 1
+    LJcutoff = 7
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
+    rad = np.loadtxt(dirName + sep + "particleRad.dat")
+    sigma = np.mean(rad)
+    stress = np.zeros((numParticles,3))
+    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
+    vel = np.loadtxt(dirName + "/particleVel.dat")
+    contacts = np.loadtxt(dirName + "/particleNeighbors.dat").astype(np.int64)
+    for i in range(numParticles):
+        virial = 0
+        energy = 0
+        work = np.zeros(nDim)
+        for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+            radSum = rad[i] + rad[c]
+            delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+            distance = np.linalg.norm(delta)
+            if(distance <= (LJcutoff * radSum)):
+                forceShift = utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - forceShift
+                force = gradMultiple * delta / distance
+                virial += 0.5 * np.sum(force * delta)
+                work += force*delta
+                LJecut = 4*ec * (1/LJcutoff**12 - 1/LJcutoff**6)
+                energy += 0.5 * (4*ec * ((radSum / distance)**12 - (radSum / distance)**6) - LJecut - forceShift * (distance - LJcutoff * radSum))
+        stress[i,0] = work[0] - work[1]
+        stress[i,1] = np.linalg.norm(vel[i])**2 / nDim
+        stress[i,2] = energy + 0.5 * np.linalg.norm(vel[i])**2
+    np.savetxt(dirName + os.sep + "particleStress.dat", stress)
+    print('virial: ', np.mean(stress[:,0]), ' +- ', np.std(stress[:,0]))
+    print('thermal: ', np.mean(stress[:,1]), ' +- ', np.std(stress[:,1]))
+    print('energy: ', np.mean(stress[:,2]), ' +- ', np.std(stress[:,2]))
+    return stress
+
+def computeClusterLJPressureVSTime(dirName, dirSpacing=1, nDim=2):
+    ec = 1
+    LJcutoff = 7
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    pressureIn = np.zeros((dirList.shape[0],2))
+    pressureOut = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        if not(os.path.exists(dirSample + os.sep + "simplexList.dat")):
+            computeDelaunayCluster(dirSample, threshold=0.3, save='save')
+        simplices = np.loadtxt(dirSample + os.sep + "simplices.dat").astype(np.int64)
+        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
+        denseSimplexList = simplexList[:,0]
+        borderSimplexList = simplexList[:,1]
+        simplexArea = simplexList[:,2]
+        numSharedSimplices = np.zeros(numParticles)
+        for p in range(numParticles):
+            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
+        pos = np.loadtxt(dirSample + "/particlePos.dat")
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        # particle pressure components
+        areaIn = np.sum(simplexArea[denseSimplexList==1])
+        areaOut = np.sum(simplexArea[denseSimplexList==0])
+        for i in range(simplices.shape[0]):
+            if(denseSimplexList[i]==1):
+                for p in simplices[i]:
+                    pressureIn[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+            else:
+                for p in simplices[i]:
+                    pressureOut[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
+            for neighbor in simplexNeighbor:
+                edge = np.intersect1d(simplices[i], simplices[neighbor])
+                radSum = rad[edge[0]] + rad[edge[1]]
+                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
+                distance = np.linalg.norm(delta)
+                if(distance <= (LJcutoff * radSum)):
+                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                    force = 0.5 * gradMultiple * delta / distance
+            if(denseSimplexList[i] == 1):
+                pressureIn[d,1] += np.sum(force * delta) / nDim
+            else:
+                pressureOut[d,1] += np.sum(force * delta) / nDim
+        if(areaIn > 0):
+            pressureIn *= sigma**2 / areaIn
+        if(areaOut > 0):
+            pressureOut *= sigma**2 / areaOut
+    np.savetxt(dirName + os.sep + "clusterPressure.dat", np.column_stack((timeList, pressureIn, pressureOut)))
+    # pressure components in the fluid
+    print("dense pressure: ", np.mean(np.sum(pressureIn,axis=1)), " +/- ", np.std(np.sum(pressureIn,axis=1)))
+    print("dense thermal pressure: ", np.mean(pressureIn[:,0]), " +/- ", np.std(pressureIn[:,0]))
+    print("dense virial pressure: ", np.mean(pressureIn[:,1]), " +/- ", np.std(pressureIn[:,1]))
+    # pressure components in the gas
+    print("\ndilute pressure: ", np.mean(np.sum(pressureOut,axis=1)), " +/- ", np.std(np.sum(pressureOut,axis=1)))
+    print("dilute thermal pressure: ", np.mean(pressureOut[:,0]), " +/- ", np.std(pressureOut[:,0]))
+    print("dilute virial pressure: ", np.mean(pressureOut[:,1]), " +/- ", np.std(pressureOut[:,1]), "\n")
+
+def computeSimplexLJPressureVSTime(dirName, dirSpacing=1, nDim=2):
+    ec = 1
+    LJcutoff = 7
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    borderPressure = np.zeros((dirList.shape[0],2))
+    fluidPressure = np.zeros((dirList.shape[0],2))
+    gasPressure = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        # load particle variables
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        # load simplices
+        if not(os.path.exists(dirSample + os.sep + "simplices.dat")):
+            computeDelaunayCluster(dirSample, threshold=0.3, save='save')
+        simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
+        simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
+        denseSimplexList = simplexList[:,0]
+        borderSimplexList = simplexList[:,1]
+        simplexArea = simplexList[:,2]
+        numSharedSimplices = np.zeros(numParticles)
+        for p in range(numParticles):
+            numSharedSimplices[p] = np.argwhere(simplices==p)[:,0].shape[0]
+        # first fill out the area occupied by fluid and the gas
+        borderArea = 0
+        fluidArea = 0
+        gasArea = 0
+        for i in range(simplexArea.shape[0]):
+            if(borderSimplexList[i] == 1):
+                borderArea += simplexArea[i]
+            else:
+                if(denseSimplexList[i]==1):
+                    fluidArea += simplexArea[i]
+                else:
+                    gasArea += simplexArea[i]
+        # compute stress components
+        for i in range(simplexArea.shape[0]):
+            # simplex stress components
+            if(borderSimplexList[i]==1):
+                for p in simplices[i]:
+                    borderPressure[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+            else:
+                if(denseSimplexList[i]==1):
+                    for p in simplices[i]:
+                        fluidPressure[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+                else:
+                    for p in simplices[i]:
+                        gasPressure[d,0] += np.linalg.norm(vel[p])**2 / numSharedSimplices[p]
+            simplexNeighbor = utils.findNeighborSimplices(simplices, i)
+            for neighbor in simplexNeighbor:
+                edge = np.intersect1d(simplices[i], simplices[neighbor])
+                radSum = rad[edge[0]] + rad[edge[1]]
+                delta = utils.pbcDistance(pos[edge[0]], pos[edge[1]], boxSize)
+                distance = np.linalg.norm(delta)
+                if(distance <= (LJcutoff * radSum)):
+                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                    force = 0.5 * gradMultiple * delta / distance
+                    if(borderSimplexList[i]==1):
+                        borderPressure[d,0] += np.sum(force * delta)
+                    else:
+                        if(denseSimplexList[i]==1):
+                            fluidPressure[d,0] += np.sum(force * delta)
+                        else:
+                            gasPressure[d,0] += np.sum(force * delta)
+        if(borderArea > 0):
+            borderPressure[d,0] /= borderArea # dim k_B T / dim, dim cancels out
+            borderPressure[d,1] /= (dim * borderArea) # double counting
+        if(fluidArea > 0):
+            fluidPressure[d,0] /= fluidArea # dim k_B T / dim, dim cancels out
+            fluidPressure[d,1] /= (dim * fluidArea) # double counting
+        if(gasArea > 0):
+            gasPressure[d,0] /= gasArea # dim k_B T / dim, dim cancels out
+            gasPressure[d,1] /= (dim * gasArea) # double counting
+        #print(d, np.sum(fluidPressure[d])*sigma**2, np.sum(gasPressure[d])*sigma**2, np.sum(borderPressure[d])*sigma**2)
+    borderPressure *= sigma**2
+    fluidPressure *= sigma**2
+    gasPressure *= sigma**2
+    np.savetxt(dirName + os.sep + "simplexPressure.dat", np.column_stack((timeList, fluidPressure, gasPressure, borderPressure)))
+    # pressure components in the fluid
+    print("dense pressure: ", np.mean(np.sum(fluidPressure,axis=1)), " +/- ", np.std(np.sum(fluidPressure,axis=1)))
+    print("dense thermal pressure: ", np.mean(fluidPressure[:,0]), " +/- ", np.std(fluidPressure[:,0]))
+    print("dense virial pressure: ", np.mean(fluidPressure[:,1]), " +/- ", np.std(fluidPressure[:,1]))
+    # pressure components in the gas
+    print("\ndilute pressure: ", np.mean(np.sum(gasPressure,axis=1)), " +/- ", np.std(np.sum(gasPressure,axis=1)))
+    print("dilute thermal pressure: ", np.mean(gasPressure[:,0]), " +/- ", np.std(gasPressure[:,0]))
+    print("dilute virial pressure: ", np.mean(gasPressure[:,1]), " +/- ", np.std(gasPressure[:,1]), "\n")
+
+###################### Average radial pressure profile #########################
+def averageRadialLJPressureProfile(dirName, dirSpacing=1, nDim=2):
+    ec = 1
+    LJcutoff = 7
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    eps = 1.8*np.max(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, np.sqrt(boxSize[0]**2 + boxSize[1]**2)/2, 2*np.max(rad))
+    binArea = np.pi * (bins[1:]**2 - bins[:-1]**2)
+    centers = (bins[1:] + bins[:-1])/2
+    # pressure bins
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    virial = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    normal = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.3)
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+        centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
+        #print(dirList[d], "maxLabel", maxLabel, "clusterPos", centerOfMass)
+        pos = utils.shiftPositions(pos, boxSize, 0.5-centerOfMass[0], 0.5-centerOfMass[1])
+        centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        for i in range(numParticles):
+            if(labels[i]==maxLabel or (labels[i]==-1 or labels[i]==0)):
+                deltaCOM = utils.pbcDistance(pos[i], centerOfMass, boxSize)
+                distanceCOM = np.linalg.norm(deltaCOM)
+                deltaCOM /= distanceCOM
+                #normalWork = 0
+                normalForce = 0
+                tangentialForce = 0
+                for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                    radSum = rad[i] + rad[c]
+                    delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                    distance = np.linalg.norm(delta)
+                    if(distance <= (LJcutoff * radSum)):
+                        gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                        #normalWork += np.abs(np.sum(deltaCOM*delta)) * gradMultiple / distance
+                        normalForce += np.abs(np.sum(deltaCOM*delta)) * gradMultiple / distance
+                for j in range(bins.shape[0]-1):
+                    if(distanceCOM > bins[j] and distanceCOM < bins[j+1]):
+                        virial[d,j] += normalForce / (2*np.pi*distanceCOM)
+                        thermal[d,j] += np.linalg.norm(vel[i])**2 / (np.pi*distanceCOM**2)
+                        normal[d,j] += normalForce / (2*np.pi*distanceCOM) + np.linalg.norm(vel[i])**2 / (np.pi*distanceCOM**2)
+    virial = np.mean(virial, axis=0)*sigma**2
+    thermal = np.mean(thermal, axis=0)*sigma**2
+    normal = np.mean(normal, axis=0)*sigma**2
+    newCenters = (centers[1:] + centers[:-1]) / 2
+    tangential = (normal[1:] + normal[:-1])/2 + 0.5 * newCenters * (normal[1:] - normal[:-1]) / (centers[1:] - centers[:-1])
+    normal = (normal[1:] + normal[:-1])/2
+    virial = (virial[1:] + virial[:-1])/2
+    thermal = (thermal[1:] + thermal[:-1])/2
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((newCenters, normal, tangential, virial, thermal)))
+    uplot.plotCorrelation(newCenters, normal, "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
+    uplot.plotCorrelation(newCenters, tangential, "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
+    uplot.plotCorrelation(newCenters, normal - tangential, "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
+    plt.show()
+
+##################### Average LJ linear pressure profile #######################
+def averageLinearLJPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
+    ec = 1
+    LJcutoff = 7
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, boxSize[0], 2*np.max(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # pressure bins
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        for j in range(bins.shape[0]-1):
+            for i in range(numParticles):
+                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                    #thermal[d,j] += 0.5 * np.linalg.norm(vel[i])**2
+                    for dim in range(nDim):
+                        thermal[d,j,dim] += vel[i,dim]**2
+                    for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                        radSum = rad[i] + rad[c]
+                        delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                        distance = np.linalg.norm(delta)
+                        if(distance <= (LJcutoff * radSum)):
+                            gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                            if(pos[c,0] > bins[j] and pos[c,0] <= bins[j+1]):
+                                force = 0.5 * gradMultiple * delta / distance
+                            else:
+                                if(pos[c,0] > bins[j+1]):
+                                    delta[0] = bins[j+1] - pos[i,0]
+                                    delta[1] = (pos[c,1] - pos[i,1]) * (bins[j+1] - pos[i,0]) / (pos[c,0] - pos[i,0])
+                                elif(pos[c,0] <= bins[j]):
+                                    delta[0] = bins[j] - pos[i,0]
+                                    delta[1] = (pos[c,1] - pos[i,1]) * (bins[j] - pos[i,0]) / (pos[c,0] - pos[i,0])
+                                distance = np.linalg.norm(delta)
+                                force = gradMultiple * delta / distance
+                            for dim in range(nDim):
+                                virial[d,j,dim] += force[dim] * delta[dim]
+    thermal = np.mean(thermal,axis=0)*sigma**2 / binArea
+    virial = np.mean(virial,axis=0)*sigma**2 / (binArea * nDim)
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial)))
+    print("surface tension: ", np.sum((virial[:,0]-virial[:,1])*binWidth/sigma))
+    uplot.plotCorrelation(centers, thermal[:,0] + virial[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
+    uplot.plotCorrelation(centers, thermal[:,1] + virial[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1.5)
+    plt.pause(0.5)
+    #plt.show()
+
+######################### Average cluster border work ##########################
+def averageClusterLJBorderWork(dirName, dirSpacing=1, nDim=2):
+    ec = 1
+    LJcutoff = 7
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # pressure bins
+    work = np.zeros((dirList.shape[0],2))
+    length = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        # load simplices
+        if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
+            computeDelaunayCluster(dirSample, threshold=0.3, filter='filter')
+        particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
+        borderList = particleList[:,1]
+        for i in range(numParticles):
+            if(borderList[i]==1):
+                length += rad[i]
+                work[d,1] += np.linalg.norm(vel[i])**2 / nDim
+                for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                    radSum = rad[i] + rad[c]
+                    delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                    distance = np.linalg.norm(delta)
+                    if(distance <= (LJcutoff * radSum)):
+                        gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                        force = gradMultiple * delta / distance
+                        work[d,0] += 0.5 * np.sum(force * delta) / nDim
+    np.savetxt(dirName + os.sep + "borderWork.dat", np.column_stack((timeList, work, length)))
+    print("surface tension: ", np.mean(np.sum(work,axis=1)/length), "+-", np.std(np.sum(work,axis=1)/length))
+    uplot.plotCorrelation(timeList, np.sum(work,axis=1)/length, "$Surface$ $tension$", xlabel = "$Time$", color='k', lw=1)
+    plt.show()
+
+################################################################################
+################### Repulsive-Attractive potential pressure ####################
+################################################################################
+def computeRAParticleStress(dirName, l1 = 0.04, nDim=2):
     ec = 240
     l2 = 0.5
     sep = utils.getDirSep(dirName, "boxSize")
@@ -3792,24 +3634,24 @@ def computeDropletParticleStress(dirName, l1 = 0.04):
             force = gradMultiple * delta / distance
             virial += 0.5 * np.sum(force * delta) # double counting
         stress[i,0] = virial
-        stress[i,1] = np.linalg.norm(vel[i])**2
+        stress[i,1] = np.linalg.norm(vel[i])**2 / nDim
         stress[i,2] = energy
     np.savetxt(dirName + os.sep + "particleStress.dat", stress)
-    print('potential energy: ', np.mean(stress[:,2]), ' +- ', np.std(stress[:,2]))
-    print('kinetic energy: ', np.mean(stress[:,1]*0.5), ' +- ', np.std(stress[i,1]*0.5))
-    print('energy: ', np.mean(stress[:,1]*0.5 + stress[:,2]), ' +- ', np.std(stress[i,1]*0.5 + stress[:,2]))
+    print('virial: ', np.mean(stress[:,0]), ' +- ', np.std(stress[:,0]))
+    print('thermal: ', np.mean(stress[:,1]), ' +- ', np.std(stress[:,1]))
+    print('energy: ', np.mean(stress[:,2]), ' +- ', np.std(stress[:,2]))
     return stress
 
-def computeDropletParticleStressVSTime(dirName, dirSpacing=1):
+def computeRAParticleStressVSTime(dirName, dirSpacing=1):
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        computeDropletParticleStress(dirSample)
+        computeRAParticleStress(dirSample)
 
-def computeDropletPressureVSTime(dirName, l1=0.1, dirSpacing=1):
+def computeRAPressureVSTime(dirName, l1=0.1, dirSpacing=1):
     dim = 2
     ec = 240
     l2 = 0.5
@@ -3881,147 +3723,6 @@ def computeDropletPressureVSTime(dirName, l1=0.1, dirSpacing=1):
     print("\ndilute pressure: ", np.mean(pressureOut[:,0] + pressureOut[:,1]), " +/- ", np.std(pressureOut[:,0] + pressureOut[:,1]))
     print("dilute virial pressure: ", np.mean(pressureOut[:,0]), " +/- ", np.std(pressureOut[:,0]))
     print("dilute thermal pressure: ", np.mean(pressureOut[:,1]), " +/- ", np.std(pressureOut[:,1]), "\n")
-
-############################ Radial droplet tension ############################
-def averageDropletRadialPressureProfile(dirName, shiftx, shifty, l1=0.04, dirSpacing=1):
-    dim = 2
-    ec = 240
-    l2 = 0.5
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0]/2, 2*np.mean(rad))
-    binArea = np.pi * (bins[1:]**2 - bins[:-1]**2)
-    binWidth = bins[1:] - bins[:-1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    thermal = np.zeros((bins.shape[0]-1,2))
-    virial = np.zeros((bins.shape[0]-1,2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        if(os.path.exists(dirSample + os.sep + "denseList.dat")):
-            denseList = np.loadtxt(dirSample + os.sep + "denseList.dat")
-        else:
-            denseList,_ = computeVoronoiCluster(dirSample)
-        # CENTER CLUSTER BY BRUTE FORCE - NEED TO IMPLEMENT SOMETHING BETTER
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        if(shiftx != 0 or shiftx != 0):
-            pos = utils.shiftPositions(pos, boxSize, -shiftx, -shifty)
-        #pos = utils.centerPositions(pos, rad, boxSize, denseList)
-        centerOfMass = np.mean(pos[denseList==1], axis=0)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        neighbors = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        workn = 0
-        workt = 0
-        for i in range(numParticles):
-            # Convert pressure components into normal and tangential components
-            relPos = utils.pbcDistance(pos[i], centerOfMass, boxSize)
-            relAngle = np.arctan2(relPos[1], relPos[0])
-            unitVector = np.array([np.cos(relAngle), np.sin(relAngle)])
-            for c in neighbors[i, np.argwhere(neighbors[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(distance < (1 + l1) * radSum):
-                    gradMultiple = ec * overlap / radSum
-                elif((distance >= (1 + l1) * radSum) and (distance < (1 + l2) * radSum)):
-                    gradMultiple = (ec * l1 / (l2 - l1)) * (overlap + l2) / radSum
-                else:
-                    gradMultiple = 0
-                force = gradMultiple * delta / distance
-                # normal minus tangential component
-                forceNT = utils.projectToNormalTangentialComp(force, unitVector)
-                deltaNT = utils.projectToNormalTangentialComp(delta, unitVector)
-                workn += np.dot(forceNT[0], deltaNT[0])
-                workt += np.dot(forceNT[1], deltaNT[1])
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] < bins[j+1]):
-                    thermal[j,0] += vel[i,0]**2 * binWidth[j] / dim
-                    thermal[j,1] += vel[i,1]**2 * binWidth[j] / dim
-                    virial[j,0] = workn * binWidth[j] / dim
-                    virial[j,1] = workt * binWidth[j] / dim
-    for i in range(virial.shape[1]):
-        virial[:,i] *= sigma**2/dirList.shape[0]
-        thermal[:,i] *= sigma**2/dirList.shape[0]
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, virial, thermal)))
-    print("surface tension: ", np.sum(centers * (virial[:,0] + thermal[:,0] - virial[:,1] - thermal[:,1])))
-    uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, thermal[:,0] - thermal[:,1], "$Surface$ $tension$", xlabel = "$Distance$", color='r', lw=1.5)
-    #plt.yscale('log')
-    plt.show()
-
-####################### Average linear pressure profile ########################
-def averageDropletLinearPressureProfile(dirName, l1 = 0.04, dirSpacing=1):
-    dim = 2
-    ec = 240
-    l2 = 0.5
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
-    sigma = np.mean(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 0.01)
-    binArea = (bins[1] - bins[0])*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    virial = np.zeros((bins.shape[0]-1,3))
-    thermal = np.zeros((bins.shape[0]-1,3))
-    total = np.zeros(bins.shape[0]-1)
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        neighbors = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        for i in range(numParticles):
-            work = 0
-            workx = 0
-            worky = 0
-            for c in neighbors[i, np.argwhere(neighbors[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(distance < (1 + l1) * radSum):
-                    gradMultiple = ec * overlap / radSum
-                elif((distance >= (1 + l1) * radSum) and (distance < (1 + l2) * radSum)):
-                    gradMultiple = (ec * l1 / (l2 - l1)) * (overlap + l2) / radSum
-                else:
-                    gradMultiple = 0
-                force = gradMultiple * delta / distance
-                work += 0.5 * np.sum(force * delta)
-                workx += 0.5 * force[0] * delta[0]
-                worky += 0.5 * force[1] * delta[1]
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] < bins[j+1]):
-                    virial[j,0] += work / dim
-                    virial[j,1] += workx
-                    virial[j,2] += worky
-                    thermal[j,0] += np.linalg.norm(vel[i])**2 / dim
-                    thermal[j,1] += vel[i,0]**2
-                    thermal[j,2] += vel[i,1]**2
-                    total[j] += (work + np.linalg.norm(vel[i])**2) / dim
-    for i in range(virial.shape[1]):
-        virial[:,i] *= sigma**2/(binArea * dirList.shape[0])
-        thermal[:,i] *= sigma**2/(binArea * dirList.shape[0])
-    total *= sigma**2/(binArea * dirList.shape[0])
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, virial, thermal, total)))
-    print("average pressure: ", np.mean(total), "+-", np.std(total))
-    uplot.plotCorrelation(centers, virial[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, thermal, "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
-    uplot.plotCorrelation(centers, total, "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1)
-    #plt.yscale('log')
-    plt.show()
 
 
 if __name__ == '__main__':
@@ -4148,8 +3849,9 @@ if __name__ == '__main__':
         computeClusterMixingByLabel(dirName, numBlocks, blockPower, spacing, plot)
 
     elif(whichCorr == "velpdf"):
-        plot = sys.argv[3]
-        averageClusterVelPDF(dirName, plot)
+        threshold = float(sys.argv[3])
+        plot = sys.argv[4]
+        averageClusterVelPDF(dirName, threshold, plot)
 
 ############################ clustering algorithms #############################
     elif(whichCorr == "cluster"):
@@ -4254,20 +3956,6 @@ if __name__ == '__main__':
         plot = sys.argv[3]
         computeDropletSizeVSTime(dirName, plot)
 
-    elif(whichCorr == "delpressure"):
-        computeSimplexPressureVSTime(dirName)
-
-    elif(whichCorr == "delprofile"):
-        shiftx = float(sys.argv[3])
-        averageSimplexPressureProfile(dirName, shiftx=shiftx)
-
-    elif(whichCorr == "delljpressure"):
-        computeSimplexLJPressureVSTime(dirName)
-
-    elif(whichCorr == "delljprofile"):
-        shiftx = float(sys.argv[3])
-        averageSimplexLJPressureProfile(dirName, shiftx=shiftx)
-
 ############################### Cluster pressure ###############################
     elif(whichCorr == "stress"):
         prop = sys.argv[3]
@@ -4276,10 +3964,21 @@ if __name__ == '__main__':
     elif(whichCorr == "stresstime"):
         computeParticleStressVSTime(dirName)
 
+    elif(whichCorr == "ptime"):
+        bound = sys.argv[3]
+        prop = sys.argv[4]
+        computePressureVSTime(dirName, bound, prop)
+
+    elif(whichCorr == "clusterpressure"):
+        bound = sys.argv[3]
+        prop = sys.argv[4]
+        computeClusterPressureVSTime(dirName, bound, prop)
+
+    elif(whichCorr == "delpressure"):
+        computeSimplexPressureVSTime(dirName)
+
     elif(whichCorr == "radialprofile"):
-        shiftx = float(sys.argv[3])
-        shifty = float(sys.argv[4])
-        averageRadialPressureProfile(dirName, shiftx, shifty)
+        averageRadialPressureProfile(dirName)
 
     elif(whichCorr == "linearprofile"):
         shiftx = float(sys.argv[3])
@@ -4287,27 +3986,6 @@ if __name__ == '__main__':
 
     elif(whichCorr == "borderwork"):
         averageClusterBorderWork(dirName)
-
-    elif(whichCorr == "linearljprofile"):
-        shiftx = float(sys.argv[3])
-        averageLinearLJPressureProfile(dirName, shiftx=shiftx)
-
-    elif(whichCorr == "lineariklj"):
-        shiftx = float(sys.argv[3])
-        averageIKLJPressureProfile(dirName, shiftx=shiftx)
-
-    elif(whichCorr == "ljborderwork"):
-        averageClusterLJBorderWork(dirName)
-
-    elif(whichCorr == "ptime"):
-        bound = sys.argv[3]
-        prop = sys.argv[4]
-        computePressureVSTime(dirName, bound, prop)
-
-    elif(whichCorr == "clusterptime"):
-        bound = sys.argv[3]
-        prop = sys.argv[4]
-        computeClusterPressureVSTime(dirName, bound, prop)
 
     elif(whichCorr == "veltime"):
         plot = sys.argv[3]
@@ -4317,20 +3995,24 @@ if __name__ == '__main__':
         plot = sys.argv[3]
         computeClusterVelMagnitudeVSTime(dirName, plot)
 
-############################### Droplet pressure ###############################
-    elif(whichCorr == "ljstress"):
-        computeLJParticlePressureVSTime(dirName)
-
+######################## Lennard-Jones cluster pressure ########################
     elif(whichCorr == "ljptime"):
         computeLJPressureVSTime(dirName)
 
-    elif(whichCorr == "ljradprofile"):
-        shiftx = float(sys.argv[3])
-        shifty = float(sys.argv[4])
-        averageLJRadialPressureProfile(dirName, shiftx, shifty)
+    elif(whichCorr == "clusterljpressure"):
+        computeClusterLJPressureVSTime(dirName)
 
-    elif(whichCorr == "ljlinprofile"):
+    elif(whichCorr == "delljpressure"):
+        computeSimplexLJPressureVSTime(dirName)
+
+    elif(whichCorr == "radialljprofile"):
+        averageRadialLJPressureProfile(dirName)
+
+    elif(whichCorr == "linearljprofile"):
         shiftx = float(sys.argv[3])
-        averageLJLinearPressureProfile(dirName, shiftx=shiftx)
+        averageLinearLJPressureProfile(dirName, shiftx=shiftx)
+
+    elif(whichCorr == "ljborderwork"):
+        averageClusterLJBorderWork(dirName)
     else:
         print("Please specify the correlation you want to compute")
