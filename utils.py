@@ -462,6 +462,14 @@ def getStepList(numFrames, firstStep, stepFreq):
         stepList = stepList[-numFrames:]
     return stepList
 
+def getLogSpacedStepList(minDecade=5, maxDecade=9):
+    stepList = np.empty(0, dtype=np.int64)
+    stepList = np.append(stepList, 0)
+    for i in range(minDecade-1, maxDecade-2):
+        stepList = np.append(stepList, np.linspace(10**i, 10**(i+1),10)[:-1])
+    stepList = np.append(stepList, np.linspace(10**(maxDecade-2), 10**(maxDecade-1),31))
+    return stepList.astype(np.int64)
+
 def getDirectories(dirName):
     listDir = []
     for dir in os.listdir(dirName):
@@ -797,7 +805,7 @@ def initializeRectangle(dirName, dirSave, ratio):
     vel = np.loadtxt(dirName + '/particleVel.dat')
     angle = np.loadtxt(dirName + '/particleAngles.dat')
     numParticles = rad.shape[0]
-    density = np.sum(np.pi*rad**2)
+    density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
@@ -805,6 +813,7 @@ def initializeRectangle(dirName, dirSave, ratio):
     np.savetxt(dirSave + '/particleAngles.dat', angle)
     # increase boxsize along the x direction and pbc particles in new box
     boxSize[0] *= ratio
+    print(boxSize[0])
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
