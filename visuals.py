@@ -77,6 +77,12 @@ def setPackingAxes(boxSize, ax):
     ax.set_aspect('equal', adjustable='box')
     setAxes2D(ax)
 
+def setZoomPackingAxes(xBounds, yBounds, ax):
+    ax.set_xlim(xBounds[0], xBounds[1])
+    ax.set_ylim(yBounds[0], yBounds[1])
+    ax.set_aspect('equal', adjustable='box')
+    setAxes2D(ax)
+
 def setGridAxes(bins, ax):
     xBounds = np.array([bins[0], bins[-1]])
     yBounds = np.array([bins[0], bins[-1]])
@@ -131,25 +137,31 @@ def getDenseColorList(denseList):
             colorId[particleId] = [1,1,1,1]
     return colorId
 
-def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, border=False, threshold=0.65, filter='filter', alpha = 0.6, lj = False, shiftx = 0, shifty = 0):
+def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, border=False, threshold=0.65, filter='filter', alpha=0.6, lj=False, shear=False, strain=0, numMoved=0, shiftx=0, shifty=0):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     #pos = np.array(np.loadtxt(dirName + os.sep + "particlePos.dat"))
-    pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
+    if(shear == True):
+        pos = utils.getLEPBCPositions(dirName + os.sep + "particlePos.dat", boxSize, strain)
+    else:
+        pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     if(lj == True):
         rad *= 2**(1/6)
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     #denseList = np.loadtxt(dirName + os.sep + "denseList.dat")
     #pos = utils.centerPositions(pos, rad, boxSize)
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)#1.35, 0 for box21 16k 0, 0.2 for 0.31 16k droplet
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
+    #xBounds = np.array([1.5, 2.2])
+    #yBounds = np.array([0.4, 1])
+    #setZoomPackingAxes(xBounds, yBounds, ax)
+    #sep = utils.getDirSep(dirName, 'movedLabel')
+    #movedLabel = np.loadtxt(dirName + sep + 'movedLabel.dat')
+    #numMoved = movedLabel[movedLabel==1].shape[0]
+    if(numMoved != 0):
+        print("numMoved:", numMoved)
     #setBigBoxAxes(boxSize, ax, 0.05)
     if(dense==True):
         if not(os.path.exists(dirName + os.sep + "particleList.dat")):
@@ -185,6 +197,12 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
             ax.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)#width=0.002, scale=3)20
         else:
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth='0.3'))
+            #print(particleId)
+            #plt.pause(0.5)
+            #if(movedLabel[particleId]==1):
+            #    ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.3))
+            if(particleId<numMoved):
+                ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.3))
             #if(particleId == 95):
             #    ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth='0.3'))
     #if(border==True):
@@ -227,13 +245,8 @@ def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, 
     #if(onedim == "onedim"):
     #    pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.05)
     colorId = getRadColorList(rad)
@@ -281,16 +294,11 @@ def getStressColorList(stress, which='total', droplet='lj'):
 def plotSPStressMapPacking(dirName, figureName, which='total', droplet='lj', l1=0.035, shiftx=0, shifty=0, alpha=0.7):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     if not(os.path.exists(dirName + os.sep + "particleStress!.dat")):
         if(droplet == 'lj'):
@@ -346,8 +354,6 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet='lj', l1=
 def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filter=True, alpha=0.7, shiftx=0, shifty=0, lj=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     if(lj==True):
         rad *= 2**(1/6)
@@ -355,9 +361,6 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     colorId = getRadColorList(rad)
     if(dense==True):
@@ -424,8 +427,6 @@ def getBorderColorList(borderList):
 def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, threshold=0.76, filter='filter', alpha=0.8, colored=False, shiftx=0, shifty=0, lj=False):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     if(lj==True):
         rad *= 2**(1/6)
@@ -433,9 +434,6 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 0.1)
     colorId = getRadColorList(rad)
@@ -480,9 +478,9 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
     else:
         figureName = "/home/francesco/Pictures/soft/packings/del-" + figureName + ".png"
     #plt.plot(pos[148,0], pos[148,1], marker='*', markersize=20, color='r')
-    #plt.plot(pos[1752,0], pos[1752,1], marker='*', markersize=20, color='b')
-    #plt.plot(pos[2508,0], pos[2508,1], marker='*', markersize=20, color='g')
-    #plt.plot(pos[5254,0], pos[5254,1], marker='*', markersize=20, color='k')
+    #plt.plot(pos[10886,0], pos[10886,1], marker='s', markersize=20, color='b')
+    #plt.plot(pos[13250,0], pos[13250,1], marker='o', markersize=20, color='g')
+    #plt.plot(pos[13250,0], pos[13250,1], marker='*', markersize=20, color='k')
     #x = np.linspace(0,1,1000)
     #slope = -0.11838938050442274
     #intercept = 0.9852218251735015
@@ -497,16 +495,11 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
 def plotSPDelaunayLabels(dirName, figureName, dense=False, threshold=0.78, filter=False, alpha=0.8, label='dense3dilute'):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     pos = utils.shiftPositions(pos, boxSize, 0, -0.2)
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     # plot simplices belonging to a certain label
     if(filter == 'filter'):
@@ -551,17 +544,12 @@ def plotSPDelaunayLabels(dirName, figureName, dense=False, threshold=0.78, filte
 def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='filter', alpha=0.7, paused=False, shiftx=0, shifty=0):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     eps = 1.8*np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, -0.3, 0.1 for 8k 0 -0.2
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     #setBigBoxAxes(boxSize, ax, 1)
     labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
@@ -570,7 +558,7 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='
     colorId = getColorListFromLabels(labels)
     maxLabel = utils.findLargestParticleCluster(rad, labels)
     print("maxLabel:", maxLabel)
-    #pos = utils.centerDroplet(pos, rad, boxSize, labels, maxLabel)
+    pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
     if(paused=='paused'):
         #i = 0
         for label in np.unique(labels):
@@ -609,17 +597,12 @@ def getColorListFromSimplexLabels(labels):
 def plotSPDelaunaySimplexClusters(dirName, figureName, threshold=0.76, filter='filter', alpha=0.7, paused=False, shiftx=0, shifty=0):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
-    xBounds = np.array([0, boxSize[0]])
-    yBounds = np.array([0, boxSize[1]])
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     eps = np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     pos = utils.shiftPositions(pos, boxSize, shiftx, shifty) # for 4k and 16k, 0, -0.2 for 8k -0.4 0.05
     fig = plt.figure(0, dpi = 150)
     ax = fig.gca()
-    ax.set_xlim(xBounds[0], xBounds[1])
-    ax.set_ylim(yBounds[0], yBounds[1])
-    ax.set_aspect('equal', adjustable='box')
     setPackingAxes(boxSize, ax)
     dirAugment = dirName + os.sep + 'augmented'
     if not(os.path.exists(dirAugment + '!')):
@@ -677,17 +660,20 @@ def plotSoftParticles(ax, pos, rad, alpha = 0.6, colorMap = True, lw = 0.5):
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth = lw))
 
-def plotSoftParticlesSubSet(ax, pos, rad, tagList, alpha = 0.2, lw = 0.5):
-    colorId = np.ones((rad.shape[0], 4))
-    colorId[tagList==1] = [0,0,0,1]
-    alphaId = np.zeros(rad.shape[0])
-    alphaId[tagList==1] = 1
-    alphaId[tagList==0] = alpha
+def plotSoftParticlesSubSet(ax, pos, rad, maxIndex, alpha = 0.7, lw = 0.5):
+    colorId = np.zeros((rad.shape[0], 4))
+    colorList = cm.get_cmap('viridis', rad.shape[0])
+    count = 0
+    for particleId in np.argsort(rad):
+        colorId[particleId] = colorList(count/rad.shape[0])
+        count += 1
     for particleId in range(pos.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alphaId[particleId], linewidth = lw))
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth = lw))
+        if(particleId < maxIndex):
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth = lw))
 
 def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList = np.array([]), alpha = '0.6'):#122, 984, 107, 729, 59, 288, 373, 286, 543, 187, 6, 534, 104, 347]):
     colorId = np.zeros((rad.shape[0], 4))
@@ -744,6 +730,22 @@ def plotSoftParticleCluster(axFrame, pos, rad, denseList, alpha = 0.4):
         else:
             axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[1,1,1], alpha=alpha, linewidth = 0.7))
 
+def plotSoftParticlePerturb(axFrame, pos, rad, movedLabel, alpha=0.8):
+    colorId = np.zeros((rad.shape[0], 4))
+    colorList = cm.get_cmap('viridis', rad.shape[0])
+    count = 0
+    for particleId in np.argsort(rad):
+        colorId[particleId] = colorList(count/rad.shape[0])
+        count += 1
+    for particleId in range(pos.shape[0]):
+        x = pos[particleId,0]
+        y = pos[particleId,1]
+        r = rad[particleId]
+        if(movedLabel[particleId] == 1):
+            axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth = 0.7))
+        else:
+            axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.5, linewidth = 0.7))
+
 def makeSoftParticleClusterFrame(dirName, rad, boxSize, figFrame, frames, clusterList):
     pos = np.array(np.loadtxt(dirName + os.sep + "particlePos.dat"))
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
@@ -788,23 +790,23 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     anim.save("/home/francesco/Pictures/soft/packings/clustermix-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
-def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = False, firstIndex = 10, npt = False, quiver = False, dense = False, pmap = False, droplet = False, l1=0.03):
+def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subset = False, firstIndex = 10, npt = False, quiver = False, dense = False, perturb = False, pmap = False, droplet = False, l1=0.03):
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    pos = utils.shiftPositions(pos, boxSize, 0.4, 0)
+    #pos = utils.shiftPositions(pos, boxSize, 0.4, 0)
     #pos = utils.centerPositions(pos, rad, boxSize)
     gcfFrame = plt.gcf()
     gcfFrame.clear()
     axFrame = figFrame.gca()
-    setPackingAxes(boxSize, axFrame)
-    if(subSet == "subset"):
-        tagList = np.zeros(rad.shape[0], dtype=int)
-        #tagList[:firstIndex] = 1
-        tagList[38] = 1
-        tagList[60] = 1
-        tagList[81] = 1
-        plotSoftParticlesSubSet(axFrame, pos, rad, tagList)
-        vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
-        plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList)
+    if(perturb == "perturb" or subset == "subset"):
+        xBounds = np.array([1.5, 2.2])
+        yBounds = np.array([0.4, 1])
+        setZoomPackingAxes(xBounds, yBounds, axFrame)
+    else:
+        setPackingAxes(boxSize, axFrame)
+    if(subset == "subset"):
+        plotSoftParticlesSubSet(axFrame, pos, rad, firstIndex)
+        #vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
+        #plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList)
     elif(quiver == "quiver"):
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
         plotSoftParticleQuiverVel(axFrame, pos, vel, rad)
@@ -823,6 +825,9 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
             cluster.computeDelaunayCluster(dirName)
         denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         plotSoftParticleCluster(axFrame, pos, rad, denseList)
+    elif(perturb == "perturb"):
+        movedLabel = np.loadtxt(dirName + '/../movedLabel.dat')
+        plotSoftParticlePerturb(axFrame, pos, rad, movedLabel)
     else:
         if(npt == "npt"):
             boxSize = np.loadtxt(dirSample + "/boxSize.dat")
@@ -831,7 +836,7 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subSet = Fals
     axFrame.remove()
     frames.append(axFrame)
 
-def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04, logSpaced = False, subSet = False, firstIndex = 0, npt = False, quiver = False, dense = False, pmap = False, droplet = False, l1=0.03, lj=False):
+def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04, logSpaced = False, subset = False, firstIndex = 0, npt = False, quiver = False, dense = False, perturb = False, pmap = False, droplet = False, l1=0.03, lj=False):
     def animate(i):
         frames[i].figure=fig
         fig.axes.append(frames[i])
@@ -857,19 +862,66 @@ def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepF
     if(lj==True):
         rad *= 2**(1/6)
     # the first configuration gets two frames for better visualization
-    makeSoftParticleFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, subSet, firstIndex, npt, quiver, dense, pmap, droplet, l1)
+    makeSoftParticleFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, subset, firstIndex, npt, quiver, dense, perturb, pmap, droplet, l1)
     vel = []
     for i in stepList:
         dirSample = dirName + os.sep + "t" + str(i)
-        makeSoftParticleFrame(dirSample, rad, boxSize, figFrame, frames, subSet, firstIndex, npt, quiver, dense, pmap, droplet, l1)
+        makeSoftParticleFrame(dirSample, rad, boxSize, figFrame, frames, subset, firstIndex, npt, quiver, dense, perturb, pmap, droplet, l1)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     if(quiver=="quiver"):
         figureName = "velmap-" + figureName
     if(pmap=="pmap"):
         figureName = "pmap-" + figureName
-    if(subSet=="subset"):
-        figureName = "tracer-" + figureName
+    if(subset=="subset"):
+        figureName = "subset-" + figureName
     anim.save("/home/francesco/Pictures/soft/packings/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
+
+def makeSPShearPackingVideo(dirName, figureName, maxStrain = 1e-01, strainStep = 1e-03, lj = False):
+    def animate(i):
+        frames[i].figure=fig
+        fig.axes.append(frames[i])
+        fig.add_axes(frames[i])
+        return gcf.artists
+    frameTime = 300
+    frames = []
+    dirList, strainList = utils.getShearDirectories(dirName)
+    #frame figure
+    figFrame = plt.figure(dpi=150)
+    fig = plt.figure(dpi=150)
+    gcf = plt.gcf()
+    gcf.clear()
+    ax = fig.gca()
+    boxSize = np.loadtxt(dirName + os.sep + "../boxSize.dat")
+    setPackingAxes(boxSize, ax)
+    rad = np.array(np.loadtxt(dirName + os.sep + "../particleRad.dat"))
+    if(lj==True):
+        rad *= 2**(1/6)
+    # the first configuration gets two frames for better visualization
+    dirSample = dirName + os.sep + dirList[0]
+    pos = utils.getLEPBCPositions(dirSample + os.sep + "particlePos.dat", boxSize, 0)
+    gcfFrame = plt.gcf()
+    gcfFrame.clear()
+    axFrame = figFrame.gca()
+    setPackingAxes(boxSize, axFrame)
+    plotSoftParticles(axFrame, pos, rad)
+    figFrame.tight_layout()
+    axFrame.remove()
+    frames.append(axFrame)
+    numFrames = len(range(0,dirList.shape[0],4)) + 1
+    print("numFrames:", numFrames)
+    for i in range(0,dirList.shape[0],4):
+        dirSample = dirName + os.sep + dirList[i]
+        pos = utils.getLEPBCPositions(dirSample + os.sep + "particlePos.dat", boxSize, strainList[i])
+        gcfFrame = plt.gcf()
+        gcfFrame.clear()
+        axFrame = figFrame.gca()
+        setPackingAxes(boxSize, axFrame)
+        plotSoftParticles(axFrame, pos, rad)
+        figFrame.tight_layout()
+        axFrame.remove()
+        frames.append(axFrame)
+        anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
+    anim.save("/home/francesco/Pictures/soft/packings/shear-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
 def plotSoftParticleDroplet(axFrame, pos, rad, labels, maxLabel, alpha = 0.7):
     colorList = getColorListFromLabels(labels)
@@ -987,6 +1039,16 @@ if __name__ == '__main__':
     elif(whichPlot == "lj"):
         plotSPPacking(dirName, figureName, lj=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]))
 
+    if(whichPlot == "shearss"):
+        plotSPPacking(dirName, figureName, shear=True, strain=float(sys.argv[4]), shiftx=float(sys.argv[5]), shifty=float(sys.argv[6]))
+
+    elif(whichPlot == "shearlj"):
+        plotSPPacking(dirName, figureName, lj=True, shear=True, strain=float(sys.argv[4]), shiftx=float(sys.argv[5]), shifty=float(sys.argv[6]))
+
+    elif(whichPlot == "moved"):
+        numMoved = int(sys.argv[4])
+        plotSPPacking(dirName, figureName, lj=True, numMoved=numMoved, shiftx=float(sys.argv[5]), shifty=float(sys.argv[6]))
+
     elif(whichPlot == "ss3d"):
         plot3DPacking(dirName, figureName)
 
@@ -1076,6 +1138,28 @@ if __name__ == '__main__':
         stepFreq = float(sys.argv[6])
         makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, lj=True, logSpaced=False)
 
+    elif(whichPlot == "shearvideo"):
+        maxStrain = float(sys.argv[4])
+        strainStep = float(sys.argv[5])
+        makeSPShearPackingVideo(dirName, figureName, maxStrain, strainStep)
+
+    elif(whichPlot == "shearljvideo"):
+        maxStrain = float(sys.argv[4])
+        strainStep = float(sys.argv[5])
+        makeSPShearPackingVideo(dirName, figureName, maxStrain, strainStep, lj=True)
+
+    elif(whichPlot == "ssperturb"):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, perturb = "perturb")
+
+    elif(whichPlot == "ljperturb"):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, lj=True, perturb = "perturb")
+
     elif(whichPlot == "velfield"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
@@ -1132,7 +1216,7 @@ if __name__ == '__main__':
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
         firstIndex = int(sys.argv[7])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, subSet = "subset", firstIndex = firstIndex)
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, subset = "subset", firstIndex = firstIndex)
 
     elif(whichPlot == "ssvideonpt"):
         numFrames = int(sys.argv[4])

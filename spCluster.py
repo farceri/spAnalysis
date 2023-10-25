@@ -1183,7 +1183,7 @@ def computeClusterMixingByLabel(dirName, numBlocks, blockPower, spacing='log', p
         #plt.pause(0.5)
         plt.show()
 
-def computeClusterTemperatureVSTime(dirName, threshold=0.76, plot=False, dirSpacing=1000000):
+def computeClusterTemperatureVSTime(dirName, threshold=0.76, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
@@ -1200,6 +1200,9 @@ def computeClusterTemperatureVSTime(dirName, threshold=0.76, plot=False, dirSpac
         temp[d,0] = np.mean(velNorm**2)
         temp[d,1] = np.mean(velNorm[denseList==1]**2)
         temp[d,2] = np.mean(velNorm[denseList==0]**2)
+    print("temperature:", np.mean(temp[:,0]))
+    print("liquid:", np.mean(temp[:,1]))
+    print("vapor:", np.mean(temp[:,2]))
     np.savetxt(dirName + os.sep + "clusterTemperature.dat", temp)
     return temp
 
@@ -1992,10 +1995,10 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter='filter', plot=False,
     simplices = utils.getPBCDelaunay(pos, rad, boxSize)
     # compute delaunay densities
     simplexDensity, simplexArea = utils.computeDelaunayDensity(simplices, pos, rad, boxSize)
-    if(np.argwhere(simplexDensity<0)[:,0].shape[0] > 0):
-        print(dirName)
-        print("There are", np.argwhere(simplexDensity<0)[:,0].shape[0], "negative simplex densities")
-        print(np.argwhere(simplexDensity<0)[:,0], simplices[np.argwhere(simplexDensity<0)[:,0]])
+    #if(np.argwhere(simplexDensity<0)[:,0].shape[0] > 0):
+    #    print(dirName)
+    #    print("There are", np.argwhere(simplexDensity<0)[:,0].shape[0], "negative simplex densities")
+    #    print(np.argwhere(simplexDensity<0)[:,0], simplices[np.argwhere(simplexDensity<0)[:,0]])
     denseSimplexList = np.zeros(simplexDensity.shape[0])
     # first find simplices above square lattice density 0.785
     for i in range(simplexDensity.shape[0]):
@@ -2321,9 +2324,9 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
         plt.pause(0.5)
     return np.column_stack((timeList, clusterVel))
 
-def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False):
+def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False, save='save'):
     if(compute==True):
-        computeDelaunayCluster(dirSample, threshold=threshold)
+        computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
@@ -2333,7 +2336,7 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=Fa
         np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
     else:
         if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
-            computeDelaunayCluster(dirSample, threshold=threshold)
+            computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
         if not(os.path.exists(dirSample + os.sep + "clusterLabels.dat")):
@@ -2384,9 +2387,9 @@ def computeDelaunayClusterDistribution(dirName, threshold=0.76, plot=False, dirS
         #plt.show()
         plt.pause(0.5)
 
-def getSimplexClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False):
+def getSimplexClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False, save='save'):
     if(compute==True):
-        computeDelaunayCluster(dirSample, threshold=threshold, save='save')
+        computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
         simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
         denseSimplexList = simplexList[:,0]
@@ -2399,7 +2402,7 @@ def getSimplexClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=Fal
         np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
     else:
         if not(os.path.exists(dirSample + os.sep + "simplexList.dat")):
-            computeDelaunayCluster(dirSample, threshold=threshold, save='save')
+            computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         simplices = np.loadtxt(dirSample + os.sep + 'simplices.dat').astype(np.int64)
         simplexList = np.loadtxt(dirSample + os.sep + "simplexList.dat")
         denseSimplexList = simplexList[:,0]
@@ -2950,7 +2953,9 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
         #pos = np.loadtxt(dirSample + "/particlePos.dat")
         vel = np.loadtxt(dirSample + "/particleVel.dat")
         angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
@@ -2975,17 +2980,18 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
                         gradMultiple = ec * overlap / radSum
                         force = 0.5 * gradMultiple * delta / distance
                         if(pos[c,0] > bins[binIndex] and pos[c,0] <= bins[binIndex+1]):
-                            #weight = 1
                             for dim in range(nDim):
-                                virial[d,binIndex,dim] += force[dim] * delta[dim]
+                                virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
+                        elif(pos[c,0] <= bins[binIndex]): # i is in binIndex and c is in binIndex-1
+                            #preBinIndex = binIndex-1
+                            for dim in range(nDim):
+                                virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
+                                #virial[d,preBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
                         elif(pos[c,0] > bins[binIndex+1]):
-                            virial[d,binIndex,0] += force[0] * (pos[i,0] - bins[binIndex+1])
-                            #weight = (pos[i,0] - bins[binIndex+1]) / (pos[i,0] - pos[c,0])
-                        elif(pos[c,0] <= bins[binIndex]):
-                            virial[d,binIndex,0] += force[0] * (bins[binIndex] - pos[i,0])
-                            #weight = (pos[i,0] - bins[binIndex]) / (pos[i,0] - pos[c,0])
-                        #for dim in range(nDim):
-                            #virial[d,binIndex,dim] += force[dim] * delta[dim] * weight
+                            #postBinIndex = (binIndex+1)%(bins.shape[0]-1)
+                            for dim in range(nDim):
+                                virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
+                                #virial[d,postBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
     thermal = np.mean(thermal,axis=0)*sigma**2 / binArea
     virial = np.mean(virial,axis=0)*sigma**2 / binArea
     active = np.mean(active,axis=0)*sigma**2 / binArea
@@ -2993,79 +2999,6 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
     print("surface tension: ", np.sum((virial[:,0]+active[:,0]-virial[:,1]-active[:,1])*binWidth))
     uplot.plotCorrelation(centers, thermal[:,0] + virial[:,0] + active[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
     uplot.plotCorrelation(centers, thermal[:,1] + virial[:,1] + active[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1.5)
-    #plt.yscale('log')
-    plt.show()
-
-def averageLinearPressureProfile2(dirName, shiftx=0, dirSpacing=1, nDim=2):
-    ec = 240
-    Dr = float(utils.readFromDynParams(dirName, "Dr"))
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    sigma = float(utils.readFromDynParams(dirName, "sigma"))
-    driving = float(utils.readFromDynParams(dirName, "f0"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 0.01)
-    binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    thermal = np.zeros((bins.shape[0]-1,2))
-    virial = np.zeros((bins.shape[0]-1,2))
-    active = np.zeros((bins.shape[0]-1,2))
-    total = np.zeros((bins.shape[0]-1,3))
-    component = np.zeros((bins.shape[0]-1,2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
-        #pos = np.loadtxt(dirSample + "/particlePos.dat")
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        angle = utils.getMOD2PIAngles(dirSample + "/particleAngles.dat")
-        director = np.array([np.cos(angle), np.sin(angle)]).T
-        contacts = np.loadtxt(dirSample + "/particleContacts.dat").astype(np.int64)
-        for i in range(numParticles):
-            work = np.zeros(nDim)
-            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                overlap = 1 - distance / radSum
-                if(overlap > 0):
-                    gradMultiple = ec * overlap / radSum
-                    force = 0.5 * gradMultiple * delta / distance
-                    # diagonal components of work tensor
-                    for dim in range(nDim):
-                        work[dim] += force[dim] * delta[dim]
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] < bins[j+1]):
-                    for dim in range(nDim):
-                        thermal[j,dim] += vel[i,dim]**2
-                        virial[j,dim] += work[dim]
-                        active[j,dim] += driving * vel[i,dim] * director[i,dim] / (2*Dr)
-                        component[j,dim] += vel[i,dim]**2
-                        component[j,dim] += work[dim]
-                        component[j,dim] += driving * vel[i,dim] * director[i,dim] / (2*Dr)
-                    total[j,0] += np.sum(work) / nDim
-                    total[j,1] += np.linalg.norm(vel[i])**2 / nDim
-                    total[j,2] += driving * np.sum(vel[i] * director[i]) / (2*Dr*nDim)
-    virial *= sigma**2/(binArea * dirList.shape[0])
-    thermal *= sigma**2/(binArea * dirList.shape[0])
-    active *= sigma**2/(binArea * dirList.shape[0])
-    total *= sigma**2/(binArea * dirList.shape[0])
-    component *= sigma**2/(binArea * dirList.shape[0])
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial, active, total, component)))
-    print("average pressure: ", np.mean(np.sum(total,axis=1)), "+-", np.std(np.sum(total,axis=1)))
-    print("surface tension: ", np.sum((component[:,0]-component[:,1])*binWidth/sigma))
-    uplot.plotCorrelation(centers, total[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='k', lw=1.5)
-    uplot.plotCorrelation(centers, total[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='r', lw=1.5)
-    uplot.plotCorrelation(centers, total[:,2], "$Pressure$ $profile$", xlabel = "$Distance$", color=[1,0.5,0], lw=1.5)
-    uplot.plotCorrelation(centers, np.sum(total,axis=1), "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1)
-    uplot.plotCorrelation(centers, component[:,0]-component[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1.5)
     #plt.yscale('log')
     plt.show()
 
@@ -3607,7 +3540,9 @@ def averageLinearLJPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
         vel = np.loadtxt(dirSample + "/particleVel.dat")
         contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
         for i in range(numParticles):
@@ -3629,15 +3564,15 @@ def averageLinearLJPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
                         for dim in range(nDim):
                             virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
                     elif(pos[c,0] <= bins[binIndex]): # i is in binIndex and c is in binIndex-1
-                        preBinIndex = binIndex-1
+                        #preBinIndex = binIndex-1
                         for dim in range(nDim):
                             virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-                            virial[d,preBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
+                            #virial[d,preBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
                     elif(pos[c,0] > bins[binIndex+1]):
-                        postBinIndex = (binIndex+1)%(bins.shape[0]-1)
+                        #postBinIndex = (binIndex+1)%(bins.shape[0]-1)
                         for dim in range(nDim):
                             virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-                            virial[d,postBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
+                            #virial[d,postBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
     thermal = np.mean(thermal,axis=0)*sigma**2 / binArea
     virial = np.mean(virial,axis=0)*sigma**2
     np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial)))
@@ -3739,7 +3674,7 @@ def averageClusterLJSurfaceTension(dirName, dirSpacing=1, nDim=2, plot=False):
         #plt.plot()
 
 ####################### Average cluster height interface #######################
-def averageClusterInterfaceHeight(dirName, shiftx=0, threshold=0.78, plot=False, dirSpacing=1):
+def averageClusterHeightVSTime(dirName, threshold=0.78, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
@@ -3750,55 +3685,46 @@ def averageClusterInterfaceHeight(dirName, shiftx=0, threshold=0.78, plot=False,
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     spacing = 3*sigma
-    bins = np.arange(0, boxSize[1], 5*sigma)
+    bins = np.arange(0, boxSize[1], spacing)
     centers = (bins[1:] + bins[:-1])/2
     #freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
-    freq = np.arange(1,centers.shape[0]+1,1)/(centers.shape[0] / spacing)
-    deltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
-    fourierDeltaHeight = np.zeros((dirList.shape[0], freq.shape[0]))
-    energyLength = np.zeros((dirList.shape[0], 2))
+    interface = np.zeros((dirList.shape[0], bins.shape[0]-1))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         # load particle variables
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
         # load simplices
-        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold, compute=True)
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
         maxLabel = utils.findLargestParticleCluster(rad, labels)
-        pos = utils.centerDroplet(pos, rad, boxSize, labels, maxLabel)
-        #print(dirList[d], "center:", center, "maxLabel:", maxLabel)
+        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
         height = np.zeros(bins.shape[0]-1)
+        energy = np.zeros((bins.shape[0]-1,2))
         posInterface = np.zeros((bins.shape[0]-1,2))
         clusterPos = pos[labels==maxLabel]
         #clusterPos = clusterPos[np.argwhere(clusterPos[:,0]>center)[:,0]]
         for j in range(bins.shape[0]-1): # find particle positions in a bin
-            binPos = clusterPos[np.argwhere(clusterPos[:,1] > bins[j])[:,0]]
-            binPos = binPos[np.argwhere(binPos[:,1] <= bins[j+1])[:,0]]
-            center = np.mean(binPos, axis=0)[0] # center of dense cluster
-            binDistance = (binPos[:,0] - center) / 2
-            height[j] = np.mean(np.sort(binDistance)[-3:])
-            posInterface[j,0] = height[j]
-            posInterface[j,1] = np.mean(np.sort(binPos[:,1])[-3:])
-        prevPos = posInterface[0]
-        length = 0
-        for j in range(1,bins.shape[0]-1):
-            length += np.linalg.norm(posInterface[j] - prevPos)
-            prevPos = posInterface[j]
-        deltaHeight[d] = np.abs(height - np.mean(height))**2 * length
-        fourierDeltaHeight[d] = np.abs(rfft(height - np.mean(height)))**2 * length
-        #print("average height:", np.mean(height), "+-", np.std(height), "length:", length)
-    deltaHeight = np.column_stack((np.mean(deltaHeight, axis=0), np.std(deltaHeight, axis=0)))
-    fourierDeltaHeight = np.column_stack((np.mean(fourierDeltaHeight, axis=0), np.std(fourierDeltaHeight, axis=0)))
-    #fourierDeltaHeight = rfft(deltaHeight[:,1])
-    np.savetxt(dirName + os.sep + "clusterHeight.dat", np.column_stack((centers, deltaHeight, freq, fourierDeltaHeight)))
-    if(plot=='plot'):
-        uplot.plotCorrelation(freq[4:], fourierDeltaHeight[4:,0], "$Height$ $fluctuation$", xlabel = "$q$", color='k', logx=True, logy=True)
-        #uplot.plotCorrWithError(centers, deltaHeight[:,0], deltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
-        plt.pause(0.5)
-        #plt.show()
+            rightMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
+            binPos = clusterPos[rightMask]
+            leftMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
+            binPos = binPos[leftMask]
+            if(binPos.shape[0] > 0):
+                center = np.mean(binPos, axis=0)[0] # center of dense cluster
+                binDistance = binPos[:,0] - center
+                borderMask = np.argsort(binDistance)[-3:]
+                height[j] = np.mean(binDistance[borderMask])
+                posInterface[j,0] = height[-1]
+                posInterface[j,1] = np.mean(binPos[borderMask,1])
+        if(height[height!=0].shape[0] == height.shape[0]):
+            prevPos = posInterface[0]
+            length = 0
+            for j in range(1,bins.shape[0]-1):
+                length += np.linalg.norm(posInterface[j] - prevPos)
+                prevPos = posInterface[j]
+            interface[d] = height
+    np.savetxt(dirName + os.sep + "heightVStime.dat", interface)
 
 ####################### Average cluster height interface #######################
-def computeClusterInterfaceCorrelation(dirName, shiftx=0, threshold=0.78, plot=False, dirSpacing=1):
+def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
@@ -3808,7 +3734,86 @@ def computeClusterInterfaceCorrelation(dirName, shiftx=0, threshold=0.78, plot=F
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    bins = np.arange(0, boxSize[1], 3*sigma)
+    spacing = 3*sigma
+    bins = np.arange(0, boxSize[1], spacing)
+    centers = (bins[1:] + bins[:-1])/2
+    #freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
+    freq = np.arange(1,centers.shape[0]+1,1)/(centers.shape[0] / spacing)
+    deltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
+    fourierDeltaHeight = np.zeros((dirList.shape[0], freq.shape[0]))
+    energyLength = np.zeros((dirList.shape[0], 3))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        # load particle variables
+        epot = np.loadtxt(dirSample + "/particleEnergies.dat")
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        # load simplices
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold, compute=True)
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+        height = np.zeros(bins.shape[0]-1)
+        energy = np.zeros((bins.shape[0]-1,2))
+        posInterface = np.zeros((bins.shape[0]-1,2))
+        clusterPos = pos[labels==maxLabel]
+        clusterVel = vel[labels==maxLabel]
+        clusterEpot = epot[labels==maxLabel]
+        #clusterPos = clusterPos[np.argwhere(clusterPos[:,0]>center)[:,0]]
+        for j in range(bins.shape[0]-1): # find particle positions in a bin
+            rightMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
+            binVel = clusterVel[rightMask]
+            binEpot = clusterEpot[rightMask]
+            binPos = clusterPos[rightMask]
+            leftMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
+            binVel = binVel[leftMask]
+            binEpot = binEpot[leftMask]
+            binPos = binPos[leftMask]
+            if(binPos.shape[0] > 0):
+                center = np.mean(binPos, axis=0)[0] # center of dense cluster
+                binDistance = binPos[:,0] - center
+                borderMask = np.argsort(binDistance)[-3:]
+                height[j] = np.mean(binDistance[borderMask])
+                posInterface[j,0] = height[-1]
+                posInterface[j,1] = np.mean(binPos[borderMask,1])
+                energy[j,0] = np.mean(epot[borderMask])
+                energy[j,1] = np.mean(0.5*np.linalg.norm(vel[borderMask]**2, axis=1))
+        if(height[height!=0].shape[0] == height.shape[0]):
+            prevPos = posInterface[0]
+            length = 0
+            for j in range(1,bins.shape[0]-1):
+                length += np.linalg.norm(posInterface[j] - prevPos)
+                prevPos = posInterface[j]
+            energyLength[d,0] = length
+            energyLength[d,1] = np.sum(energy[:,0])
+            energyLength[d,2] = np.sum(energy[:,1])
+            deltaHeight[d] = np.abs(height - np.mean(height))**2 * length
+            fourierDeltaHeight[d] = np.abs(rfft(height - np.mean(height)))**2 * length
+    print(deltaHeight.shape, deltaHeight[energyLength[:,0]!=0].shape)
+    deltaHeight = np.column_stack((np.mean(deltaHeight[energyLength[:,0]!=0], axis=0), np.std(deltaHeight[energyLength[:,0]!=0], axis=0)))
+    fourierDeltaHeight = np.column_stack((np.mean(fourierDeltaHeight[energyLength[:,0]!=0], axis=0), np.std(fourierDeltaHeight[energyLength[:,0]!=0], axis=0)))
+    #fourierDeltaHeight = rfft(deltaHeight[:,1])
+    np.savetxt(dirName + os.sep + "heightFluctuations.dat", np.column_stack((centers, deltaHeight, freq, fourierDeltaHeight)))
+    np.savetxt(dirName + os.sep + "energyLength.dat", np.column_stack((timeList, energyLength)))
+    if(plot=='plot'):
+        #uplot.plotCorrelation(freq[4:], fourierDeltaHeight[4:,0], "$Height$ $fluctuation$", xlabel = "$q$", color='k', logx=True, logy=True)
+        #uplot.plotCorrWithError(centers, deltaHeight[:,0], deltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
+        uplot.plotCorrelation(timeList, np.sum(energyLength[:,1:],axis=1), "$Energy$", xlabel = "$Simulation$ $time$", color='k')
+        plt.pause(0.5)
+        #plt.show()
+
+####################### Average cluster height interface #######################
+def computeClusterHeightCorrelation(dirName, threshold=0.78, plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    eps = 1.8*np.max(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    spacing = 3*sigma
+    bins = np.arange(0, boxSize[1], spacing)
     centers = (bins[1:] + bins[:-1])/2
     maxCorrIndex = int((bins.shape[0]-1) / 2)
     distances = centers[:maxCorrIndex]
@@ -3817,11 +3822,10 @@ def computeClusterInterfaceCorrelation(dirName, shiftx=0, threshold=0.78, plot=F
         dirSample = dirName + os.sep + dirList[d]
         # load particle variables
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.shiftPositions(pos, boxSize, shiftx, 0)
         # load simplices
         labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold, compute=False)
         maxLabel = utils.findLargestParticleCluster(rad, labels)
-        pos = utils.centerDroplet(pos, rad, boxSize, labels, maxLabel)
+        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
         height = np.zeros(bins.shape[0]-1)
         clusterPos = pos[labels==maxLabel]
         #clusterPos = clusterPos[np.argwhere(clusterPos[:,0]>center)[:,0]]
@@ -3829,7 +3833,7 @@ def computeClusterInterfaceCorrelation(dirName, shiftx=0, threshold=0.78, plot=F
             binPos = clusterPos[np.argwhere(clusterPos[:,1] > bins[j])[:,0]]
             binPos = binPos[np.argwhere(binPos[:,1] <= bins[j+1])[:,0]]
             center = np.mean(binPos, axis=0)[0] # center of dense cluster
-            binDistance = (binPos[:,0] - center) / 2
+            binDistance = binPos[:,0] - center
             height[j] = np.mean(np.sort(binDistance)[-3:])
         corr = np.zeros(maxCorrIndex)
         counts = np.zeros(maxCorrIndex)
@@ -3847,9 +3851,61 @@ def computeClusterInterfaceCorrelation(dirName, shiftx=0, threshold=0.78, plot=F
     heightCorr = np.column_stack((np.mean(heightCorr, axis=0), np.std(heightCorr, axis=0)))
     np.savetxt(dirName + os.sep + "clusterHeightCorr.dat", np.column_stack((distances, heightCorr)))
     if(plot=='plot'):
-        uplot.plotCorrWithError(distances, heightCorr[:,0], heightCorr[:,1], "$Height$ $correlation$", xlabel = "$Distance$", color='k')
+        uplot.plotCorrelation(distances[1:], heightCorr[1:,0], "$Height$ $correlation$", xlabel = "$Distance$", color='k')
         plt.pause(0.5)
         #plt.show()
+
+####################### Average linear density profile ########################
+def averageLinearDensityProfile(dirName, threshold=0.78, plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    eps = 1.8*np.max(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, boxSize[0], 3*np.max(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # density lists
+    particleDensity = np.zeros((dirList.shape[0], bins.shape[0]-1))
+    #simplexDensity = np.zeros((dirList.shape[0], bins.shape[0]-1))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        # first compute particle density
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold, compute=False)
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+        previousCenter = np.mean(pos[labels==maxLabel],axis=0)[0]
+        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+        for i in range(numParticles):
+            for j in range(bins.shape[0]-1):
+                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                    particleDensity[d,j] += np.pi*rad[i]**2
+        # then compute simplex density
+        #if not(os.path.exists(dirSample + "/simplices.dat")):
+        #    simplices = utils.getPBCDelaunay(pos, rad, boxSize)
+        #    np.savetxt(dirSample + '/simplices.dat', simplices)
+            #computeDelaunayCluster(dirSample, threshold=threshold, save='save')
+        #simplices = np.loadtxt(dirSample + '/simplices.dat').astype(np.int64)
+        #simplexPos = utils.computeSimplexPos(simplices, pos)
+        #simplexArea = np.loadtxt(dirSample + "/simplexList.dat")[:,2]
+        #for i in range(simplices.shape[0]):
+        #    for j in range(bins.shape[0]-1):
+        #        if(simplexPos[i,0] > bins[j] and simplexPos[i,0] <= bins[j+1]):
+        #            simplexDensity[d,j] += simplexArea[i]
+    particleDensity = np.column_stack((np.mean(particleDensity, axis=0), np.std(particleDensity, axis=0))) / binArea
+    #simplexDensity = np.column_stack((np.mean(simplexDensity, axis=0), np.std(simplexDensity, axis=0))) / binArea
+    np.savetxt(dirName + os.sep + "densityProfile.dat", np.column_stack((centers, particleDensity)))#, simplexDensity)))
+    if(plot=='plot'):
+        uplot.plotCorrWithError(centers, particleDensity[:,0], particleDensity[:,1], "$Density$ $profile$", xlabel = "$x$", color='k')
+        #uplot.plotCorrWithError(centers, simplexDensity[:,0], simplexDensity[:,0], "$Density$ $profile$", xlabel = "$x$", color='r')
+        #plt.yscale('log')
+        #plt.show()
+        plt.pause(0.5)
 
 ################################################################################
 ################### Repulsive-Attractive potential pressure ####################
@@ -4265,16 +4321,28 @@ if __name__ == '__main__':
         averageClusterLJSurfaceTension(dirName, plot=plot)
 
     elif(whichCorr == "height"):
-        shiftx = float(sys.argv[3])
-        threshold = float(sys.argv[4])
-        plot = sys.argv[5]
-        averageClusterInterfaceHeight(dirName, shiftx=shiftx, threshold=threshold, plot=plot)
+        threshold = float(sys.argv[3])
+        plot = sys.argv[4]
+        averageClusterHeightVSTime(dirName, threshold=threshold, plot=plot)
+
+    elif(whichCorr == "heightflu"):
+        threshold = float(sys.argv[3])
+        plot = sys.argv[4]
+        averageClusterHeightFluctuations(dirName, threshold=threshold, plot=plot)
 
     elif(whichCorr == "heightcorr"):
-        shiftx = float(sys.argv[3])
-        threshold = float(sys.argv[4])
-        plot = sys.argv[5]
-        computeClusterInterfaceCorrelation(dirName, shiftx=shiftx, threshold=threshold, plot=plot)
+        threshold = float(sys.argv[3])
+        plot = sys.argv[4]
+        averageClusterHeightCorrelation(dirName, threshold=threshold, plot=plot)
+
+    elif(whichCorr == "profile"):
+        threshold = float(sys.argv[3])
+        plot = sys.argv[4]
+        averageLinearDensityProfile(dirName, threshold=threshold, plot=plot)
+
+    elif(whichCorr == "temp"):
+        threshold = float(sys.argv[3])
+        computeClusterTemperatureVSTime(dirName, threshold=threshold)
 
     else:
         print("Please specify the correlation you want to compute")

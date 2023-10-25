@@ -59,7 +59,7 @@ def plotErrorBar(ax, x, y, err, xlabel, ylabel, logx = False, logy = False):
         ax.set_yscale('log')
     plt.tight_layout()
 
-def plotCorrWithError(x, y, err, ylabel, xlabel = "$Time$ $interval,$ $\\Delta t$", logx = False, logy = False, color = 'k', show = True, marker='o'):
+def plotCorrWithError(x, y, err, ylabel, xlabel = "$Time$ $interval,$ $\\Delta t$", logx = False, logy = False, color = 'k', show = True, marker='o', lw = 1.2):
     fig = plt.figure(0, dpi = 120)
     ax = fig.gca()
     ax.errorbar(x, y, err, marker=marker, fillstyle='none', color=color, markersize=6, markeredgewidth=1, linewidth=1.2, elinewidth=1, capsize=4)

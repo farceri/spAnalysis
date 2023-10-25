@@ -841,17 +841,29 @@ def plotSPClusterHeightSingle(dirName, figureName):
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterHeight(dirName, figureName, fourier=False):
+def plotSPClusterHeight(dirName, figureName, fixed='Dr', which='1e-04', fourier=False):
     #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    dirList = np.array(['3e-04', '2e-04', '1e-04', '9e-05'])
-    markerList = ['o', 'v', '^', 's']
+    if(fixed=='Dr'):
+        dirList = np.array(['3', '3.6', '4.2', '4.8', '5.4', '6'])
+    elif(fixed=='length'):
+        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '3e-05'])
+    else:
+        print("please specify fixed parameter")
+        exit()
+    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
     taup = np.zeros(dirList.shape[0])
+    length = np.zeros(dirList.shape[0])
     gamma = np.zeros(dirList.shape[0])
     temp = np.zeros((dirList.shape[0],2))
     delta = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
-        dirSample = dirName + "/Dr" + dirList[d] + "/dynamics/"
+        if(fixed=='Dr'):
+            dirSample = dirName + "/box" + dirList[d] + "-1/0.30/active-langevin/Dr" + which + "/dynamics/"
+            labelName = '$L_x$ = '
+        elif(fixed=='length'):
+            dirSample = dirName + "/box" + which + "-1/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            labelName = '$D_r$ = '
         taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         sigma = utils.readFromDynParams(dirSample, 'sigma')
         if not(os.path.exists(dirSample + "clusterHeight.dat")):
@@ -860,9 +872,9 @@ def plotSPClusterHeight(dirName, figureName, fourier=False):
         delta[d,0] = np.mean(data[:,1])
         delta[d,1] = np.std(data[:,1])
         if(fourier=='fourier'):
-            ax.plot(data[4:,3], data[4:,4], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label='$D_r$ = ' + dirList[d])
+            ax.plot(data[4:,3], data[4:,4], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
         else:
-            ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label='$D_r$ = ' + dirList[d])
+            ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
         if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
             cluster.computeClusterTemperatureVSTime(dirSample)
         data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
@@ -877,20 +889,240 @@ def plotSPClusterHeight(dirName, figureName, fourier=False):
     else:
         ax.set_xlabel("$y$", fontsize=16)
         ax.set_ylabel("$\\langle |\delta h(y)|^2 \\rangle L$", fontsize=16)
+        ax.set_yscale('log')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=10, loc='best')
+    plt.tight_layout()
+    if(fixed=='Dr'):
+        x = length
+        xlabel = "$Interface$ $length$, $L$"
+        figure1Name = "/home/francesco/Pictures/soft/mips/pHeightVSLength-" + figureName
+        figure2Name = "/home/francesco/Pictures/soft/mips/deltaHVSLength-" + figureName
+    elif(fixed=='length'):
+        x = taup
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        figure1Name = "/home/francesco/Pictures/soft/mips/pHeightVSDr-" + figureName
+        figure2Name = "/home/francesco/Pictures/soft/mips/deltaHVSDr-" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=16)
+    #ax.set_xlabel("$Temperature,$ $T_K$", fontsize=16)
+    ax.set_ylabel("$\\langle \\langle |\delta h(y)|^2 \\rangle \\rangle_y L$", fontsize=16)
+    ax.errorbar(x, delta[:,0], delta[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    #ax.errorbar(temp[:,0], delta[:,0], delta[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3)
+    plt.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def hyperbolicTan(x, a, b, x0, w):
+    return a + b*np.tanh((x-x0)/(2*w))
+
+def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(fixed=='Dr'):
+        dirList = np.array(['4.2', '4.8', '5.4', '6'])
+    elif(fixed=='length'):
+        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '3e-05'])
+    else:
+        print("please specify fixed parameter")
+        exit()
+    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
+    taup = np.zeros(dirList.shape[0])
+    width = np.zeros(dirList.shape[0])
+    length = np.zeros((dirList.shape[0],2))
+    temp = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        print(dirList[d])
+        if(fixed=='Dr'):
+            dirSample = dirName + "/box" + dirList[d] + "-1/0.30/active-langevin/Dr" + which + "/dynamics/"
+            labelName = '$L_x$ = '
+        elif(fixed=='length'):
+            dirSample = dirName + "/box" + which + "-1/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            labelName = '$D_r$ = '
+        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+        if not(os.path.exists(dirSample + "clusterEnergyLength.dat")):
+            cluster.averageClusterInterfaceHeight(dirSample)
+        energyLength = np.loadtxt(dirSample + "clusterEnergyLength.dat")
+        length[d,0] = np.mean(energyLength[:,1])
+        length[d,1] = np.std(energyLength[:,1])
+        #if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
+        #    cluster.computeClusterTemperatureVSTime(dirSample)
+        #data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
+        #temp[d,0] = np.mean(data[:,0])
+        #temp[d,1] = np.std(data[:,0])
+        sigma = utils.readFromDynParams(dirSample, 'sigma')
+        if not(os.path.exists(dirSample + "densityProfile.dat")):
+            cluster.averageLinearDensityProfile(dirSample)
+        data = np.loadtxt(dirSample + "densityProfile.dat")
+        center = np.mean(data[:,0])
+        x = np.abs(data[:,0]-center)
+        y = data[np.argsort(x),1]
+        yerr = data[np.argsort(x),2]
+        x = np.sort(x)
+        ax.errorbar(x, y, yerr, lw=1, marker=markerList[d], markersize=6, color='k', capsize=3, fillstyle='none', label=labelName + dirList[d])
+        #ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
+        failed = False
+        try:
+            popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            ax.plot(x, hyperbolicTan(x, *popt), color='g', lw=1.2, linestyle='--')
+            print("center - x0:", popt[2], "width:", popt[3], 'phi-:', popt[0] - popt[1], 'phi+:', popt[0] + popt[1])
+            width[d] = popt[3]
+    ax.set_xlabel("$x$", fontsize=16)
+    ax.set_ylabel("$\\varphi(x)$", fontsize=16)
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(fontsize=12, loc='best')
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pHeight-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    if(fixed=='Dr'):
+        x = length[:,0]
+        xerr = length[:,1]
+        xlabel = "$Interface$ $length$, $L$"
+        figure1Name = "/home/francesco/Pictures/soft/mips/pProfileVSLength-" + figureName
+        figure2Name = "/home/francesco/Pictures/soft/mips/widthVSLength-" + figureName
+    elif(fixed=='length'):
+        x = taup
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        #xlabel = "$Temperature,$ $T$"
+        figure1Name = "/home/francesco/Pictures/soft/mips/pProfileVSDr-" + figureName
+        figure2Name = "/home/francesco/Pictures/soft/mips/widthVSDr-" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    ax.errorbar(taup, delta[:,0], delta[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3)
-    ax.set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=16)
-    #ax.errorbar(temp[:,0], delta[:,0], delta[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3)
-    #ax.set_xlabel("$Temperature,$ $T_K$", fontsize=16)
     ax.tick_params(axis='both', labelsize=14)
-    ax.set_ylabel("$\\langle \\langle |\delta h(y)|^2 \\rangle \\rangle_y L$", fontsize=16)
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$w^2$", fontsize=16)
+    if(fixed=='Dr'):
+        ax.errorbar(x, width**2, xerr=xerr, lw=1.2, marker='o', markersize=8, capsize=3, color='k', fillstyle='none')
+    elif(fixed=='length'):
+        ax.plot(x, width**2, lw=1.2, marker='o', markersize=8, color='k', fillstyle='none')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pHeightVSTaup-" + figureName
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def makeInterfaceVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04):
+    def animate(i):
+        frames[i].figure=fig
+        fig.axes.append(frames[i])
+        fig.add_axes(frames[i])
+        return gcf.artists
+    frameTime = 300
+    frames = []
+    stepList = utils.getStepList(numFrames, firstStep, stepFreq)
+    # interface vertical coordinates
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    spacing = 3*np.mean(rad)
+    bins = np.arange(0, boxSize[1], spacing)
+    centers = (bins[1:] + bins[:-1])/2
+    #frame figure
+    figFrame = plt.figure(dpi=150)
+    fig = plt.figure(dpi=150)
+    gcf = plt.gcf()
+    gcf.clear()
+    ax = fig.gca()
+    heightvstime = np.loadtxt(dirName + os.sep + "heightVStime.dat")
+    for i in range(heightvstime.shape[0]):
+        gcfFrame = plt.gcf()
+        gcfFrame.clear()
+        axFrame = figFrame.gca()
+        axFrame.plot(heightvstime[i], centers, lw=1, marker='o', color='k')
+        axFrame.tick_params(axis='both', labelsize=14)
+        axFrame.set_xlabel("$Height$", fontsize=16)
+        axFrame.set_ylim(0,1)
+        axFrame.set_xlim(boxSize[0]*0.8, boxSize[0]*0.5)
+        axFrame.set_yticks((0, 0.2, 0.4, 0.6, 0.8, 1))
+        axFrame.set_xticks((boxSize[0]*0.5, boxSize[0]*0.6, boxSize[0]*0.7, boxSize[0]*0.8))
+        figFrame.tight_layout()
+        axFrame.remove()
+        frames.append(axFrame)
+        anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
+    anim.save("/home/francesco/Pictures/soft/mips/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
+
+def plotSPInterface(dirName, figureName, fixed='Dr', which='1e-04'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(fixed=='Dr'):
+        dirList = np.array(['3.6', '4.2', '4.8', '5.4', '6'])
+    elif(fixed=='length'):
+        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '3e-05'])
+    else:
+        print("please specify fixed parameter")
+        exit()
+    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
+    taup = np.zeros(dirList.shape[0])
+    energy = np.zeros((dirList.shape[0],2))
+    length = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        if(fixed=='Dr'):
+            dirSample = dirName + "/box" + dirList[d] + "-1/0.30/active-langevin/Dr" + which + "/dynamics/"
+            labelName = '$L_x$ = '
+        elif(fixed=='length'):
+            dirSample = dirName + "/box" + which + "-1/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            labelName = '$D_r$ = '
+        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+        if not(os.path.exists(dirSample + "clusterEnergyLength.dat")):
+            cluster.averageClusterInterfaceHeight(dirSample)
+        energyLength = np.loadtxt(dirSample + "clusterEnergyLength.dat")
+        energy[d,0] = np.mean(energyLength[:,2]+energyLength[:,3])
+        energy[d,1] = np.std(energyLength[:,2]+energyLength[:,3])
+        length[d,0] = np.mean(energyLength[:,1])
+        length[d,1] = np.std(energyLength[:,1])
+        print(dirList[d], length[d,0], energy[d,0])
+    if(fixed=='Dr'):
+        x = length[:,0]
+        xerr = length[:,1]
+        xlabel = "$Interface$ $length$, $L$"
+        figureName = "/home/francesco/Pictures/soft/mips/energyVSLength-" + figureName
+    elif(fixed=='length'):
+        x = tau
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        figureName = "/home/francesco/Pictures/soft/mips/energyVSDr-" + figureName
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$Energy,$ $E$", fontsize=16)
+    ax.errorbar(x, energy[:,0], energy[:,1], lw=1.2, marker='o', markersize=8, capsize=3, color='k', fillstyle='none')
+    if(fixed=='length'):
+        ax.set_yscale('log')
+    #ax.set_yscale('log')
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPDensityProfile(dirName, figureName):
+    #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if not(os.path.exists(dirName + "densityProfile.dat")):
+        cluster.averageLinearDensityProfile(dirName)
+    data = np.loadtxt(dirName + "densityProfile.dat")
+    center = np.mean(data[:,0])
+    x = np.abs(data[:,0]-center)
+    y = data[np.argsort(x),1]
+    yerr = data[np.argsort(x),2]
+    x = np.sort(x)
+    ax.errorbar(x, y, yerr, lw=1, marker='o', markersize=6, color='k', capsize=3, fillstyle='none', label='$Profile$')
+    failed = False
+    try:
+        popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+    if(failed == False):
+        ax.plot(x, hyperbolicTan(x, *popt), color='g', lw=2, linestyle='dashed', label='$Fit$')
+        print("center - x0:", popt[2], "width:", popt[3], 'phi-:', popt[0] - popt[1], 'phi+:', popt[0] + popt[1])
+        width = popt[3]
+    ax.set_xlabel("$x$", fontsize=16)
+    ax.set_ylabel("$\\varphi(x)$", fontsize=16)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=12, loc='best')
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/phiProfile-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
 def besselFunc(x, a, b):
@@ -899,10 +1131,10 @@ def besselFunc(x, a, b):
 def plotSPClusterHeightCorrelation(dirName, figureName, which='Dr'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(which=='Dr'):
-        dirList = np.array(['3e-04', '2e-04', '1e-04', '9e-05'])
+        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05'])
     elif(which=='T'):
         dirList = np.array(['0.41', '0.35'])
-    markerList = ['o', 'v', '^', 's']
+    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
     gamma = np.zeros(dirList.shape[0])
     temp = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
@@ -911,11 +1143,11 @@ def plotSPClusterHeightCorrelation(dirName, figureName, which='Dr'):
         elif(which=='T'):
             dirSample = dirName + os.sep + which + dirList[d] + "-removed/dynamics/"
         sigma = utils.readFromDynParams(dirSample, 'sigma')
-        if not(os.path.exists(dirSample + os.sep + "clusterHeightCorr!.dat")):
+        if not(os.path.exists(dirSample + os.sep + "clusterHeightCorr.dat")):
             cluster.computeClusterInterfaceCorrelation(dirSample)
         data = np.loadtxt(dirSample + os.sep + "clusterHeightCorr.dat")
         #ax.errorbar(data[:,0], data[:,1], data[:,2], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', capsize=3, elinewidth=0.5, label=which + '$=$' + dirList[d])
-        ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=which + '$=$' + dirList[d])
+        ax.plot(data[1:,0], data[1:,1]/data[0,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=which + '$=$' + dirList[d])
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(fontsize=12, loc='best')
     ax.set_xlabel("$Distance,$ $\Delta x$", fontsize=16)
@@ -3409,8 +3641,33 @@ if __name__ == '__main__':
 
     elif(whichPlot == "clusterheight"):
         figureName = sys.argv[3]
-        fourier = sys.argv[4]
-        plotSPClusterHeight(dirName, figureName, fourier)
+        fixed = sys.argv[4]
+        which = sys.argv[5]
+        fourier = sys.argv[6]
+        plotSPClusterHeight(dirName, figureName, fixed, which, fourier)
+
+    elif(whichPlot == "clusterwidth"):
+        figureName = sys.argv[3]
+        fixed = sys.argv[4]
+        which = sys.argv[5]
+        plotSPClusterWidth(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "interface"):
+        figureName = sys.argv[3]
+        fixed = sys.argv[4]
+        which = sys.argv[5]
+        plotSPInterface(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "interfacevideo"):
+        figureName = sys.argv[3]
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        makeInterfaceVideo(dirName, figureName, numFrames, firstStep, stepFreq)
+
+    elif(whichPlot == "profile"):
+        figureName = sys.argv[3]
+        plotSPDensityProfile(dirName, figureName)
 
     elif(whichPlot == "heightcorr"):
         figureName = sys.argv[3]

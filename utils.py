@@ -9,6 +9,7 @@ from scipy.spatial import Delaunay
 from sklearn.cluster import DBSCAN
 import spCluster as cluster
 import random
+import shutil
 import os
 
 ############################## general utilities ###############################
@@ -490,6 +491,19 @@ def getOrderedDirectories(dirName):
     listScalar = np.sort(listScalar)
     return listDir, listScalar
 
+def getShearDirectories(dirName):
+    listDir = []
+    listScalar = []
+    for dir in os.listdir(dirName):
+        if(os.path.isdir(dirName + os.sep + dir)):
+            listDir.append(dir)
+            listScalar.append(dir.strip('strain'))
+    listScalar = np.array(listScalar, dtype=np.float64)
+    listDir = np.array(listDir)
+    listDir = listDir[np.argsort(listScalar)]
+    listScalar = np.sort(listScalar)
+    return listDir, listScalar
+
 def getDirSep(dirName, fileName):
     if(os.path.exists(dirName + os.sep + fileName + ".dat")):
         return "/"
@@ -506,6 +520,24 @@ def readFromParams(dirName, paramName):
     if(name == None):
         print("The variable", paramName, "is not saved in this file")
         return None
+
+def saveInParams(dirName, paramName, paramString):
+    saved = False
+    newFileContent = ""
+    with open(dirName + os.sep + "params.dat") as file:
+        for line in file:
+            name, scalarString = line.strip().split("\t")
+            if(name == paramName):
+                newLine = paramName + '\t' + paramString + '\n'
+                saved = True
+                newFileContent += newLine
+            else:
+                newFileContent += line
+    if(saved==False):
+        newFileContent += paramName + '\t' + paramString + '\n'
+    file = open(dirName + os.sep + "params.dat", "w")
+    file.write(newFileContent)
+    file.close()
 
 def readFromDynParams(dirName, paramName):
     with open(dirName + os.sep + "dynParams.dat") as file:
@@ -561,6 +593,14 @@ def getPBCPositions(fileName, boxSize):
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     #pos -= np.floor(pos/boxSize)*boxSize
+    return pos
+
+def getLEPBCPositions(fileName, boxSize, strain):
+    pos = np.array(np.loadtxt(fileName), dtype=np.float64)
+    shifty = np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
+    pos[:,0] += shifty*strain
+    pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
+    pos[:,1] -= shifty
     return pos
 
 def isOutsideWhichWall(pos, boxSize):
@@ -724,17 +764,46 @@ def centerDroplet(pos, rad, boxSize, labels, maxLabel, nDim=2):
     for i in range(dropletPos.shape[0]):
         delta = pbcDistance(centerOfMass, dropletPos[i], boxSize)
         for d in range(nDim):
-            if(delta[d] > dropletRad):
+            if(np.abs(delta[d]) > dropletRad):
                 isOutside[d] += 1
     for d in range(nDim):
-        if(isOutside[d] > dropletPos.shape[0]*0.5):
-            shift[d] = 0.5
-    #print("correction shift: ", shift)
-    pos = shiftPositions(pos, boxSize, shift[0], shift[1])
+        if(isOutside[d] > int(dropletPos.shape[0]*0.5)):
+            shift[d] = boxSize[d]*0.25
+            #print("correction shift: ", shift)
+            pos = shiftPositions(pos, boxSize, shift[0], shift[1])
     centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
-    pos = shiftPositions(pos, boxSize, 0.5-centerOfMass[0], 0.5-centerOfMass[1])
+    if(corrected==True):
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-centerOfMass[0], boxSize[1]*0.5-centerOfMass[1])
+    else:
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-centerOfMass[0], boxSize[1]*0.5-centerOfMass[1])
+        centerOfMass = np.mean(pos[labels==maxLabel], axis=0)
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-centerOfMass[0], boxSize[1]*0.5-centerOfMass[1])
+    return pos
+
+def centerSlab(pos, rad, boxSize, labels, maxLabel, nDim=2):
+    slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
+    #print("loaded center of mass:", centerOfMass[0], centerOfMass[1])
+    slabPos = pos[labels==maxLabel]
+    slabHeight = 0.5*np.pi*np.sum(rad[labels==maxLabel]**2) / boxSize[1]
+    isOutside = 0
+    for i in range(slabPos.shape[0]):
+        delta = np.abs(pbcDistance(slabCenter, slabPos[i,0], boxSize[0]))
+        if(delta > slabHeight):
+            isOutside += 1
+    corrected = False
+    if(isOutside > int(slabPos.shape[0]*0.5)):
+        corrected = True
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5, 0)
+    slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
+    if(corrected==True):
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+    else:
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+        slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
     #print("final center of mass:", np.mean(pos[labels==maxLabel], axis=0))
     return pos
+
 
 def shiftPositions(pos, boxSize, xshift, yshift):
     pos[:,0] += xshift
@@ -797,7 +866,7 @@ def increaseDensity(dirName, dirSave, targetDensity):
     currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     print("Current density: ", currentDensity)
 
-def initializeRectangle(dirName, dirSave, ratio):
+def initializeRectangle(dirName, dirSave, xratio, yratio):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     pos = np.loadtxt(dirName + '/particlePos.dat')
@@ -812,8 +881,10 @@ def initializeRectangle(dirName, dirSave, ratio):
     np.savetxt(dirSave + '/particleVel.dat', vel)
     np.savetxt(dirSave + '/particleAngles.dat', angle)
     # increase boxsize along the x direction and pbc particles in new box
-    boxSize[0] *= ratio
-    print(boxSize[0])
+    print(boxSize)
+    boxSize[0] *= xratio
+    boxSize[1] *= yratio
+    print(boxSize)
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
@@ -846,33 +917,154 @@ def removeSmallClusters(dirName, dirSave, threshold=0.76):
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
-    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
-    print(labels)
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
+    #print(np.unique(labels))
     # make a list of indices to keep
     if(np.unique(labels).shape[0]<2):
         print("There is only one cluster here - keep all particles")
         keepList = np.arange(0,labels.shape[0],1).astype(np.int64)
     else:
-        keepList = np.empty(0)
-        keepList = np.append(keepList, np.argwhere(labels==-1))
+        keepList = np.zeros(labels.shape[0])
+        keepList[labels==-1] = 1
         maxLabel = findLargestParticleCluster(rad, labels)
-        keepList = np.append(keepList, np.argwhere(labels==maxLabel))
+        pos = centerSlab(pos, rad, boxSize, labels, maxLabel)
+        keepList[labels==maxLabel] = 1
         threshold = int(labels.shape[0] / 1000)
         if(threshold < 3):
             threshold = 3
         for label in np.unique(labels):
-            if(label !=-1 or label != maxLabel):
+            if(label !=-1 and label != maxLabel):
                 if(np.argwhere(labels==label).shape[0] < threshold):
-                    keepList = np.append(keepList, np.argwhere(labels==label))
-                    print(label)
-    keepList = keepList.astype(np.int64)
-    np.savetxt(dirSave + '/particleRad.dat', rad[keepList])
-    np.savetxt(dirSave + '/particlePos.dat', pos[keepList])
-    np.savetxt(dirSave + '/particleVel.dat', vel[keepList])
-    np.savetxt(dirSave + '/particleAngles.dat', angle[keepList])
-    print("Number of particles left in the packing: ", keepList.shape[0])
-    print("Packing fraction: ", np.sum(rad[keepList]**2)*np.pi/(boxSize[0]*boxSize[1]))
+                    keepList[labels==label] = 1
+                    #print(label)
+    np.savetxt(dirSave + '/particleRad.dat', rad[keepList==1])
+    np.savetxt(dirSave + '/particlePos.dat', pos[keepList==1])
+    np.savetxt(dirSave + '/particleVel.dat', vel[keepList==1])
+    np.savetxt(dirSave + '/particleAngles.dat', angle[keepList==1])
+    shutil.copy(dirName + 'params.dat', dirSave + '/params.dat')
+    numParticles = int(keepList[keepList==1].shape[0])
+    saveInParams(dirSave, "numParticles", str(numParticles))
+    print("Number of particles left in the packing:", keepList[keepList==1].shape[0], "saved:", int(readFromParams(dirSave, "numParticles")))
+    phi = np.sum(rad[keepList==1]**2)*np.pi/(boxSize[0]*boxSize[1])
+    saveInParams(dirSave, "phi", str(phi))
+    print("Packing fraction:", np.sum(rad[keepList==1]**2)*np.pi/(boxSize[0]*boxSize[1]))
+
+def perturbInterface(dirName, dirSave, threshold=0.3, fraction=0.1):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    eps = 1.8*np.max(rad)
+    spacing = 50*np.mean(rad)
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    # save unchanged files to new directory
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particleRad.dat', rad)
+    np.savetxt(dirSave + '/particleVel.dat', vel)
+    np.savetxt(dirSave + '/particleAngles.dat', angle)
+    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
+    maxLabel = findLargestParticleCluster(rad, labels)
+    pos = centerSlab(pos, rad, boxSize, labels, maxLabel)
+    clusterPos = pos[labels==maxLabel]
+    binPos = clusterPos[np.argwhere(clusterPos[:,1] > (boxSize[1]*0.7 - spacing))[:,0]]
+    binPos = binPos[np.argwhere(binPos[:,1] <= (boxSize[1]*0.7 + spacing))[:,0]]
+    center = np.mean(binPos, axis=0)[0] # center of dense cluster
+    binDistance = (binPos[:,0] - center)
+    borderMask = np.argsort(binDistance)[-3:]
+    height = np.mean(binDistance[borderMask])
+    print("center:", center, "height:", height)
+    # find particles near the border
+    movedList = np.empty(0)
+    for i in range(rad.shape[0]):
+        if(labels[i]==maxLabel):
+            if(pos[i,1] > (boxSize[1]*0.7 - spacing) and pos[i,1] <= (boxSize[1]*0.7 + spacing)):
+                if(pos[i,0] > (center + 0.5*height) and pos[i,0] <= (center + 0.6*height)):
+                    pos[i,0] += fraction*height
+                    movedList = np.append(movedList, i)
+                elif(pos[i,0] > (center + 0.6*height) and pos[i,0] <= (center + 0.7*height)):
+                    pos[i,0] += 0.8*fraction*height
+                    movedList = np.append(movedList, i)
+                elif(pos[i,0] > (center + 0.7*height) and pos[i,0] <= (center + 0.8*height)):
+                    pos[i,0] += 0.6*fraction*height
+                    movedList = np.append(movedList, i)
+    movedList = movedList.astype(np.int64)
+    # apply perturbation
+    #pos[movedList,0] += fraction*height
+    print("Number of moved particles:", movedList.shape[0])
+    print("Location:", np.mean(pos[movedList,0]), np.mean(pos[movedList,1]))
+    np.savetxt(dirSave + '/particlePos.dat', pos)
+    movedLabel = np.zeros(rad.shape[0])
+    movedLabel[movedList] = 1
+    np.savetxt(dirSave + '/movedList.dat', movedLabel)
+
+def reshufflePacking(dirName, threshold=0.3, multiple=50, width=0.3, offset=0.2):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    eps = 1.8*np.max(rad)
+    spacing = multiple*np.mean(rad)
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
+    maxLabel = findLargestParticleCluster(rad, labels)
+    pos = centerSlab(pos, rad, boxSize, labels, maxLabel)
+    clusterPos = pos[labels==maxLabel]
+    binPos = clusterPos[np.argwhere(clusterPos[:,1] > (boxSize[1]*0.7 - spacing))[:,0]]
+    binPos = binPos[np.argwhere(binPos[:,1] <= (boxSize[1]*0.7 + spacing))[:,0]]
+    center = np.mean(binPos, axis=0)[0] # center of dense cluster
+    binDistance = (binPos[:,0] - center)
+    borderMask = np.argsort(binDistance)[-3:]
+    height = np.mean(binDistance[borderMask])
+    print("center:", center, "height:", height)
+    # find particles near the border
+    movedList = np.empty(0)
+    for i in range(rad.shape[0]):
+        if(labels[i]==maxLabel):
+            if(pos[i,1] > (boxSize[1]*0.7 - spacing) and pos[i,1] <= (boxSize[1]*0.7 + spacing)):
+                if(pos[i,0] > (center + (1-offset-width)*height) and pos[i,0] <= (center + (1-offset)*height)):
+                    movedList = np.append(movedList, i)
+    movedList = movedList.astype(np.int64)
+    numMoved = movedList.shape[0]
+    movedLabel = np.zeros(rad.shape[0])
+    movedLabel[movedList] = 1
+    newRad = np.zeros(rad.shape)
+    newPos = np.zeros(pos.shape)
+    newVel = np.zeros(vel.shape)
+    newAngle = np.zeros(angle.shape)
+    # reshuffle lists
+    newRad[:numMoved] = rad[movedLabel==1]
+    newRad[numMoved:] = rad[movedLabel==0]
+    newPos[:numMoved] = pos[movedLabel==1]
+    newPos[numMoved:] = pos[movedLabel==0]
+    newVel[:numMoved] = vel[movedLabel==1]
+    newVel[numMoved:] = vel[movedLabel==0]
+    newAngle[:numMoved] = angle[movedLabel==1]
+    newAngle[numMoved:] = angle[movedLabel==0]
+    # save files to new directory
+    dirSave = dirName + "-EF" + str(numMoved)
+    print(dirSave)
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particleRad.dat', newRad)
+    np.savetxt(dirSave + '/particlePos.dat', newPos)
+    np.savetxt(dirSave + '/particleVel.dat', newVel)
+    np.savetxt(dirSave + '/particleAngle.dat', newAngle)
+    np.savetxt(dirSave + '/movedLabel.dat', movedLabel)
+    print("Number of particles moved to the top of the lists:", numMoved)
+    print(rad[movedList][0], rad[movedList][-1])
+    print(newRad[:numMoved][0], newRad[:numMoved][-1])
+    print(pos[movedList][0], pos[movedList][-1])
+    print(newPos[:numMoved][0], newPos[:numMoved][-1])
+    print(vel[movedList][0], vel[movedList][-1])
+    print(newVel[:numMoved][0], newVel[:numMoved][-1])
+    print(angle[movedList][0], angle[movedList][-1])
+    print(newAngle[:numMoved][0], newAngle[:numMoved][-1])
 
 def initializeDroplet(dirName, dirSave):
     # load all the packing files
@@ -983,7 +1175,7 @@ def removeParticles(dirName, numRemove):
         print("Please remove a number of particles smaller than", maxRemove)
 
 ############################### Delaunay analysis ##############################
-def augmentPacking(pos, rad, fraction=0.1, lx=1, ly=1):
+def augmentPacking(pos, rad, fraction=0.15, lx=1, ly=1):
     # augment packing by copying a fraction of the particles around the walls
     Lx = np.array([lx,0])
     Ly = np.array([0,ly])
@@ -1148,8 +1340,7 @@ def checkDelaunayInclusivity(simplices, pos, rad, boxSize):
     print("This packing has", intersectParticle, "particles that intersect the opposite Delaunay edge")
     print("AND", wallParticle, "OF THESE ARE NEAR A WALL")
 
-def computeIntersectionArea(pos0, pos1, pos2, sigma, boxSize):
-    # define reference frame to simplify projection formula
+def computeIntersectionArea(pos0, pos1, pos2, sigma, boxSize, sIndex):
     pos2 = pbcDistance(pos2, pos1, boxSize)
     pos0 = pbcDistance(pos0, pos1, boxSize)
     pos1 = np.zeros(pos1.shape[0])
@@ -1199,44 +1390,51 @@ def computeDelaunayDensity(simplices, pos, rad, boxSize):
     simplexArea = np.zeros(simplices.shape[0])
     occupiedArea = np.zeros(simplices.shape[0])
     for sIndex in range(simplices.shape[0]):
-        pos0 = pos[simplices[sIndex,0]]
-        pos1 = pos[simplices[sIndex,1]]
-        pos2 = pos[simplices[sIndex,2]]
-        # compute area of the triangle
-        simplexArea[sIndex] = computeTriangleArea(pos0, pos1, pos2, boxSize)
-        # compute the three areas of the intersecating circles
-        # first compute projection distance for each vertex in the simplex and then check if the intersection is all inside the simplex
-        # if not, remove the external segment from the intersection area and add it to the simplex where the segment is contained
-        # first vertex
-        projLength, intersectArea1, internalProj = computeIntersectionArea(pos0, pos1, pos2, rad[simplices[sIndex,1]], boxSize)
-        segmentArea2 = checkSegmentArea(projLength, rad[simplices[sIndex,2]], internalProj)
-        # second vertex
-        projLength, intersectArea2, internalProj = computeIntersectionArea(pos1, pos2, pos0, rad[simplices[sIndex,2]], boxSize)
-        segmentArea0 = checkSegmentArea(projLength, rad[simplices[sIndex,0]], internalProj)
-        # third vertex
-        projLength, intersectArea0, internalProj = computeIntersectionArea(pos2, pos0, pos1, rad[simplices[sIndex,0]], boxSize)
-        segmentArea1 = checkSegmentArea(projLength, rad[simplices[sIndex,1]], internalProj)
-        # first correction
-        if(segmentArea2 > 0):
-            oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,0], simplices[sIndex,1])
-            if(oppositeIndex.shape[0] == 1):
-                occupiedArea[oppositeIndex[0]] += segmentArea2
-        # second correction
-        if(segmentArea0 > 0):
-            oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,1], simplices[sIndex,2])
-            if(oppositeIndex.shape[0] == 1):
-                occupiedArea[oppositeIndex[0]] += segmentArea0
-        # third correction
-        if(segmentArea1 > 0):
-            oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,2], simplices[sIndex,0])
-            if(oppositeIndex.shape[0] == 1):
-                occupiedArea[oppositeIndex[0]] += segmentArea1
-        occupiedArea[sIndex] += (intersectArea1 + intersectArea2 + intersectArea0 - segmentArea2 - segmentArea0 - segmentArea1)
-        # subtract overlapping area, there are two halves for each simplex
-        occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos1, pos2, rad[simplices[sIndex,1]], rad[simplices[sIndex,2]], boxSize) + 0.5*computeOverlapArea(pos2, pos1, rad[simplices[sIndex,2]], rad[simplices[sIndex,1]], boxSize)
-        occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos1, pos0, rad[simplices[sIndex,1]], rad[simplices[sIndex,0]], boxSize) + 0.5*computeOverlapArea(pos0, pos1, rad[simplices[sIndex,0]], rad[simplices[sIndex,1]], boxSize)
-        occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos2, pos0, rad[simplices[sIndex,2]], rad[simplices[sIndex,0]], boxSize) + 0.5*computeOverlapArea(pos0, pos2, rad[simplices[sIndex,0]], rad[simplices[sIndex,2]], boxSize)
-    simplexDensity = occupiedArea / simplexArea
+        if(np.unique(simplices[sIndex]).shape[0] != 3):#problem with the wrapping, some simplices have the same particle twice
+            #print("simplex", sIndex, simplices[sIndex])
+            simplexArea[sIndex] = 0
+            occupiedArea[sIndex] = 0
+        else:
+            pos0 = pos[simplices[sIndex,0]]
+            pos1 = pos[simplices[sIndex,1]]
+            pos2 = pos[simplices[sIndex,2]]
+            # compute area of the triangle
+            simplexArea[sIndex] = computeTriangleArea(pos0, pos1, pos2, boxSize)
+            # compute the three areas of the intersecating circles
+            # first compute projection distance for each vertex in the simplex and then check if the intersection is all inside the simplex
+            # if not, remove the external segment from the intersection area and add it to the simplex where the segment is contained
+            # first vertex
+            projLength, intersectArea1, internalProj = computeIntersectionArea(pos0, pos1, pos2, rad[simplices[sIndex,1]], boxSize, sIndex)
+            segmentArea2 = checkSegmentArea(projLength, rad[simplices[sIndex,2]], internalProj)
+            # second vertex
+            projLength, intersectArea2, internalProj = computeIntersectionArea(pos1, pos2, pos0, rad[simplices[sIndex,2]], boxSize, sIndex)
+            segmentArea0 = checkSegmentArea(projLength, rad[simplices[sIndex,0]], internalProj)
+            # third vertex
+            projLength, intersectArea0, internalProj = computeIntersectionArea(pos2, pos0, pos1, rad[simplices[sIndex,0]], boxSize, sIndex)
+            segmentArea1 = checkSegmentArea(projLength, rad[simplices[sIndex,1]], internalProj)
+            # first correction
+            if(segmentArea2 > 0):
+                oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,0], simplices[sIndex,1])
+                if(oppositeIndex.shape[0] == 1):
+                    occupiedArea[oppositeIndex[0]] += segmentArea2
+            # second correction
+            if(segmentArea0 > 0):
+                oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,1], simplices[sIndex,2])
+                if(oppositeIndex.shape[0] == 1):
+                    occupiedArea[oppositeIndex[0]] += segmentArea0
+            # third correction
+            if(segmentArea1 > 0):
+                oppositeIndex = findOppositeSimplexIndex(simplices, sIndex, simplices[sIndex,2], simplices[sIndex,0])
+                if(oppositeIndex.shape[0] == 1):
+                    occupiedArea[oppositeIndex[0]] += segmentArea1
+            occupiedArea[sIndex] += (intersectArea1 + intersectArea2 + intersectArea0 - segmentArea2 - segmentArea0 - segmentArea1)
+            # subtract overlapping area, there are two halves for each simplex
+            occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos1, pos2, rad[simplices[sIndex,1]], rad[simplices[sIndex,2]], boxSize) + 0.5*computeOverlapArea(pos2, pos1, rad[simplices[sIndex,2]], rad[simplices[sIndex,1]], boxSize)
+            occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos1, pos0, rad[simplices[sIndex,1]], rad[simplices[sIndex,0]], boxSize) + 0.5*computeOverlapArea(pos0, pos1, rad[simplices[sIndex,0]], rad[simplices[sIndex,1]], boxSize)
+            occupiedArea[sIndex] -= 0.5*computeOverlapArea(pos2, pos0, rad[simplices[sIndex,2]], rad[simplices[sIndex,0]], boxSize) + 0.5*computeOverlapArea(pos0, pos2, rad[simplices[sIndex,0]], rad[simplices[sIndex,2]], boxSize)
+    for i in range(simplexArea.shape[0]):
+        if(simplexArea[i] > 0):
+            simplexDensity[i] = occupiedArea[i] / simplexArea[i]
     return simplexDensity, simplexArea
 
 def computeIntersectionArea2(pos0, pos1, pos2, sigma, boxSize):
