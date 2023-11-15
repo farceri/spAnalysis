@@ -19,6 +19,19 @@ import os
 import utils
 import spCluster as cluster
 
+def powerLaw(x, a, b):
+return a*x**b
+
+def lineFit(x, a, b):
+return a + b*x
+
+def hyperbolicTan(x, a, b, x0, w):
+return a + b*np.tanh((x-x0)/(2*w))
+
+def curveCumSum(x, a, b, c):
+return 1 - c*np.exp(-(x*a)**b)
+
+
 ################################################################################
 ############################ Local density analysis ############################
 ################################################################################
@@ -801,12 +814,6 @@ def plotSPClusterSize(dirName, figureName, fixed=False, which='fraction', simple
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def powerLaw(x, a, b):
-    return a*x**b
-
-def lineFit(x, a, b):
-    return a + b*x
-
 def plotSPClusterHeightSingle(dirName, figureName):
     fig, ax = plt.subplots(2, 1, figsize=(7,7), dpi = 120)
     if not(os.path.exists(dirName + os.sep + "clusterHeight.dat")):
@@ -917,15 +924,12 @@ def plotSPClusterHeight(dirName, figureName, fixed='Dr', which='1e-04', fourier=
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def hyperbolicTan(x, a, b, x0, w):
-    return a + b*np.tanh((x-x0)/(2*w))
-
 def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(fixed=='Dr'):
-        dirList = np.array(['4.2', '4.8', '5.4', '6'])
+        dirList = np.array(['0.6', '0.8', '1', '1.2', '1.4'])
     elif(fixed=='length'):
-        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '3e-05'])
+        dirList = np.array(['4e-04', '3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '4e-05'])
     else:
         print("please specify fixed parameter")
         exit()
@@ -937,15 +941,18 @@ def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
     for d in range(dirList.shape[0]):
         print(dirList[d])
         if(fixed=='Dr'):
-            dirSample = dirName + "/box" + dirList[d] + "-1/0.30/active-langevin/Dr" + which + "/dynamics/"
+            dirSample = dirName + "/box6-" + dirList[d] + "/0.30/active-langevin/Dr" + which + "/dynamics/"
             labelName = '$L_x$ = '
         elif(fixed=='length'):
-            dirSample = dirName + "/box" + which + "-1/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            dirSample = dirName + "/box6-" + which + "/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
             labelName = '$D_r$ = '
         taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-        if not(os.path.exists(dirSample + "clusterEnergyLength.dat")):
-            cluster.averageClusterInterfaceHeight(dirSample)
-        energyLength = np.loadtxt(dirSample + "clusterEnergyLength.dat")
+        sigma = utils.readFromDynParams(dirSample, 'sigma')
+        if not(os.path.exists(dirSample + "energyLength.dat")):
+            cluster.averageClusterHeightFluctuations(dirSample)
+        energyLength = np.loadtxt(dirSample + "energyLength.dat")
+        boxSize = np.loadtxt(dirSample + "boxSize.dat")
+        energyLength[:,1] /= 2#np.sqrt(boxSize[0]**2+boxSize[1]**2)
         length[d,0] = np.mean(energyLength[:,1])
         length[d,1] = np.std(energyLength[:,1])
         #if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
@@ -953,7 +960,6 @@ def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
         #data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
         #temp[d,0] = np.mean(data[:,0])
         #temp[d,1] = np.std(data[:,0])
-        sigma = utils.readFromDynParams(dirSample, 'sigma')
         if not(os.path.exists(dirSample + "densityProfile.dat")):
             cluster.averageLinearDensityProfile(dirSample)
         data = np.loadtxt(dirSample + "densityProfile.dat")
@@ -964,16 +970,10 @@ def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
         x = np.sort(x)
         ax.errorbar(x, y, yerr, lw=1, marker=markerList[d], markersize=6, color='k', capsize=3, fillstyle='none', label=labelName + dirList[d])
         #ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
-        failed = False
-        try:
-            popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
-        except RuntimeError:
-            print("Error - curve_fit failed")
-            failed = True
-        if(failed == False):
-            ax.plot(x, hyperbolicTan(x, *popt), color='g', lw=1.2, linestyle='--')
-            print("center - x0:", popt[2], "width:", popt[3], 'phi-:', popt[0] - popt[1], 'phi+:', popt[0] + popt[1])
-            width[d] = popt[3]
+        #width[d] = utils.computeInterfaceWidth(x, y)
+        data = np.loadtxt(dirSample + "interfaceWidth.dat")
+        width[d,0] = np.mean(data[:,1])
+        width[d,1] = np.std(data[:,1])
     ax.set_xlabel("$x$", fontsize=16)
     ax.set_ylabel("$\\varphi(x)$", fontsize=16)
     ax.tick_params(axis='both', labelsize=14)
@@ -995,15 +995,67 @@ def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=16)
-    ax.set_ylabel("$w^2$", fontsize=16)
-    if(fixed=='Dr'):
-        ax.errorbar(x, width**2, xerr=xerr, lw=1.2, marker='o', markersize=8, capsize=3, color='k', fillstyle='none')
-    elif(fixed=='length'):
-        ax.plot(x, width**2, lw=1.2, marker='o', markersize=8, color='k', fillstyle='none')
-        ax.set_xscale('log')
-        ax.set_yscale('log')
+    ax.set_ylabel("$Interface$ $width,$ $w^2$", fontsize=16)
+    ax.plot(x, width[:,0]**2, width[:,1]**2, lw=1.2, marker='o', markersize=8, color='k', fillstyle='none')
     plt.tight_layout()
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterWidthVSSamples(dirName, figureName, which='lj'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which=='lj'):
+        dirList = np.array(['0.36', '0.37', '0.38', '0.39', '0.40', '0.41'])
+    elif(which=='active'):
+        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '1e-04', '9e-05', '7e-05', '5e-05'])
+    else:
+        print("Please specify the sample type")
+    colorList = cm.get_cmap('viridis', dirList.shape[0])
+    boxList = np.array(['0.6', '0.8', '1', '1.2', '1.4'])
+    markerList = np.array(['o', 's', 'v', '^', 'x', '*', 'd', 'D', '.', '+'])
+    for d in range(dirList.shape[0]):
+        taup = np.zeros(boxList.shape[0])
+        width = np.zeros((boxList.shape[0],2))
+        length = np.zeros((boxList.shape[0],2))
+        temp = np.zeros((boxList.shape[0],2))
+        ly = np.zeros(boxList.shape[0])
+        for b in range(boxList.shape[0]):
+            if(which=='lj'):
+                dirSample = dirName + "box6-" + boxList[b] + "/0.238/langevin-lj/T" + dirList[d] + "/dynamics/"
+                labelName = "$T=$"
+            elif(which=='active'):
+                dirSample = dirName + "box6-" + boxList[b] + "/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+                labelName = "$D_r=$"
+                taup[b] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+            sigma = utils.readFromDynParams(dirSample, 'sigma')
+            boxSize = np.loadtxt(dirSample + "boxSize.dat")
+            ly[b] = boxSize[1]/sigma
+            #if not(os.path.exists(dirSample + "energyLength.dat")):
+            #    cluster.averageClusterEnergyLength(dirSample)
+            #energyLength = np.loadtxt(dirSample + "energyLength.dat")
+            #print(energyLength.shape)
+            #energyLength[:,1] /= 2#np.sqrt(boxSize[0]**2+boxSize[1]**2)
+            #length[b,0] = np.mean(energyLength[:,1])
+            #length[b,1] = np.std(energyLength[:,1])
+            #if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
+            #    cluster.computeClusterTemperatureVSTime(dirSample)
+            #data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
+            #temp[b,0] = np.mean(data[:,0])
+            #temp[b,1] = np.std(data[:,0])
+            if not(os.path.exists(dirSample + "interfaceWidth.dat")):
+                cluster.averageLinearDensityProfile(dirSample)
+            data = np.loadtxt(dirSample + "interfaceWidth.dat")
+            width[b,0] = np.mean(data[:,1])/sigma
+            width[b,1] = np.std(data[:,1])/sigma
+        #ax.errorbar(length[:,0], width[:,0]**2, xerr=length[:,1], yerr=width[;,1]**2, lw=1, marker=markerList[d], markersize=8, capsize=3, fillstyle='none', color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
+        ax.errorbar(ly, width[:,0]**2, width[:,1]**2, lw=1, marker=markerList[d], markersize=8, capsize=3, fillstyle='none', color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
+    ax.set_yscale('log')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(loc='best', fontsize=10, ncol=2)
+    ax.set_xlabel("$Interface$ $length,$ $L^\\ast$", fontsize=16)
+    ax.set_ylabel("$Interface$ $width,$ $w^{\\ast 2}$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/widthSamples-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
 def makeInterfaceVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04):
@@ -1780,9 +1832,6 @@ def plotSPClusterVel(dirName, figureName, fixed=False, which='1e-03'):
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
-
-def curveCumSum(x, a, b, c):
-    return 1 - c*np.exp(-(x*a)**b)
 
 def plotSPCollisionPersistence(dirName, figureName, fixed=False, which='10'):
     fig, ax = plt.subplots(figsize = (7, 5), dpi = 120)
@@ -3651,6 +3700,11 @@ if __name__ == '__main__':
         fixed = sys.argv[4]
         which = sys.argv[5]
         plotSPClusterWidth(dirName, figureName, fixed, which)
+
+    elif(whichPlot == "widthsamples"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterWidthVSSamples(dirName, figureName, which)
 
     elif(whichPlot == "interface"):
         figureName = sys.argv[3]

@@ -5,6 +5,7 @@ Created by Francesco
 #functions and script to compute correlations in space and time
 import numpy as np
 from scipy.fft import fft, fftfreq, fft2
+from scipy.optimize import curve_fit
 from scipy.spatial import Delaunay
 from sklearn.cluster import DBSCAN
 import spCluster as cluster
@@ -474,7 +475,7 @@ def getLogSpacedStepList(minDecade=5, maxDecade=9):
 def getDirectories(dirName):
     listDir = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "affine" and dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
     return listDir
 
@@ -482,7 +483,7 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "affine" and dir != "short" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)
@@ -598,7 +599,7 @@ def getPBCPositions(fileName, boxSize):
 def getLEPBCPositions(fileName, boxSize, strain):
     pos = np.array(np.loadtxt(fileName), dtype=np.float64)
     shifty = np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
-    pos[:,0] += shifty*strain
+    pos[:,0] -= shifty*strain
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= shifty
     return pos
@@ -804,7 +805,6 @@ def centerSlab(pos, rad, boxSize, labels, maxLabel, nDim=2):
     #print("final center of mass:", np.mean(pos[labels==maxLabel], axis=0))
     return pos
 
-
 def shiftPositions(pos, boxSize, xshift, yshift):
     pos[:,0] += xshift
     pos[:,1] += yshift
@@ -906,6 +906,17 @@ def findLargestParticleCluster(rad, labels):
             size[i] = np.sum(rad[labels==uniqueLabels[i]]**2)
     return uniqueLabels[np.argmax(size)]
 
+def shiftSlabToCenter(dirName, threshold=0.76):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    eps = 1.8*np.max(rad)
+    labels = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold)
+    maxLabel = findLargestParticleCluster(rad, labels)
+    pos = centerSlab(pos, rad, boxSize, labels, maxLabel)
+    np.savetxt(dirSave + '/particlePos.dat', pos)
+
 def removeSmallClusters(dirName, dirSave, threshold=0.76):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
@@ -913,7 +924,10 @@ def removeSmallClusters(dirName, dirSave, threshold=0.76):
     eps = 1.8*np.max(rad)
     pos = np.loadtxt(dirName + '/particlePos.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
-    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    copyAngle = False
+    if(os.path.exists(dirName + '/particleAngles.dat')):
+        angle = np.loadtxt(dirName + '/particleAngles.dat')
+        copyAngle = True
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
@@ -941,7 +955,8 @@ def removeSmallClusters(dirName, dirSave, threshold=0.76):
     np.savetxt(dirSave + '/particleRad.dat', rad[keepList==1])
     np.savetxt(dirSave + '/particlePos.dat', pos[keepList==1])
     np.savetxt(dirSave + '/particleVel.dat', vel[keepList==1])
-    np.savetxt(dirSave + '/particleAngles.dat', angle[keepList==1])
+    if(copyAngle == True):
+        np.savetxt(dirSave + '/particleAngles.dat', angle[keepList==1])
     shutil.copy(dirName + 'params.dat', dirSave + '/params.dat')
     numParticles = int(keepList[keepList==1].shape[0])
     saveInParams(dirSave, "numParticles", str(numParticles))
@@ -1350,13 +1365,17 @@ def computeIntersectionArea(pos0, pos1, pos2, sigma, boxSize, sIndex):
     # length of segment from point to projection
     projLength = np.sqrt((slope**2 * pos2[0]**2 + pos2[1]**2 - 2*slope*pos2[0]*pos2[1]) / (1 + slope**2))
     #projLength = np.sqrt((slope**2 * pos2[0]**2 + pos2[1]**2 + intercept**2 - 2*intercept*pos2[1] - 2*slope*pos2[0]*pos2[1] + 2*slope*intercept*pos2[1]) / (1 + slope**2))
-    theta = np.arcsin(projLength / np.linalg.norm(pos2))
+    lengthRatio = projLength / np.linalg.norm(pos2)
+    if(lengthRatio > 1 and (1-lengthRatio)<1e-12): #it's above 1 by a very small amount
+        theta = np.arcsin(1)
+    else:
+        theta = np.arcsin(lengthRatio)
     intersectArea = 0.5 * sigma**2 * theta
     # check if distances from two opposite vertices to the projection point are both less than the distance between the two opposite vertices
     delta10 = np.linalg.norm(pos0)
     delta12 = np.linalg.norm(pos2)
     delta20 = np.linalg.norm(pbcDistance(pos2, pos0, boxSize))
-    delta1Proj = delta12 * np.cos(np.arcsin(projLength / delta12)) # this angle is the same as theta
+    delta1Proj = delta12 * np.cos(theta) # this angle is the same as theta
     delta0Proj = delta20 * np.cos(np.arcsin(projLength / delta20))
     internalProj = True
     if(delta1Proj > delta10 or delta0Proj > delta10):
@@ -1391,7 +1410,6 @@ def computeDelaunayDensity(simplices, pos, rad, boxSize):
     occupiedArea = np.zeros(simplices.shape[0])
     for sIndex in range(simplices.shape[0]):
         if(np.unique(simplices[sIndex]).shape[0] != 3):#problem with the wrapping, some simplices have the same particle twice
-            #print("simplex", sIndex, simplices[sIndex])
             simplexArea[sIndex] = 0
             occupiedArea[sIndex] = 0
         else:
@@ -1480,6 +1498,20 @@ def computeOverlapArea(pos1, pos2, rad1, rad2, boxSize):
         return angle * rad2**2 - 0.5 * rad2**2 * np.sin(2*angle)
     else:
         return 0
+
+def hyperbolicTan(x, a, b, x0, w):
+    return a + b*np.tanh((x-x0)/(2*w))
+
+def computeInterfaceWidth(x, y):
+    failed = False
+    try:
+        popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+        return 0
+    if(failed == False):
+        return popt[3]
 
 def labelDelaunaySimplices(dirLabel, simplices, denseSimplexList):
     # save dense simplices with 3, 2 and 1 dilute neighboring simplices

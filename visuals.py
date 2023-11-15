@@ -232,6 +232,8 @@ def plotSPPacking(dirName, figureName, ekmap=False, quiver=False, dense=False, b
         figureName = "/home/francesco/Pictures/soft/packings/ekmap-" + figureName + ".png"
     elif(quiver==True):
         figureName = "/home/francesco/Pictures/soft/packings/velmap-" + figureName + ".png"
+    elif(shear==True):
+        figureName = "/home/francesco/Pictures/soft/packings/shear-" + figureName + ".png"
     else:
         figureName = "/home/francesco/Pictures/soft/packings/" + figureName + ".png"
     plt.tight_layout()
@@ -269,12 +271,12 @@ def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, 
     plt.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def getStressColorList(stress, which='total', droplet='lj'):
+def getStressColorList(stress, which='total', potential='lj'):
     colorList = cm.get_cmap('viridis', stress.shape[0])
     colorId = np.zeros((stress.shape[0], 4))
     count = 0
     if(which=='total'):
-        if(droplet=='lj' or droplet=='ra'):
+        if(potential=='lj' or potential=='ra'):
             p = np.sum(stress[:,0:2], axis=1)
         else:
             p = np.sum(stress[:,0:3], axis=1)
@@ -291,7 +293,7 @@ def getStressColorList(stress, which='total', droplet='lj'):
         count += 1
     return colorId, colorList
 
-def plotSPStressMapPacking(dirName, figureName, which='total', droplet='lj', l1=0.035, shiftx=0, shifty=0, alpha=0.7):
+def plotSPStressMapPacking(dirName, figureName, which='total', potential='lj', lcut=5.5, shiftx=0, shifty=0, alpha=0.7):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
@@ -301,14 +303,14 @@ def plotSPStressMapPacking(dirName, figureName, which='total', droplet='lj', l1=
     ax = fig.gca()
     setPackingAxes(boxSize, ax)
     if not(os.path.exists(dirName + os.sep + "particleStress!.dat")):
-        if(droplet == 'lj'):
-            stress = cluster.computeLJParticleStress(dirName)
-        elif(droplet == 'ra'):
-            stress = cluster.computeRAParticleStress(dirName, l1)
+        if(potential == 'lj'):
+            stress = cluster.computeLJParticleStress(dirName, lcut)
+        elif(potential == 'ra'):
+            stress = cluster.computeRAParticleStress(dirName, lcut)
         else:
             stress = cluster.computeParticleStress(dirName)
     stress = np.loadtxt(dirName + os.sep + "particleStress.dat")
-    colorId, colorList = getStressColorList(stress, which, droplet)
+    colorId, colorList = getStressColorList(stress, which, potential)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
@@ -478,9 +480,9 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
     else:
         figureName = "/home/francesco/Pictures/soft/packings/del-" + figureName + ".png"
     #plt.plot(pos[148,0], pos[148,1], marker='*', markersize=20, color='r')
-    #plt.plot(pos[10886,0], pos[10886,1], marker='s', markersize=20, color='b')
-    #plt.plot(pos[13250,0], pos[13250,1], marker='o', markersize=20, color='g')
-    #plt.plot(pos[13250,0], pos[13250,1], marker='*', markersize=20, color='k')
+    #plt.plot(pos[2212,0], pos[2212,1], marker='s', markersize=20, color='b')
+    #plt.plot(pos[4454,0], pos[4454,1], marker='o', markersize=20, color='g')
+    #plt.plot(pos[5129,0], pos[5129,1], marker='*', markersize=20, color='k')
     #x = np.linspace(0,1,1000)
     #slope = -0.11838938050442274
     #intercept = 0.9852218251735015
@@ -703,14 +705,31 @@ def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList = np.array([]), al
             axFrame.add_artist(plt.Circle([x, y], r, edgecolor=colorId[particleId], facecolor='none', alpha=alpha, linewidth = 0.7))
             axFrame.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)#width=0.003, scale=1, headwidth=5)
 
-def plotSoftParticleStressMap(axFrame, pos, stress, rad, droplet='lj', alpha = 0.7):
+def plotSoftParticleStressMap(axFrame, pos, stress, rad, potential='lj', alpha = 0.7):
     colorId = np.zeros((rad.shape[0], 4))
-    colorList = cm.get_cmap('viridis', rad.shape[0])
+    colorList = cm.get_cmap('bwr', rad.shape[0])
     count = 0
-    if(droplet=='lj' or droplet=='ra'):
+    if(potential=='lj' or potential=='ra'):
         p = np.sum(stress[:,0:2], axis=1)
     else:
         p = np.sum(stress[:,0:3], axis=1)
+    for particleId in np.argsort(p):
+        colorId[particleId] = colorList(count/p.shape[0])
+        count += 1
+    for particleId in range(pos.shape[0]):
+        x = pos[particleId,0]
+        y = pos[particleId,1]
+        r = rad[particleId]
+        axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth='0.3'))
+
+def plotSoftParticleShearStressMap(axFrame, pos, stress, rad, potential='lj', alpha = 0.7):
+    colorId = np.zeros((rad.shape[0], 4))
+    colorList = cm.get_cmap('bwr', rad.shape[0])
+    count = 0
+    if(potential=='lj' or potential=='ra'):
+        p = stress[:,3]
+    else:
+        p = stress[:,4]
     for particleId in np.argsort(p):
         colorId[particleId] = colorList(count/p.shape[0])
         count += 1
@@ -790,10 +809,13 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     anim.save("/home/francesco/Pictures/soft/packings/clustermix-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
-def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subset = False, firstIndex = 10, npt = False, quiver = False, dense = False, perturb = False, pmap = False, droplet = False, l1=0.03):
-    pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
-    #pos = utils.shiftPositions(pos, boxSize, 0.4, 0)
-    #pos = utils.centerPositions(pos, rad, boxSize)
+def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subset=False, firstIndex=10, npt=False, quiver=False, dense=False, perturb=False, shear=False, strain=0, pmap=False, potential=False, lcut=5.5):
+    if(shear == "shear"):
+        pos = utils.getLEPBCPositions(dirName + os.sep + "particlePos.dat", boxSize, strain)
+        pos = utils.shiftPositions(pos, boxSize, -1, 0)
+    else:
+        pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
+        #pos = utils.centerPositions(pos, rad, boxSize)
     gcfFrame = plt.gcf()
     gcfFrame.clear()
     axFrame = figFrame.gca()
@@ -811,17 +833,17 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subset = Fals
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
         plotSoftParticleQuiverVel(axFrame, pos, vel, rad)
     elif(pmap == "pmap"):
-        if(os.path.exists(dirName + os.sep + "particleStress.dat")):
-            if(droplet == 'lj'):
-                stress = cluster.computeLJParticleStress(dirName)
-            elif(droplet == 'ra'):
-                stress = cluster.computeRAParticleStress(dirName, l1)
+        if not(os.path.exists(dirName + os.sep + "particleStress!.dat")):
+            if(potential == 'lj'):
+                stress = cluster.computeLJParticleStress(dirName, lcut)
+            elif(potential == 'ra'):
+                stress = cluster.computeRAParticleStress(dirName, lcut)
             else:
                 stress = cluster.computeParticleStress(dirName)
         stress = np.loadtxt(dirName + os.sep + "particleStress.dat")
-        plotSoftParticleStressMap(axFrame, pos, stress, rad, droplet)
+        plotSoftParticleShearStressMap(axFrame, pos, stress, rad, potential)
     elif(dense == "dense"):
-        if(os.path.exists(dirName + os.sep + "particleList.dat")):
+        if not(os.path.exists(dirName + os.sep + "particleList.dat")):
             cluster.computeDelaunayCluster(dirName)
         denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         plotSoftParticleCluster(axFrame, pos, rad, denseList)
@@ -836,7 +858,7 @@ def makeSoftParticleFrame(dirName, rad, boxSize, figFrame, frames, subset = Fals
     axFrame.remove()
     frames.append(axFrame)
 
-def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04, logSpaced = False, subset = False, firstIndex = 0, npt = False, quiver = False, dense = False, perturb = False, pmap = False, droplet = False, l1=0.03, lj=False):
+def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=1e04, logSpaced=False, subset=False, firstIndex=0, npt=False, quiver=False, dense=False, perturb=False, shear=False, strain=0, pmap=False, potential=False, lcut=5.5, lj=False):
     def animate(i):
         frames[i].figure=fig
         fig.axes.append(frames[i])
@@ -862,21 +884,21 @@ def makeSPPackingVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepF
     if(lj==True):
         rad *= 2**(1/6)
     # the first configuration gets two frames for better visualization
-    makeSoftParticleFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, subset, firstIndex, npt, quiver, dense, perturb, pmap, droplet, l1)
+    makeSoftParticleFrame(dirName + os.sep + "t" + str(stepList[0]), rad, boxSize, figFrame, frames, subset, firstIndex, npt, quiver, dense, perturb, shear, strain, pmap, potential, lcut)
     vel = []
     for i in stepList:
         dirSample = dirName + os.sep + "t" + str(i)
-        makeSoftParticleFrame(dirSample, rad, boxSize, figFrame, frames, subset, firstIndex, npt, quiver, dense, perturb, pmap, droplet, l1)
+        makeSoftParticleFrame(dirSample, rad, boxSize, figFrame, frames, subset, firstIndex, npt, quiver, dense, perturb, shear, strain, pmap, potential, lcut)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     if(quiver=="quiver"):
-        figureName = "velmap-" + figureName
+        figureName = "velMap-" + figureName
     if(pmap=="pmap"):
-        figureName = "pmap-" + figureName
+        figureName = "stressMap-" + figureName
     if(subset=="subset"):
         figureName = "subset-" + figureName
     anim.save("/home/francesco/Pictures/soft/packings/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
-def makeSPShearPackingVideo(dirName, figureName, maxStrain = 1e-01, strainStep = 1e-03, lj = False):
+def makeSPShearPackingVideo(dirName, figureName, maxStrain = 1e-01, strainStep = 1e-03, strainFreq = 10, lj = False):
     def animate(i):
         frames[i].figure=fig
         fig.axes.append(frames[i])
@@ -907,10 +929,11 @@ def makeSPShearPackingVideo(dirName, figureName, maxStrain = 1e-01, strainStep =
     figFrame.tight_layout()
     axFrame.remove()
     frames.append(axFrame)
-    numFrames = len(range(0,dirList.shape[0],4)) + 1
+    numFrames = len(range(0,dirList.shape[0],10)) + 1
     print("numFrames:", numFrames)
-    for i in range(0,dirList.shape[0],4):
+    for i in range(0,dirList.shape[0],10):
         dirSample = dirName + os.sep + dirList[i]
+        print(dirList[i], strainList[i])
         pos = utils.getLEPBCPositions(dirSample + os.sep + "particlePos.dat", boxSize, strainList[i])
         gcfFrame = plt.gcf()
         gcfFrame.clear()
@@ -1039,7 +1062,7 @@ if __name__ == '__main__':
     elif(whichPlot == "lj"):
         plotSPPacking(dirName, figureName, lj=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]))
 
-    if(whichPlot == "shearss"):
+    elif(whichPlot == "shearss"):
         plotSPPacking(dirName, figureName, shear=True, strain=float(sys.argv[4]), shiftx=float(sys.argv[5]), shifty=float(sys.argv[6]))
 
     elif(whichPlot == "shearlj"):
@@ -1075,9 +1098,9 @@ if __name__ == '__main__':
 
     elif(whichPlot == "stress"):
         which = sys.argv[4]
-        droplet = sys.argv[5]
-        l1 = float(sys.argv[6])
-        plotSPStressMapPacking(dirName, figureName, which, droplet, l1, shiftx=float(sys.argv[7]), shifty=float(sys.argv[8]))
+        potential = sys.argv[5]
+        lcut = float(sys.argv[6])
+        plotSPStressMapPacking(dirName, figureName, which, potential, lcut, shiftx=float(sys.argv[7]), shifty=float(sys.argv[8]))
 
     elif(whichPlot == "ssvoro"):
         plotSPVoronoiPacking(dirName, figureName, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]))
@@ -1138,15 +1161,29 @@ if __name__ == '__main__':
         stepFreq = float(sys.argv[6])
         makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, lj=True, logSpaced=False)
 
+    elif(whichPlot == "sheartime"):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, shear="shear", strain=float(sys.argv[7]))
+
+    elif(whichPlot == "ljsheartime"):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, lj=True, shear="shear", strain=float(sys.argv[7]))
+
     elif(whichPlot == "shearvideo"):
         maxStrain = float(sys.argv[4])
         strainStep = float(sys.argv[5])
-        makeSPShearPackingVideo(dirName, figureName, maxStrain, strainStep)
+        strainFreq = int(sys.argv[6])
+        makeSPShearPackingVideo(dirName, figureName, maxStrain, strainStep, strainFreq)
 
     elif(whichPlot == "shearljvideo"):
         maxStrain = float(sys.argv[4])
         strainStep = float(sys.argv[5])
-        makeSPShearPackingVideo(dirName, figureName, maxStrain, strainStep, lj=True)
+        strainFreq = int(sys.argv[6])
+        makeSPShearPackingVideo(dirName, figureName, maxStrain, strainStep, strainFreq, lj=True)
 
     elif(whichPlot == "ssperturb"):
         numFrames = int(sys.argv[4])
@@ -1171,32 +1208,41 @@ if __name__ == '__main__':
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, quiver = "quiver")
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, quiver="quiver")
 
     elif(whichPlot == "stressvideo"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap")
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap="pmap")
 
     elif(whichPlot == "rastressvideo"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        l1 = float(sys.argv[7])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap", droplet = "ra", l1=l1)
+        lcut = float(sys.argv[7])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap="pmap", potential="ra", lcut=lcut)
 
     elif(whichPlot == "ljstressvideo"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap = "pmap", droplet = "lj")
+        lcut = float(sys.argv[7])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, pmap="pmap", potential="lj", lcut=lcut)
+
+    elif(whichPlot == "ljstressshear"):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        strain = float(sys.argv[7])
+        lcut = float(sys.argv[8])
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, lj=True, shear="shear", strain=strain, pmap="pmap", potential="lj", lcut=lcut)
 
     elif(whichPlot == "clustervideo"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, dense = "dense")
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, dense="dense")
 
     elif(whichPlot == "dropletvideo"):
         numFrames = int(sys.argv[4])
@@ -1216,13 +1262,13 @@ if __name__ == '__main__':
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
         firstIndex = int(sys.argv[7])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, subset = "subset", firstIndex = firstIndex)
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, subset="subset", firstIndex = firstIndex)
 
     elif(whichPlot == "ssvideonpt"):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, npt = "npt")
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, npt="npt")
 
     else:
         print("Please specify the type of plot you want")

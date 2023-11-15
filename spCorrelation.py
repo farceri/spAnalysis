@@ -243,7 +243,6 @@ def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac =
     pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "particleRad.dat")))
     phi = utils.readFromParams(dirName, "phi")
     timeStep = utils.readFromParams(dirName, "dt")
-    T = np.mean(np.loadtxt(dirName + "energy.dat")[:,4])
     if(qFrac == "read"):
         if(os.path.exists(dirName + os.sep + "pairCorr.dat")):
             pcorr = np.loadtxt(dirName + os.sep + "pairCorr.dat")
@@ -286,11 +285,12 @@ def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac =
         np.savetxt(dirName + os.sep + "logCorr.dat", np.column_stack((stepList, particleCorr)))
     else:
         np.savetxt(dirName + os.sep + "logCorr-q" + qFrac + ".dat", np.column_stack((stepList, particleCorr)))
-    uplot.plotCorrelation(stepList * timeStep, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
-    #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
+    #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
+    uplot.plotCorrelation(stepList * timeStep, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
     #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,3], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
     plt.show()
     if(computeTau=="tau"):
+        T = np.mean(np.loadtxt(dirName + "energy.dat")[:,4])
         diff = np.mean(particleCorr[-1:,0]/(2 * stepRange[-1:] * timeStep))
         ISF = particleCorr[:,1]
         step = stepList
