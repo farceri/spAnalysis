@@ -2358,12 +2358,14 @@ def getParticleDenseLabel(dirSample, boxSize, eps, threshold=0.76, compute=False
         computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
+        borderList = particleList[:,1]
     else:
         if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
             computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
-    return denseList
+        borderList = particleList[:,1]
+    return denseList, borderList
 
 def getLEParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False, save='save', strain=0):
     if(compute==True):
@@ -2396,12 +2398,14 @@ def getLEParticleDenseLabel(dirSample, boxSize, eps, threshold=0.76, compute=Fal
         computeDelaunayCluster(dirSample, threshold=threshold, save=save, LE='LE', strain=strain)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
+        borderList = particleList[:,1]
     else:
         if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
             computeDelaunayCluster(dirSample, threshold=threshold, save=save, LE='LE', strain=strain)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
-    return denseList
+        borderList = particleList[:,1]
+    return denseList, borderList
 
 ############################# Cluster distribution #############################
 def computeDelaunayClusterDistribution(dirName, threshold=0.76, plot=False, dirSpacing=1):
@@ -2653,6 +2657,7 @@ def computePressureVSTime(dirName, dirSpacing=1, nDim=2):
     driving = float(utils.readFromDynParams(dirName, "f0"))
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    boxArea = boxSize[0]*boxSize[1]
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
     sigma = np.mean(rad)
@@ -2696,8 +2701,8 @@ def computePressureVSTime(dirName, dirSpacing=1, nDim=2):
                     gradMultiple = ec * overlap / radSum
                     force = gradMultiple * delta / distance
                     pressure[d,1] += 0.5 * np.sum(force * delta) / nDim # double counting
-    pressure *= sigma**2
-    wallPressure *= sigma**2
+    pressure /= (ec / (boxArea * sigma**2))
+    wallPressure /= (ec / (boxArea * sigma**2))
     np.savetxt(dirName + os.sep + "pressure.dat", np.column_stack((timeList, pressure, wallPressure)))
     print("bulk pressure: ", np.mean(np.sum(pressure, axis=1)), " +/- ", np.std(np.sum(pressure, axis=1)))
     print("thermal pressure: ", np.mean(pressure[:,0]), " +/- ", np.std(pressure[:,0]))
@@ -2711,6 +2716,7 @@ def computeStressVSTime(dirName, strain=0, dirSpacing=1, nDim=2):
     driving = float(utils.readFromDynParams(dirName, "f0"))
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    boxArea = boxSize[0]*boxSize[1]
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
     sigma = np.mean(rad)
@@ -2749,7 +2755,7 @@ def computeStressVSTime(dirName, strain=0, dirSpacing=1, nDim=2):
                     stress[d,1] += force[1] * delta[1]
                     stress[d,2] -= (force[0] * delta[1] + force[1] * delta[0]) * 0.5
         #print(dirList[d], stress[d,0], stress[d,1])
-    stress *= sigma**2
+    stress /= (ec / (boxArea * sigma**2))
     np.savetxt(dirName + os.sep + "timeStress.dat", np.column_stack((timeList, stress)))
     bulk = stress[:,0]+stress[:,1]+stress[:,3]+stress[:,4]+stress[:,6]+stress[:,7]
     print("bulk stress: ", np.mean(bulk), " +/- ", np.std(bulk))
@@ -2766,6 +2772,7 @@ def computeStressVSStrain(dirName, strain=0, dirSpacing=1, nDim=2):
     Dr = float(utils.readFromDynParams(dirName, "Dr"))
     sep = utils.getDirSep(dirName, 'boxSize')
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
+    boxArea = boxSize[0]*boxSize[1]
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     rad = np.loadtxt(dirName + sep + "particleRad.dat")
     sigma = np.mean(rad)
@@ -2800,7 +2807,7 @@ def computeStressVSStrain(dirName, strain=0, dirSpacing=1, nDim=2):
                     stress[d,0] += force[0] * delta[0]
                     stress[d,1] += force[1] * delta[1]
                     stress[d,2] -= (force[0] * delta[1] + force[1] * delta[0]) * 0.5
-    stress *= sigma**2
+    stress /= (ec / (boxArea * sigma**2))
     np.savetxt(dirName + os.sep + "strainStress.dat", np.column_stack((strainList, stress)))
     bulk = stress[:,0]+stress[:,1]+stress[:,3]+stress[:,4]+stress[:,6]+stress[:,7]
     print("bulk stress: ", np.mean(bulk), " +/- ", np.std(bulk))
@@ -3415,6 +3422,7 @@ def computeLJStressVSTime(dirName, LJcutoff=5.5, strain=0, dirSpacing=1, nDim=2)
     ec = 1
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
+    boxArea = boxSize[0]*boxSize[1]
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     rad = np.loadtxt(dirName + sep + "particleRad.dat")
     sigma = np.mean(rad)
@@ -3448,7 +3456,7 @@ def computeLJStressVSTime(dirName, LJcutoff=5.5, strain=0, dirSpacing=1, nDim=2)
                     stress[d,0] += force[0] * delta[0]
                     stress[d,1] += force[1] * delta[1]
                     stress[d,2] -= (force[0] * delta[1] + force[1] * delta[0]) * 0.5
-    stress *= sigma**2
+    stress /= (ec / (boxArea * sigma**2))
     np.savetxt(dirName + os.sep + "timeStress.dat", np.column_stack((timeList, stress)))
     print("bulk stress: ", np.mean(stress[:,0]+stress[:,1]+stress[:,3]+stress[:,4]), " +/- ", np.std(stress[:,0]+stress[:,1]+stress[:,3]+stress[:,4]))
     print("shear stress: ", np.mean(stress[:,2]+stress[:,5]), " +/- ", np.std(stress[:,2]+stress[:,5]))
@@ -3461,6 +3469,7 @@ def computeLJStressVSStrain(dirName, LJcutoff=5.5, strian=0, dirSpacing=1, nDim=
     ec = 1
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.loadtxt(dirName + sep + "boxSize.dat")
+    boxArea = boxSize[0]*boxSize[1]
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     rad = np.loadtxt(dirName + sep + "particleRad.dat")
     sigma = np.mean(rad)
@@ -3490,7 +3499,7 @@ def computeLJStressVSStrain(dirName, LJcutoff=5.5, strian=0, dirSpacing=1, nDim=
                     stress[d,0] += force[0] * delta[0]
                     stress[d,1] += force[1] * delta[1]
                     stress[d,2] -= (force[0] * delta[1] + force[1] * delta[0]) * 0.5
-    stress *= sigma**2
+    stress /= (ec / (boxArea * sigma**2))
     np.savetxt(dirName + os.sep + "strainStress.dat", np.column_stack((strainList, stress)))
     print("bulk pressure: ", np.mean(stress[:,0]+stress[:,2]), " +/- ", np.std(stress[:,0]+stress[:,2]))
     print("bulk shear stress: ", np.mean(stress[:,1]+stress[:,2]), " +/- ", np.std(stress[:,1]+stress[:,2]))
@@ -3962,10 +3971,10 @@ def computeClusterEnergy(dirName, threshold=0.78, active=False, strain=0, dirSpa
         dirSample = dirName + os.sep + dirList[d]
         if(strain != 0):
             #labels = getLEParticleClusterLabels(dirSample, boxSize, eps, threshold)
-            denseList = getLEParticleDenseLabel(dirSample, boxSize, eps, threshold)
+            _,denseList = getLEParticleDenseLabel(dirSample, boxSize, eps, threshold)
         else:
             #labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
-            denseList = getParticleDenseLabel(dirSample, boxSize, eps, threshold)
+            _,denseList = getParticleDenseLabel(dirSample, boxSize, eps, threshold)
         #maxLabel = utils.findLargestParticleCluster(rad, labels)
         #particleList = np.loadtxt(dirSample + "/particleList.dat")
         #denseList = particleList[:,0]
@@ -3979,15 +3988,15 @@ def computeClusterEnergy(dirName, threshold=0.78, active=False, strain=0, dirSpa
                 denseEnergy[d,0] += epot[i]
                 denseEnergy[d,1] += np.linalg.norm(vel[i])**2
                 if(active=='active'):
-                    denseEnergy[d,2] += driving * np.sum(vel * director) / (2*Dr)
+                    denseEnergy[d,2] += driving * np.sum(vel[i] * director[i]) / (2*Dr)
             #elif(denseList[i]==0):
             else:
                 diluteEnergy[d,0] += epot[i]
                 diluteEnergy[d,1] += np.linalg.norm(vel[i])**2
                 if(active=='active'):
-                    diluteEnergy[d,2] += driving * np.sum(vel * director) / (2*Dr)
-    denseEnergy *= sigma**2
-    diluteEnergy *= sigma**2
+                    diluteEnergy[d,2] += driving * np.sum(vel[i] * director[i]) / (2*Dr)
+    denseEnergy /= ec
+    diluteEnergy /= ec
     np.savetxt(dirName + os.sep + "timeEnergy.dat", np.column_stack((timeList, denseEnergy, diluteEnergy)))
     print("dense energy: ", np.mean(np.sum(denseEnergy, axis=1)), " +/- ", np.std(np.sum(denseEnergy, axis=1)))
     print("dilute energy: ", np.mean(np.sum(diluteEnergy, axis=1)), " +/- ", np.std(np.sum(diluteEnergy, axis=1)))
@@ -4056,7 +4065,7 @@ def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpa
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    spacing = 3*sigma
+    spacing = 2*sigma
     bins = np.arange(0, boxSize[1], spacing)
     centers = (bins[1:] + bins[:-1])/2
     #freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
@@ -4080,7 +4089,6 @@ def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpa
         clusterPos = pos[labels==maxLabel]
         clusterVel = vel[labels==maxLabel]
         clusterEpot = epot[labels==maxLabel]
-        #clusterPos = clusterPos[np.argwhere(clusterPos[:,0]>center)[:,0]]
         for j in range(bins.shape[0]-1): # find particle positions in a bin
             rightMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
             binVel = clusterVel[rightMask]
@@ -4108,18 +4116,24 @@ def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpa
             energyLength[d,0] = length
             energyLength[d,1] = np.sum(energy[:,0])
             energyLength[d,2] = np.sum(energy[:,1])
-            deltaHeight[d] = np.abs(height - np.mean(height))**2 * length
-            fourierDeltaHeight[d] = np.abs(rfft(height - np.mean(height)))**2 * length
+            height -= np.mean(height)
+            deltaHeight[d] = np.abs(height)**2
+            fourierDeltaHeight[d] = np.abs(rfft(height))**2
     print(deltaHeight.shape, deltaHeight[energyLength[:,0]!=0].shape)
     deltaHeight = np.column_stack((np.mean(deltaHeight[energyLength[:,0]!=0], axis=0), np.std(deltaHeight[energyLength[:,0]!=0], axis=0)))
     fourierDeltaHeight = np.column_stack((np.mean(fourierDeltaHeight[energyLength[:,0]!=0], axis=0), np.std(fourierDeltaHeight[energyLength[:,0]!=0], axis=0)))
     #fourierDeltaHeight = rfft(deltaHeight[:,1])
+    centers *= sigma
+    deltaHeight *= sigma**2
+    freq /= sigma
+    fourierDeltaHeight /= sigma**2
     np.savetxt(dirName + os.sep + "heightFluctuations.dat", np.column_stack((centers, deltaHeight, freq, fourierDeltaHeight)))
     np.savetxt(dirName + os.sep + "energyLength.dat", np.column_stack((timeList, energyLength)))
+    print("average interface length:", np.mean(energyLength[:,0]), np.std(energyLength[:,0]))
     if(plot=='plot'):
-        #uplot.plotCorrelation(freq[4:], fourierDeltaHeight[4:,0], "$Height$ $fluctuation$", xlabel = "$q$", color='k', logx=True, logy=True)
+        uplot.plotCorrelation(freq[1:], fourierDeltaHeight[1:,0], "$Height$ $fluctuation$", xlabel = "$q$", color='k', logx=True, logy=True)
         #uplot.plotCorrWithError(centers, deltaHeight[:,0], deltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
-        uplot.plotCorrelation(timeList, np.sum(energyLength[:,1:],axis=1), "$Energy$", xlabel = "$Simulation$ $time$", color='k')
+        #uplot.plotCorrelation(timeList, np.sum(energyLength[:,1:],axis=1), "$Energy$", xlabel = "$Simulation$ $time$", color='k')
         plt.pause(0.5)
         #plt.show()
 

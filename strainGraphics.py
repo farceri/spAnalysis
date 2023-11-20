@@ -339,7 +339,7 @@ def plotEnergyVSStrain(dirName, figureName, which='lj', deformation='extend', li
     plt.errorbar(strain, energyLong[:,0], energyLong[:,1], color='k', marker='o', markersize=8, capsize=3, lw=1.2, fillstyle='none', label='$Steady$ $state$')
     print("average steady-state stress:", np.mean(energyLong[:,0]), "+-", np.std(energyLong[:,0]))
     x = strain[:5]
-    y = energyLong[:5,0]
+    y = energyShort[:5,0]
     failed = False
     try:
         popt, pcov = curve_fit(linearFit, x, y, bounds=([-np.inf, -np.inf], [np.inf, np.inf]))
@@ -361,7 +361,7 @@ def plotEnergyVSStrain(dirName, figureName, which='lj', deformation='extend', li
 def plotEnergyStrainVSTemp(dirName, figureName, which='lj', deformation='extend'):
     fig, ax = plt.subplots(figsize = (6.5,5), dpi = 120)
     if(which=='lj'):
-        tempList = np.array(['0.36', '0.37', '0.38', '0.39', '0.40', '0.41'])
+        tempList = np.array(['0.35', '0.36', '0.37', '0.38', '0.39', '0.40', '0.41'])
         labelName = "$T=$"
     elif(which=='active'):
         tempList = np.array(['4e-04', '3e-04', '2e-04', '1.5e-04', '1.2e-04', '1e-04', '9e-05', '7e-05', '5e-05', '4e-05'])
@@ -394,10 +394,10 @@ def plotEnergyStrainVSTemp(dirName, figureName, which='lj', deformation='extend'
             sigma = utils.readFromDynParams(dirSample, "sigma")
             data[:,0] *= sigma
             energyData = data[:,2]+data[:,3]
-            energyShort[d,0] = np.mean(energyData[data[:,0]<1e-02])
-            energyShort[d,1] = np.std(energyData[data[:,0]<1e-02])
-            energyLong[d,0] = np.mean(energyData[data[:,0]>100])
-            energyLong[d,1] = np.std(energyData[data[:,0]>100])
+            energyShort[d,0] = np.mean(energyData[data[:,0]<1e-01])
+            energyShort[d,1] = np.std(energyData[data[:,0]<1e-01])
+            energyLong[d,0] = np.mean(energyData[data[:,0]>1e02])
+            energyLong[d,1] = np.std(energyData[data[:,0]>1e02])
         ax.errorbar(strain, energyShort[:,0], energyShort[:,1], color=colorList(t/tempList.shape[0]), marker='s', markersize=6, capsize=3, lw=1.2, fillstyle='none', label=labelName + tempList[t])
         ax.errorbar(strain, energyLong[:,0], energyLong[:,1], color=colorList(t/tempList.shape[0]), marker='s', markersize=6, capsize=3, lw=1.2)
         x = strain[:5]
@@ -487,9 +487,17 @@ def plotClusterEnergyVSStrain(dirName, figureName, which='lj', deformation='exte
                 cluster.computeClusterEnergy(dirSample, threshold=0.78, active='active', strain=strain)
         data = np.loadtxt(dirSample + os.sep + "timeEnergy.dat")
         data[:,0] *= sigma
-        energyData = data[:,1]+data[:,2]+data[:,3]
-        energyShort[d,0] = np.mean(energyData[data[:,0]<2e-01])
-        energyShort[d,1] = np.std(energyData[data[:,0]<2e-01])
+        data = data[data[:,0]<1e03,:]
+        if(which=='lj'):
+            energyData = data[:,1]+data[:,2]
+            energyShort[d,0] = np.mean(energyData[data[:,0]<2e-01])
+            energyShort[d,1] = np.std(energyData[data[:,0]<2e-01])
+        elif(which=='active'):
+            energyData = data[:,1]+data[:,2]+data[:,3]
+            rightEnergy = energyData[data[:,0]<0.5]
+            rightTime = data[data[:,0]<0.5,0]
+            energyShort[d,0] = np.mean(rightEnergy[rightTime>0.25])
+            energyShort[d,1] = np.std(rightEnergy[rightTime>0.25])
         energyLong[d,0] = np.mean(energyData[data[:,0]>limit])
         energyLong[d,1] = np.std(energyData[data[:,0]>limit])
         ax.plot(data[:,0], energyData, linewidth=1.2, color=colorList(d/strainList.shape[0]), label="$\\gamma=$" + strainList[d], marker='o', markersize=4, fillstyle='none')
@@ -497,17 +505,29 @@ def plotClusterEnergyVSStrain(dirName, figureName, which='lj', deformation='exte
     ax.legend(fontsize=11, loc='best')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Time,$ $t$", fontsize=16)
-    ax.set_ylabel("$Energy,$ $E$", fontsize=16)
+    ax.set_ylabel("$Work,$ $w$", fontsize=16)
     plt.tight_layout()
     figure1Name = "/home/francesco/Pictures/soft/mips/energy" + defName + "-" + figureName
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
     fig, ax = plt.subplots(figsize = (6,4.5), dpi = 120)
+    strain += 1
     plt.errorbar(strain, energyShort[:,0], energyShort[:,1], color='g', marker='s', markersize=8, capsize=3, lw=1.2, fillstyle='none', label='$Short-time$ $response$')
     plt.errorbar(strain, energyLong[:,0], energyLong[:,1], color='k', marker='o', markersize=8, capsize=3, lw=1.2, fillstyle='none', label='$Steady-state$')
+    x = strain[:5]
+    y = energyShort[:5,0]
+    failed = False
+    try:
+        popt, pcov = curve_fit(linearFit, x, y, bounds=([-np.inf, -np.inf], [np.inf, np.inf]))
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+    if(failed == False):
+        #ax.plot(strain, linearFit(strain, *popt), color='b', ls='--', lw=1.5, label='$Fit,$ $ax+b:$ $a = $' + str(np.around(popt[0],3)) + ", $b = $" + str(np.around(popt[1],2)))
+        print("slope (line tension):", popt[0], "intersect:", popt[1])
     ax.legend(fontsize=11, loc='best')
     ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Strain,$ $\gamma_y$", fontsize=16)
-    ax.set_ylabel("$Energy,$ $E$", fontsize=16)
+    ax.set_xlabel("$Length,$ $L_y$", fontsize=16)
+    ax.set_ylabel("$Work,$ $w$", fontsize=16)
     plt.tight_layout()
     figure2Name = "/home/francesco/Pictures/soft/mips/tension" + defName + "-" + figureName
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")

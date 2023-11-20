@@ -19,18 +19,23 @@ import os
 import utils
 import spCluster as cluster
 
-def powerLaw(x, a, b):
-return a*x**b
-
 def lineFit(x, a, b):
-return a + b*x
+    return a + b*x
+
+def powerLaw(x, a, b):
+    return a*x**b
+
+def powerLawMass(x, a, b, c):
+    return a*(x**b + c)
 
 def hyperbolicTan(x, a, b, x0, w):
-return a + b*np.tanh((x-x0)/(2*w))
+    return a + b*np.tanh((x-x0)/(2*w))
 
 def curveCumSum(x, a, b, c):
-return 1 - c*np.exp(-(x*a)**b)
+    return 1 - c*np.exp(-(x*a)**b)
 
+def besselFunc(x, a, b):
+    return b*kn(0,(x/a))
 
 ################################################################################
 ############################ Local density analysis ############################
@@ -814,194 +819,262 @@ def plotSPClusterSize(dirName, figureName, fixed=False, which='fraction', simple
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterHeightSingle(dirName, figureName):
+########################### Interface fluctuations #############################
+def plotSPClusterHeightFluctuations(dirName, figureName, which='active', qmax=1):
+    sigma = utils.readFromDynParams(dirName, 'sigma')
     fig, ax = plt.subplots(2, 1, figsize=(7,7), dpi = 120)
-    if not(os.path.exists(dirName + os.sep + "clusterHeight.dat")):
-        cluster.averageClusterInterfaceHeight(dirName)
-    data = np.loadtxt(dirName + os.sep + "clusterHeight.dat")
-    ax[0].errorbar(data[:,0], data[:,1], data[:,2], lw=1, marker='o', markersize=6, color='k', fillstyle='none', capsize=3, elinewidth=0.5)
-    ax[1].loglog(data[4:,3], data[4:,4], lw=1, marker='o', markersize=6, color='k', fillstyle='none')
-    print(data[0])
-    print(data[0,3:5])
-    fitData = data[4:,3:4]
-    fitData = fitData[fitData[:,0]<6e-03]
-    print(fitData)
-    x = np.geomspace(5e-04,5e-03,100)
-    ax[1].loglog(x, 5e-09/x**2, lw=1.2, ls='--', color='k')
+    if not(os.path.exists(dirName + os.sep + "heightFluctuations.dat")):
+        if(which=='lj'):
+            cluster.averageClusterHeightFluctuations(dirName, 0.3)
+        elif(which=='active'):
+            cluster.averageClusterHeightFluctuations(dirName, 0.78)
+    data = np.loadtxt(dirName + os.sep + "heightFluctuations.dat")
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    ly = boxSize[1]*sigma
+    data[:,4:] *= ly
+    ax[0].errorbar(data[:,0]/sigma, data[:,1]/sigma**2, data[:,2]/sigma**2, lw=1, marker='o', markersize=6, color='k', fillstyle='none', capsize=3, elinewidth=0.5)
+    ax[1].errorbar(data[1:,3], data[1:,4], data[1:,5], lw=1, marker='o', markersize=6, color='k', fillstyle='none', capsize=3, elinewidth=0.5)
+    data = data[data[:,3]<qmax]
+    x = data[1:,3]
+    y = data[1:,4]
     failed = False
     try:
-        popt, pcov = curve_fit(powerLaw, fitData[:,0], fitData[:,1], bounds=([-np.inf, -np.inf], [np.inf, np.inf]))
+        popt, pcov = curve_fit(powerLawMass, x, y, bounds=([0, -2.01, -np.inf], [np.inf, -1.99, np.inf]))
     except RuntimeError:
         print("Error - curve_fit failed")
         failed = True
     if(failed == False):
-        ax[1].plot(fitData[:,0], powerLaw(fitData[:,0], *popt), color='b', lw=1.5, linestyle='solid')
+        ax[1].plot(x, powerLawMass(x, *popt), color='b', lw=1.2, ls='solid', label="$Fit,$ $a(q^b+c):$ $a=$" + str(np.around(popt[0],3)) + ", $b=$" + str(np.around(popt[1],3)) + ", $c=$" + str(np.around(popt[2],3)))
         print("fitting parameters - a:", popt[0], "b:", popt[1])
+    ax[1].set_xscale('log')
+    ax[1].set_yscale('log')
+    ax[1].legend(fontsize=12, loc='best')
     ax[0].tick_params(axis='both', labelsize=14)
     ax[1].tick_params(axis='both', labelsize=14)
     ax[1].set_xlabel("$q$", fontsize=16)
     ax[1].set_ylabel("$\\langle |\delta h(q)|^2 \\rangle L$", fontsize=16)
     ax[0].set_xlabel("$y$", fontsize=16)
-    ax[0].set_ylabel("$\\langle |\delta h(y)|^2 \\rangle L$", fontsize=16)
+    ax[0].set_ylabel("$\\langle |\delta h(y)|^2 \\rangle$", fontsize=16)
     fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pHeightSingle-" + figureName + ".png"
+    figureName = "/home/francesco/Pictures/soft/mips/pHeightFlu-" + figureName + ".png"
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterHeight(dirName, figureName, fixed='Dr', which='1e-04', fourier=False):
-    #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
+def plotSPClusterHeightVSTemp(dirName, figureName, which='active', qmax=0.4):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if(fixed=='Dr'):
-        dirList = np.array(['3', '3.6', '4.2', '4.8', '5.4', '6'])
-    elif(fixed=='length'):
-        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '3e-05'])
+    if(which=='lj'):
+        dirList = np.array(['0.35', '0.36', '0.37', '0.38'])
+        labelName = "$T=$"
+    elif(which=='active'):
+        dirList = np.array(['4e-04', '3e-04', '2e-04', '1.5e-04', '1.2e-04', '1e-04', '9e-05', '7e-05', '5e-05'])
+        labelName = "$D_r=$"
     else:
-        print("please specify fixed parameter")
-        exit()
-    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
+        print("Please specify the sample type")
+    colorList = cm.get_cmap('plasma', dirList.shape[0]+2)
     taup = np.zeros(dirList.shape[0])
-    length = np.zeros(dirList.shape[0])
-    gamma = np.zeros(dirList.shape[0])
     temp = np.zeros((dirList.shape[0],2))
-    delta = np.zeros((dirList.shape[0],2))
+    slope = np.zeros(dirList.shape[0])
+    power = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
-        if(fixed=='Dr'):
-            dirSample = dirName + "/box" + dirList[d] + "-1/0.30/active-langevin/Dr" + which + "/dynamics/"
-            labelName = '$L_x$ = '
-        elif(fixed=='length'):
-            dirSample = dirName + "/box" + which + "-1/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+        if(which=='lj'):
+            dirSample = dirName + "/box6-2/0.238/langevin-lj/T" + dirList[d] + "/dynamics/"
+            labelName = '$T$ = '
+        elif(which=='active'):
+            dirSample = dirName + "/box6-2/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
+            taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             labelName = '$D_r$ = '
-        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
         sigma = utils.readFromDynParams(dirSample, 'sigma')
-        if not(os.path.exists(dirSample + "clusterHeight.dat")):
-            cluster.averageClusterInterfaceHeight(dirSample)
-        data = np.loadtxt(dirSample + "clusterHeight.dat")
-        delta[d,0] = np.mean(data[:,1])
-        delta[d,1] = np.std(data[:,1])
-        if(fourier=='fourier'):
-            ax.plot(data[4:,3], data[4:,4], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
-        else:
-            ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
+        if not(os.path.exists(dirSample + "heightFluctuations.dat")):
+            if(which=='lj'):
+                cluster.averageClusterHeightFluctuations(dirSample, 0.3)
+            elif(which=='active'):
+                cluster.averageClusterHeightFluctuations(dirSample, 0.78)
+        boxSize = np.loadtxt(dirSample + os.sep + "boxSize.dat")
+        ly = boxSize[1]*sigma
+        data = np.loadtxt(dirSample + "heightFluctuations.dat")
+        data[:,4:] *= ly
+        ax.plot(data[1:,3], data[1:,4], lw=1, markersize=6, color=colorList(d/dirList.shape[0]), fillstyle='none', label=labelName + dirList[d])
+        data = data[1:,:]
+        data = data[data[:,3]<qmax]
+        x = data[2:,3]
+        y = data[2:,4]
+        failed = False
+        try:
+            #popt, pcov = curve_fit(powerLaw, x, y)
+            popt, pcov = curve_fit(powerLawMass, x, y, bounds=([0, -2.01, -np.inf], [np.inf, -1.99, np.inf]))
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            #ax.plot(x, powerLaw(x, *popt), color='k', lw=1.2, ls='dashed')#, label="$Fit,$ $aq^b:$ $a=$" + str(np.around(popt[0],3)) + ", $b=$" + str(np.around(popt[1],3)))
+            ax.plot(x, powerLawMass(x, *popt), color='k', lw=1.2, ls='dashed')#, label="$Fit,$ $aq^b:$ $a=$" + str(np.around(popt[0],3)) + ", $b=$" + str(np.around(popt[1],3)))
+            #ax.set_yscale('log')
+            #ax.set_xscale('log')
+            #plt.pause(0.5)
+            print("Dr", dirList[d], "slope (stiffness):", popt[0], "power(2):", popt[1])
+            slope[d] = popt[0]
+            power[d] = popt[1]
+        # compute length of interface
         if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
             cluster.computeClusterTemperatureVSTime(dirSample)
         data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
         temp[d,0] = np.mean(data[:,0])
         temp[d,1] = np.std(data[:,0])
-    #ax.set_xlim(3.7e-04, 1.2e-02)
-    if(fourier=='fourier'):
-        x = np.geomspace(5e-04,5e-03,100)
-        ax.loglog(x, 5e-09/x**2, lw=1.2, ls='--', color='k')
-        ax.set_xlabel("$q$", fontsize=16)
-        ax.set_ylabel("$\\langle |\delta h(q)|^2 \\rangle L$", fontsize=16)
-    else:
-        ax.set_xlabel("$y$", fontsize=16)
-        ax.set_ylabel("$\\langle |\delta h(y)|^2 \\rangle L$", fontsize=16)
-        ax.set_yscale('log')
+    ax.legend(fontsize=11, ncol=2, loc='best')
+    ax.set_xlabel("$q$", fontsize=16)
+    ax.set_ylabel("$\\langle |\delta h(q)|^2 \\rangle L$", fontsize=16)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(fontsize=10, loc='best')
     plt.tight_layout()
-    if(fixed=='Dr'):
-        x = length
-        xlabel = "$Interface$ $length$, $L$"
-        figure1Name = "/home/francesco/Pictures/soft/mips/pHeightVSLength-" + figureName
-        figure2Name = "/home/francesco/Pictures/soft/mips/deltaHVSLength-" + figureName
-    elif(fixed=='length'):
+    figure1Name = "/home/francesco/Pictures/soft/mips/pHeightFluVSLength-" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    # second plot
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which=='lj'):
+        x = temp[:,0]
+        xlabel = "$Temperature,$ $T$"
+    elif(which=='active'):
         x = taup
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figure1Name = "/home/francesco/Pictures/soft/mips/pHeightVSDr-" + figureName
-        figure2Name = "/home/francesco/Pictures/soft/mips/deltaHVSDr-" + figureName
-    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel(xlabel, fontsize=16)
-    #ax.set_xlabel("$Temperature,$ $T_K$", fontsize=16)
-    ax.set_ylabel("$\\langle \\langle |\delta h(y)|^2 \\rangle \\rangle_y L$", fontsize=16)
-    ax.errorbar(x, delta[:,0], delta[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3)
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    #ax.errorbar(temp[:,0], delta[:,0], delta[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3)
+    ax.set_ylabel("$Fitting$ $parameters$", fontsize=16)
+    ax.plot(x, slope, lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', label="$Slope,$ $\\frac{U}{\\gamma}$")
+    ax.plot(x, power, lw=1.2, marker='v', markersize=8, color='b', fillstyle='none', label="$Power$")
+    ax.legend(fontsize=14, loc='best')
+    #ax.set_xscale('log')
+    #ax.set_yscale('log')
     plt.tight_layout()
+    figure2Name = "/home/francesco/Pictures/soft/mips/stiffVSTemp-" + figureName
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterWidth(dirName, figureName, fixed='Dr', which='1e-04'):
+def plotSPDensityProfile(dirName, figureName):
+    #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if(fixed=='Dr'):
-        dirList = np.array(['0.6', '0.8', '1', '1.2', '1.4'])
-    elif(fixed=='length'):
-        dirList = np.array(['4e-04', '3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '4e-05'])
-    else:
-        print("please specify fixed parameter")
-        exit()
-    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
-    taup = np.zeros(dirList.shape[0])
-    width = np.zeros(dirList.shape[0])
+    if not(os.path.exists(dirName + "densityProfile.dat")):
+        cluster.averageLinearDensityProfile(dirName)
+    data = np.loadtxt(dirName + "densityProfile.dat")
+    center = np.mean(data[:,0])
+    x = np.abs(data[:,0]-center)
+    y = data[np.argsort(x),1]
+    yerr = data[np.argsort(x),2]
+    x = np.sort(x)
+    ax.errorbar(x, y, yerr, lw=1, marker='o', markersize=6, color='k', capsize=3, fillstyle='none', label='$Profile$')
+    failed = False
+    try:
+        popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+    if(failed == False):
+        ax.plot(x, hyperbolicTan(x, *popt), color='g', lw=2, linestyle='dashed', label='$Fit$')
+        print("center - x0:", popt[2], "width:", popt[3], 'phi-:', popt[0] - popt[1], 'phi+:', popt[0] + popt[1])
+        width = popt[3]
+    ax.set_xlabel("$x$", fontsize=16)
+    ax.set_ylabel("$\\varphi(x)$", fontsize=16)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=12, loc='best')
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/phiProfile-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPDensityProfileVSTemp(dirName, figureName):
+    #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if not(os.path.exists(dirName + "densityProfile.dat")):
+        cluster.averageLinearDensityProfile(dirName)
+    data = np.loadtxt(dirName + "densityProfile.dat")
+    center = np.mean(data[:,0])
+    x = np.abs(data[:,0]-center)
+    y = data[np.argsort(x),1]
+    yerr = data[np.argsort(x),2]
+    x = np.sort(x)
+    ax.errorbar(x, y, yerr, lw=1, marker='o', markersize=6, color='k', capsize=3, fillstyle='none', label='$Profile$')
+    failed = False
+    try:
+        popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+    if(failed == False):
+        ax.plot(x, hyperbolicTan(x, *popt), color='g', lw=2, linestyle='dashed', label='$Fit$')
+        print("center - x0:", popt[2], "width:", popt[3], 'phi-:', popt[0] - popt[1], 'phi+:', popt[0] + popt[1])
+        width = popt[3]
+    ax.set_xlabel("$x$", fontsize=16)
+    ax.set_ylabel("$\\varphi(x)$", fontsize=16)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=12, loc='best')
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/phiProfile-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterWidth(dirName, figureName, which='active', param='1e-04'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    dirList = np.array(['0.6', '0.8', '1', '1.2', '1.4', '1.6', '1.8', '2', '2.2'])
+    markerList = ['o', 's', 'd', 'v', '^', 'D', 'x', '*', 'h']
+    colorList = cm.get_cmap('plasma', dirList.shape[0]+2)
+    ly = dirList.astype(np.float64)
     length = np.zeros((dirList.shape[0],2))
-    temp = np.zeros((dirList.shape[0],2))
+    width1 = np.zeros((dirList.shape[0],2))
+    width2 = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
-        print(dirList[d])
-        if(fixed=='Dr'):
-            dirSample = dirName + "/box6-" + dirList[d] + "/0.30/active-langevin/Dr" + which + "/dynamics/"
-            labelName = '$L_x$ = '
-        elif(fixed=='length'):
-            dirSample = dirName + "/box6-" + which + "/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
-            labelName = '$D_r$ = '
-        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+        if(which=='lj'):
+            dirSample = dirName + "/box6-" + dirList[d] + "/0.238/langevin-lj/T" + param + "/dynamics/"
+        elif(which=='active'):
+            dirSample = dirName + "/box6-" + dirList[d] + "/0.30/active-langevin/Dr" + param + "/dynamics/"
         sigma = utils.readFromDynParams(dirSample, 'sigma')
         if not(os.path.exists(dirSample + "energyLength.dat")):
-            cluster.averageClusterHeightFluctuations(dirSample)
+            if(which=='lj'):
+                cluster.averageClusterHeightFluctuations(dirSample, 0.3)
+            elif(which=='active'):
+                cluster.averageClusterHeightFluctuations(dirSample, 0.78)
         energyLength = np.loadtxt(dirSample + "energyLength.dat")
-        boxSize = np.loadtxt(dirSample + "boxSize.dat")
-        energyLength[:,1] /= 2#np.sqrt(boxSize[0]**2+boxSize[1]**2)
+        energyLength[:,1] /= sigma
         length[d,0] = np.mean(energyLength[:,1])
         length[d,1] = np.std(energyLength[:,1])
-        #if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
-        #    cluster.computeClusterTemperatureVSTime(dirSample)
-        #data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
-        #temp[d,0] = np.mean(data[:,0])
-        #temp[d,1] = np.std(data[:,0])
         if not(os.path.exists(dirSample + "densityProfile.dat")):
-            cluster.averageLinearDensityProfile(dirSample)
+            if(which=='lj'):
+                cluster.averageLinearDensityProfile(dirSample, 0.3)
+            elif(which=='active'):
+                cluster.averageLinearDensityProfile(dirSample, 0.78)
         data = np.loadtxt(dirSample + "densityProfile.dat")
         center = np.mean(data[:,0])
         x = np.abs(data[:,0]-center)
         y = data[np.argsort(x),1]
         yerr = data[np.argsort(x),2]
         x = np.sort(x)
-        ax.errorbar(x, y, yerr, lw=1, marker=markerList[d], markersize=6, color='k', capsize=3, fillstyle='none', label=labelName + dirList[d])
+        ax.errorbar(x, y, yerr, lw=1, color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, capsize=3, fillstyle='none', label="$L_y=$" + dirList[d])
         #ax.plot(data[:,0], data[:,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=labelName + dirList[d])
-        #width[d] = utils.computeInterfaceWidth(x, y)
-        data = np.loadtxt(dirSample + "interfaceWidth.dat")
-        width[d,0] = np.mean(data[:,1])
-        width[d,1] = np.std(data[:,1])
+        width2[d] = utils.computeInterfaceWidth(x, y)/sigma
+        data = np.loadtxt(dirSample + "interfaceWidth.dat")/sigma
+        width1[d,0] = np.mean(data[:,1]**2)
+        width1[d,1] = np.std(data[:,1]**2)/np.sqrt(data.shape[0])
     ax.set_xlabel("$x$", fontsize=16)
     ax.set_ylabel("$\\varphi(x)$", fontsize=16)
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(fontsize=12, loc='best')
     plt.tight_layout()
-    if(fixed=='Dr'):
-        x = length[:,0]
-        xerr = length[:,1]
-        xlabel = "$Interface$ $length$, $L$"
-        figure1Name = "/home/francesco/Pictures/soft/mips/pProfileVSLength-" + figureName
-        figure2Name = "/home/francesco/Pictures/soft/mips/widthVSLength-" + figureName
-    elif(fixed=='length'):
-        x = taup
-        xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        #xlabel = "$Temperature,$ $T$"
-        figure1Name = "/home/francesco/Pictures/soft/mips/pProfileVSDr-" + figureName
-        figure2Name = "/home/francesco/Pictures/soft/mips/widthVSDr-" + figureName
+    figure1Name = "/home/francesco/Pictures/soft/mips/pProfileVSLength-" + figureName
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    # second plot
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel(xlabel, fontsize=16)
-    ax.set_ylabel("$Interface$ $width,$ $w^2$", fontsize=16)
-    ax.plot(x, width[:,0]**2, width[:,1]**2, lw=1.2, marker='o', markersize=8, color='k', fillstyle='none')
+    ax.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+    ax.set_ylabel("$Squared$ $width,$ $w^2$", fontsize=16)
+    ax.errorbar(ly, width1[:,0], width1[:,1], lw=1.2, marker='o', markersize=8, color='k', fillstyle='none', capsize=3, label='$Average$ $from$ $profiles$')
+    ax.plot(ly, width2**2, lw=1.2, marker='v', markersize=8, color='b', fillstyle='none', label='$From$ $averaged$ $profile$')
+    ax.legend(fontsize=12, loc='best')
     plt.tight_layout()
+    figure2Name = "/home/francesco/Pictures/soft/mips/widthVSLength-" + figureName
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPClusterWidthVSSamples(dirName, figureName, which='lj'):
+def plotSPClusterWidthVSTemp(dirName, figureName, which='lj'):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(which=='lj'):
         dirList = np.array(['0.36', '0.37', '0.38', '0.39', '0.40', '0.41'])
@@ -1009,53 +1082,112 @@ def plotSPClusterWidthVSSamples(dirName, figureName, which='lj'):
         dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '1e-04', '9e-05', '7e-05', '5e-05'])
     else:
         print("Please specify the sample type")
-    colorList = cm.get_cmap('viridis', dirList.shape[0])
-    boxList = np.array(['0.6', '0.8', '1', '1.2', '1.4'])
-    markerList = np.array(['o', 's', 'v', '^', 'x', '*', 'd', 'D', '.', '+'])
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+2)
+    markerList = ['o', 's', 'd', 'v', '^', 'D', 'x', '*', 'h']
+    boxList = np.array(['0.6', '0.8', '1', '1.2', '1.4', '1.6', '1.8', '2', '2.2'])
+    ly = boxList.astype(np.float64)
+    temp = np.zeros(dirList.shape[0])
+    taup = np.zeros(dirList.shape[0])
+    slope = np.zeros(dirList.shape[0])
+    intercept = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
-        taup = np.zeros(boxList.shape[0])
         width = np.zeros((boxList.shape[0],2))
         length = np.zeros((boxList.shape[0],2))
-        temp = np.zeros((boxList.shape[0],2))
-        ly = np.zeros(boxList.shape[0])
         for b in range(boxList.shape[0]):
             if(which=='lj'):
                 dirSample = dirName + "box6-" + boxList[b] + "/0.238/langevin-lj/T" + dirList[d] + "/dynamics/"
                 labelName = "$T=$"
+                if(b==0):
+                    energy = np.loadtxt(dirSample + "/energy.dat")
+                    temp[d] = np.mean(energy[:,2])
             elif(which=='active'):
                 dirSample = dirName + "box6-" + boxList[b] + "/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
                 labelName = "$D_r=$"
-                taup[b] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
+                if(b==0):
+                    taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
             sigma = utils.readFromDynParams(dirSample, 'sigma')
-            boxSize = np.loadtxt(dirSample + "boxSize.dat")
-            ly[b] = boxSize[1]/sigma
-            #if not(os.path.exists(dirSample + "energyLength.dat")):
-            #    cluster.averageClusterEnergyLength(dirSample)
-            #energyLength = np.loadtxt(dirSample + "energyLength.dat")
-            #print(energyLength.shape)
-            #energyLength[:,1] /= 2#np.sqrt(boxSize[0]**2+boxSize[1]**2)
-            #length[b,0] = np.mean(energyLength[:,1])
-            #length[b,1] = np.std(energyLength[:,1])
-            #if not(os.path.exists(dirSample + os.sep + "clusterTemperature.dat")):
-            #    cluster.computeClusterTemperatureVSTime(dirSample)
-            #data = np.loadtxt(dirSample + os.sep + "clusterTemperature.dat")
-            #temp[b,0] = np.mean(data[:,0])
-            #temp[b,1] = np.std(data[:,0])
+            if not(os.path.exists(dirSample + "energyLength.dat")):
+                if(which=='lj'):
+                    cluster.averageClusterHeightFluctuations(dirSample, 0.3)
+                elif(which=='active'):
+                    cluster.averageClusterHeightFluctuations(dirSample, 0.78)
+            energyLength = np.loadtxt(dirSample + "energyLength.dat")
+            energyLength[:,1] /= sigma
+            length[d,0] = np.mean(energyLength[:,1])
+            length[d,1] = np.std(energyLength[:,1])/np.sqrt(energyLength.shape[0])
             if not(os.path.exists(dirSample + "interfaceWidth.dat")):
                 cluster.averageLinearDensityProfile(dirSample)
-            data = np.loadtxt(dirSample + "interfaceWidth.dat")
-            width[b,0] = np.mean(data[:,1])/sigma
-            width[b,1] = np.std(data[:,1])/sigma
+            data = np.loadtxt(dirSample + "interfaceWidth.dat")/sigma
+            width[b,0] = np.mean(data[:,1]**2)
+            width[b,1] = np.std(data[:,1]**2)/np.sqrt(data.shape[0])
         #ax.errorbar(length[:,0], width[:,0]**2, xerr=length[:,1], yerr=width[;,1]**2, lw=1, marker=markerList[d], markersize=8, capsize=3, fillstyle='none', color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
-        ax.errorbar(ly, width[:,0]**2, width[:,1]**2, lw=1, marker=markerList[d], markersize=8, capsize=3, fillstyle='none', color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
-    ax.set_yscale('log')
+        ax.errorbar(ly, width[:,0], width[:,1], lw=1, marker=markerList[d], markersize=8, capsize=3, fillstyle='none', color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
+        x = ly[:4]
+        y = width[:4,0]
+        failed = False
+        try:
+            popt, pcov = curve_fit(lineFit, x, y, bounds=([0, -np.inf], [np.inf, np.inf]))
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            ax.plot(x, lineFit(x, *popt), color='k', lw=1.2, ls='dashed')#, label="$Fit,$ $aq^b:$ $a=$" + str(np.around(popt[0],3)) + ", $b=$" + str(np.around(popt[1],3)))
+            print("fitting parameters - a:", popt[0], "b:", popt[1])
+            slope[d] = popt[0]
+            intercept[d] = popt[1]
+    #ax.set_yscale('log')
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(loc='best', fontsize=10, ncol=2)
-    ax.set_xlabel("$Interface$ $length,$ $L^\\ast$", fontsize=16)
-    ax.set_ylabel("$Interface$ $width,$ $w^{\\ast 2}$", fontsize=16)
-    figureName = "/home/francesco/Pictures/soft/mips/widthSamples-" + figureName
+    ax.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+    ax.set_ylabel("$Squared$ $width,$ $w^2$", fontsize=16)
+    figure1Name = "/home/francesco/Pictures/soft/mips/widthVSTemp-" + figureName
     plt.tight_layout()
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which=='lj'):
+        x = temp
+        xlabel = "$Temperature,$ $T$"
+    elif(which=='active'):
+        x = taup
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$Slope,$ $\\frac{U}{\\gamma}$", fontsize=16)
+    ax.plot(x, slope, lw=1.2, marker='o', markersize=8, color='k', fillstyle='none')#, label="$Slope,$ $\\frac{U}{\\gamma}$")
+    #ax.plot(x, intercept, lw=1.2, marker='v', markersize=8, color='b', fillstyle='none', label="$Power$")
+    #ax.legend(fontsize=14, loc='best')
+    plt.tight_layout()
+    figure2Name = "/home/francesco/Pictures/soft/mips/stiffWidthVSTemp-" + figureName
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPClusterHeightCorrelation(dirName, figureName, which='Dr'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which=='Dr'):
+        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05'])
+    elif(which=='T'):
+        dirList = np.array(['0.41', '0.35'])
+    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
+    gamma = np.zeros(dirList.shape[0])
+    temp = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        if(which=='Dr'):
+            dirSample = dirName + os.sep + which + dirList[d] + "/dynamics/"
+        elif(which=='T'):
+            dirSample = dirName + os.sep + which + dirList[d] + "-removed/dynamics/"
+        sigma = utils.readFromDynParams(dirSample, 'sigma')
+        if not(os.path.exists(dirSample + os.sep + "clusterHeightCorr.dat")):
+            cluster.computeClusterInterfaceCorrelation(dirSample)
+        data = np.loadtxt(dirSample + os.sep + "clusterHeightCorr.dat")
+        #ax.errorbar(data[:,0], data[:,1], data[:,2], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', capsize=3, elinewidth=0.5, label=which + '$=$' + dirList[d])
+        ax.plot(data[1:,0], data[1:,1]/data[0,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=which + '$=$' + dirList[d])
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=12, loc='best')
+    ax.set_xlabel("$Distance,$ $\Delta x$", fontsize=16)
+    ax.set_ylabel("$g_h(\Delta x)$", fontsize=16)
+    fig.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/pHeightCorr-" + figureName + "-vs" + which + ".png"
+    fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
 def makeInterfaceVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04):
@@ -1097,120 +1229,8 @@ def makeInterfaceVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepF
         anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
     anim.save("/home/francesco/Pictures/soft/mips/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
-def plotSPInterface(dirName, figureName, fixed='Dr', which='1e-04'):
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if(fixed=='Dr'):
-        dirList = np.array(['3.6', '4.2', '4.8', '5.4', '6'])
-    elif(fixed=='length'):
-        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05', '3e-05'])
-    else:
-        print("please specify fixed parameter")
-        exit()
-    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
-    taup = np.zeros(dirList.shape[0])
-    energy = np.zeros((dirList.shape[0],2))
-    length = np.zeros((dirList.shape[0],2))
-    for d in range(dirList.shape[0]):
-        if(fixed=='Dr'):
-            dirSample = dirName + "/box" + dirList[d] + "-1/0.30/active-langevin/Dr" + which + "/dynamics/"
-            labelName = '$L_x$ = '
-        elif(fixed=='length'):
-            dirSample = dirName + "/box" + which + "-1/0.30/active-langevin/Dr" + dirList[d] + "/dynamics/"
-            labelName = '$D_r$ = '
-        taup[d] = 1/(utils.readFromDynParams(dirSample, 'Dr')*utils.readFromDynParams(dirSample, 'sigma'))
-        if not(os.path.exists(dirSample + "clusterEnergyLength.dat")):
-            cluster.averageClusterInterfaceHeight(dirSample)
-        energyLength = np.loadtxt(dirSample + "clusterEnergyLength.dat")
-        energy[d,0] = np.mean(energyLength[:,2]+energyLength[:,3])
-        energy[d,1] = np.std(energyLength[:,2]+energyLength[:,3])
-        length[d,0] = np.mean(energyLength[:,1])
-        length[d,1] = np.std(energyLength[:,1])
-        print(dirList[d], length[d,0], energy[d,0])
-    if(fixed=='Dr'):
-        x = length[:,0]
-        xerr = length[:,1]
-        xlabel = "$Interface$ $length$, $L$"
-        figureName = "/home/francesco/Pictures/soft/mips/energyVSLength-" + figureName
-    elif(fixed=='length'):
-        x = tau
-        xlabel = "$Persistence$ $time,$ $\\tau_p$"
-        figureName = "/home/francesco/Pictures/soft/mips/energyVSDr-" + figureName
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel(xlabel, fontsize=16)
-    ax.set_ylabel("$Energy,$ $E$", fontsize=16)
-    ax.errorbar(x, energy[:,0], energy[:,1], lw=1.2, marker='o', markersize=8, capsize=3, color='k', fillstyle='none')
-    if(fixed=='length'):
-        ax.set_yscale('log')
-    #ax.set_yscale('log')
-    plt.tight_layout()
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPDensityProfile(dirName, figureName):
-    #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if not(os.path.exists(dirName + "densityProfile.dat")):
-        cluster.averageLinearDensityProfile(dirName)
-    data = np.loadtxt(dirName + "densityProfile.dat")
-    center = np.mean(data[:,0])
-    x = np.abs(data[:,0]-center)
-    y = data[np.argsort(x),1]
-    yerr = data[np.argsort(x),2]
-    x = np.sort(x)
-    ax.errorbar(x, y, yerr, lw=1, marker='o', markersize=6, color='k', capsize=3, fillstyle='none', label='$Profile$')
-    failed = False
-    try:
-        popt, pcov = curve_fit(hyperbolicTan, x, y, bounds=([-np.inf, -np.inf, -np.inf, 0], [np.inf, np.inf, np.inf, np.inf]))
-    except RuntimeError:
-        print("Error - curve_fit failed")
-        failed = True
-    if(failed == False):
-        ax.plot(x, hyperbolicTan(x, *popt), color='g', lw=2, linestyle='dashed', label='$Fit$')
-        print("center - x0:", popt[2], "width:", popt[3], 'phi-:', popt[0] - popt[1], 'phi+:', popt[0] + popt[1])
-        width = popt[3]
-    ax.set_xlabel("$x$", fontsize=16)
-    ax.set_ylabel("$\\varphi(x)$", fontsize=16)
-    ax.tick_params(axis='both', labelsize=14)
-    ax.legend(fontsize=12, loc='best')
-    plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/phiProfile-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def besselFunc(x, a, b):
-    return b*kn(0,(x/a))
-
-def plotSPClusterHeightCorrelation(dirName, figureName, which='Dr'):
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if(which=='Dr'):
-        dirList = np.array(['3e-04', '2e-04', '1.5e-04', '1.2e-04', '9e-05', '7e-05', '5e-05'])
-    elif(which=='T'):
-        dirList = np.array(['0.41', '0.35'])
-    markerList = ['o', 'v', '^', 's', '*', 'd', 'D', '+', 'x']
-    gamma = np.zeros(dirList.shape[0])
-    temp = np.zeros((dirList.shape[0],2))
-    for d in range(dirList.shape[0]):
-        if(which=='Dr'):
-            dirSample = dirName + os.sep + which + dirList[d] + "/dynamics/"
-        elif(which=='T'):
-            dirSample = dirName + os.sep + which + dirList[d] + "-removed/dynamics/"
-        sigma = utils.readFromDynParams(dirSample, 'sigma')
-        if not(os.path.exists(dirSample + os.sep + "clusterHeightCorr.dat")):
-            cluster.computeClusterInterfaceCorrelation(dirSample)
-        data = np.loadtxt(dirSample + os.sep + "clusterHeightCorr.dat")
-        #ax.errorbar(data[:,0], data[:,1], data[:,2], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', capsize=3, elinewidth=0.5, label=which + '$=$' + dirList[d])
-        ax.plot(data[1:,0], data[1:,1]/data[0,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=which + '$=$' + dirList[d])
-    ax.tick_params(axis='both', labelsize=14)
-    ax.legend(fontsize=12, loc='best')
-    ax.set_xlabel("$Distance,$ $\Delta x$", fontsize=16)
-    ax.set_ylabel("$g_h(\Delta x)$", fontsize=16)
-    fig.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/mips/pHeightCorr-" + figureName + "-vs" + which + ".png"
-    fig.savefig(figureName, transparent=True, format = "png")
-    plt.show()
-
 ################################################################################
-############################# Cluster correlations #############################
+############################### Cluster dynamics ###############################
 ################################################################################
 def plotSPClusterTemperature(dirName, figureName, fixed=False, which='1e-03'):
     fig, ax = plt.subplots(figsize=(7,4), dpi = 120)
@@ -3684,33 +3704,38 @@ if __name__ == '__main__':
         simplex = sys.argv[6]
         plotSPClusterSize(dirName, figureName, fixed, which, simplex)
 
-    elif(whichPlot == "height"):
-        figureName = sys.argv[3]
-        plotSPClusterHeightSingle(dirName, figureName)
-
-    elif(whichPlot == "clusterheight"):
-        figureName = sys.argv[3]
-        fixed = sys.argv[4]
-        which = sys.argv[5]
-        fourier = sys.argv[6]
-        plotSPClusterHeight(dirName, figureName, fixed, which, fourier)
-
-    elif(whichPlot == "clusterwidth"):
-        figureName = sys.argv[3]
-        fixed = sys.argv[4]
-        which = sys.argv[5]
-        plotSPClusterWidth(dirName, figureName, fixed, which)
-
-    elif(whichPlot == "widthsamples"):
+########################### Interface fluctuations #############################
+    elif(whichPlot == "heightflu"):
         figureName = sys.argv[3]
         which = sys.argv[4]
-        plotSPClusterWidthVSSamples(dirName, figureName, which)
+        qmax = float(sys.argv[5])
+        plotSPClusterHeightFluctuations(dirName, figureName, which, qmax)
 
-    elif(whichPlot == "interface"):
+    elif(whichPlot == "heighttemp"):
         figureName = sys.argv[3]
-        fixed = sys.argv[4]
-        which = sys.argv[5]
-        plotSPInterface(dirName, figureName, fixed, which)
+        which = sys.argv[4]
+        qmax = float(sys.argv[5])
+        plotSPClusterHeightVSTemp(dirName, figureName, which, qmax)
+
+    elif(whichPlot == "profile"):
+        figureName = sys.argv[3]
+        plotSPDensityProfile(dirName, figureName)
+
+    elif(whichPlot == "width"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        param = sys.argv[5]
+        plotSPClusterWidth(dirName, figureName, which, param)
+
+    elif(whichPlot == "widthtemp"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterWidthVSTemp(dirName, figureName, which)
+
+    elif(whichPlot == "heightcorr"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPClusterHeightCorrelation(dirName, figureName, which)
 
     elif(whichPlot == "interfacevideo"):
         figureName = sys.argv[3]
@@ -3719,15 +3744,7 @@ if __name__ == '__main__':
         stepFreq = float(sys.argv[6])
         makeInterfaceVideo(dirName, figureName, numFrames, firstStep, stepFreq)
 
-    elif(whichPlot == "profile"):
-        figureName = sys.argv[3]
-        plotSPDensityProfile(dirName, figureName)
-
-    elif(whichPlot == "heightcorr"):
-        figureName = sys.argv[3]
-        which = sys.argv[4]
-        plotSPClusterHeightCorrelation(dirName, figureName, which)
-
+############################### Cluster dynamics ###############################
     elif(whichPlot == "clustertemp"):
         figureName = sys.argv[3]
         fixed = sys.argv[4]
