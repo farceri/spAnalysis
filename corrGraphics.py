@@ -4,6 +4,7 @@ Created by Francesco
 '''
 #functions for soft particle packing visualization
 import numpy as np
+import pandas as pd
 import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib import cm
@@ -88,16 +89,108 @@ def plotSPCorr(ax, x, y, ylabel, color, legendLabel = None, logx = True, logy = 
     if(logy == True):
         ax.set_yscale('log')
 
+############################### CPU/GPU testing ################################
+def plotCPUGPUperformance(dirName, figureName):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    data = np.loadtxt(dirName + "executionTime.txt")
+    ax.plot(data[data[:,1]>0,0], data[data[:,1]>0,1], marker='v', color='k', ls='--', lw=1, markersize=10, label="CPU")
+    ax.plot(data[:,0], data[:,2], marker='o', color='k', ls='solid', fillstyle='none', lw=1, markersize=10, label="GPU")
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xscale('log')
+    ax.legend(fontsize=14, loc='best')
+    ax.set_xticks([100, 200, 400, 600, 1000, 2000, 4000, 8000])
+    ax.set_xticklabels(['100', '200', '400', '600', '1000', '2000', '4000', '8000'], fontsize=14)
+    ax.set_xlabel("$System$ $size,$ $N$", fontsize=16)
+    ax.set_ylabel("$Execution$ $time$ $(hr)$", fontsize=16)
+    fig.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/gpu-cpu-extime-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
+    plt.show()
+
+################################# GPU testing #################################
+def plotGPUperformance(dirName, figureName):
+    fig1, ax1 = plt.subplots(figsize=(7,5), dpi = 120)
+    fig2, ax2 = plt.subplots(figsize=(7,5), dpi = 120)
+    fileList = np.array(['a5000', 'l40s', 'a100'])
+    labelList = np.array(['$A5000$', '$L40S$', '$A100$'])
+    sizeList = np.array(['8192', '16384', '32768', '65536', '131072', '262144'])
+    size = sizeList.astype(np.float64)
+    gpuIndex = np.array([1, 2, 3])
+    colorList = ['g', 'b', 'k']
+    markerList = ['o', 's', 'v']
+    fillList = ['none', 'left', 'full']
+    for i in range(fileList.shape[0]):
+        total = np.zeros(sizeList.shape[0])
+        used = np.zeros((sizeList.shape[0],2))
+        extime = np.zeros(sizeList.shape[0])
+        for j in range(sizeList.shape[0]):
+            data = pd.read_csv(dirName + "slurm-" + fileList[i] + "-gpu-N" + sizeList[j] + ".csv")
+            time = data["timestamp"].to_numpy()[:-1]
+            day = float(time[-1][9])
+            extime[j] = float(time[-1][17:])+60*float(time[-1][14:16])+60*60*float(time[-1][11:13])
+            if(day != float(time[0][9])):
+                extime[j] += 60*60*24
+            extime[j] -= float(time[0][17:])+60*float(time[0][14:16])+60*60*float(time[0][11:13])
+            extime[j] /= 60*60
+            print(fileList[i], sizeList[j], "execution time:", extime[j])
+            temptot = data[" memory.total [MiB]"].to_numpy()[5:-1]
+            tempuse = data[" memory.used [MiB]"].to_numpy()[5:-1]
+            print(fileList[i], sizeList[j])
+            tot = np.zeros(temptot.shape[0])
+            use = np.zeros(temptot.shape[0])
+            for t in range(temptot.shape[0]):
+                #print(t, temptot[t][:5])
+                tot[t] = float(temptot[t][:3])
+                use[t] = float(tempuse[t][:3])
+            total[j] = np.mean(tot)
+            used[j,0] = np.mean(use)
+            used[j,1] = np.std(use)
+        ax1.errorbar(size, used[:,0]*100/total, used[:,1]*100/total, linewidth=1, color=colorList[i], marker=markerList[i], fillstyle=fillList[i], markersize=10, markeredgewidth=1.2, capsize=5, label=labelList[i])
+        #if(i==0 or i==1):
+        #    ax2.plot(size[:-1], extime[:-1], linewidth=1, color=colorList[i], marker=markerList[i], fillstyle=fillList[i], markersize=10, markeredgewidth=1.2, label=labelList[i])
+        #else:
+        ax2.plot(size, extime, linewidth=1, color=colorList[i], marker=markerList[i], fillstyle=fillList[i], markersize=10, markeredgewidth=1.2, label=labelList[i])
+    ax1.set_xscale('log', base=2)
+    ax2.set_xscale('log', base=2)
+    #ax2.set_yscale('log')
+    ax1.tick_params(axis='both', labelsize=14)
+    ax2.tick_params(axis='both', labelsize=14)
+    ax1.legend(fontsize=14, loc='best')
+    ax2.legend(fontsize=14, loc='best')
+    ax1.set_xticks([8192, 16384, 32768, 65536, 131072, 262144])
+    ax1.set_xticklabels(['8192', '16384', '32768', '65536', '131072', '262144'], fontsize=14)
+    ax2.set_xticks([8192, 16384, 32768, 65536, 131072, 262144])
+    ax2.set_xticklabels(['8192', '16384', '32768', '65536', '131072', '262144'], fontsize=14)
+    ax1.set_xlabel("$System$ $size,$ $N$", fontsize=16)
+    ax2.set_xlabel("$System$ $size,$ $N$", fontsize=16)
+    ax1.set_ylabel("$Used$ $memory$ $\\%$", fontsize=16)
+    ax2.set_ylabel("$Execution$ $time$ $(hr)$", fontsize=16)
+    fig1.tight_layout()
+    fig2.tight_layout()
+    figure1Name = "/home/francesco/Pictures/soft/gpu-usage-" + figureName
+    fig1.savefig(figure1Name + ".png", transparent=False, format = "png")
+    figure2Name = "/home/francesco/Pictures/soft/extime-" + figureName
+    fig2.savefig(figure2Name + ".png", transparent=False, format = "png")
+    plt.show()
+
 ########################## nve and langevin comparison #########################
 def plotEnergy(dirName, figureName):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    energy = np.loadtxt(dirName + os.sep + "energy.dat")
-    print("temperature:", np.mean(energy[:,4]), ", energy ratio:", np.mean(energy[:,2]/energy[:,3]))
-    fig = plt.figure(figsize = (7, 5), dpi = 120)
-    ax = fig.gca()
-    ax.plot(energy[:,0], energy[:,2]/numParticles, linewidth=1.5, color='k')
-    ax.plot(energy[:,0], energy[:,3]/numParticles, linewidth=1.5, color='r', linestyle='--')
-    ax.plot(energy[:,0], (energy[:,2] + energy[:,3])/numParticles, linewidth=1.5, color='b', linestyle='dotted')
+    if(os.path.exists(dirName + "/energy.dat")):
+        energy = np.loadtxt(dirName + os.sep + "energy.dat")
+        fileName = 'energy'
+    elif(os.path.exists(dirName + "/stressEnergy.dat")):
+        energy = np.loadtxt(dirName + os.sep + "stressEnergy.dat")
+        fileName = 'stressEnergy'
+    else:
+        print("no energy file is in the folder")
+    print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
+    print("potential energy per particle:", np.mean(energy[:,2]), " +-", np.std(energy[:,2]))
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k')
+    ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--')
+    ax.plot(energy[:,0], energy[:,2] + energy[:,3], linewidth=1.5, color='b', linestyle='dotted')
+    if(fileName == 'stressEnergy'):
+        ax.plot(energy[:,0], energy[:,4], linewidth=1.5, color=[0.5,0.5,0.5])
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Simulation$ $step$", fontsize=16)
     ax.set_ylabel("$Energy$", fontsize=16)
@@ -106,6 +199,26 @@ def plotEnergy(dirName, figureName):
     #ax.set_yscale('log')
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/penergy-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+########################## nve and langevin comparison #########################
+def plotWallForcePressure(dirName, figureName):
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    width = 0.5 * boxSize[0]
+    energy = np.loadtxt(dirName + os.sep + "energy.dat")
+    print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
+    print("potential energy per particle:", np.mean(energy[:,2]), " +-", np.std(energy[:,2]))
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    #ax.plot(energy[:,0], energy[:,2], linewidth=1.2, color='b', ls='dashed', label="$E_{pot}$")
+    ax.plot(energy[:,1], energy[:,4]/width, linewidth=1.2, marker='o', markersize=3, fillstyle='none', color='k', label="$\\frac{F_{wall}}{L}$")
+    ax.set_xscale('log')
+    #ax.plot(energy[:,0], energy[:,5], linewidth=1.2, color='r', ls='dashdot', label="$p$")
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $time$", fontsize=16)
+    ax.legend(fontsize=18, loc='best')
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/pwall-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1443,43 +1556,6 @@ def plotSPJamming(dirName, figureName):
     plt.savefig("/home/francesco/Pictures/soft/jamming-" + figureName + ".png", transparent=False, format = "png")
     plt.show()
 
-def plotSPPSI6P2Compression(dirName, figureName):
-    fig, ax = plt.subplots(2, 1, figsize = (6, 7), sharex = True, dpi = 120)
-    phi = []
-    hop = []
-    p2 = []
-    for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir)):
-            phi.append(utils.readFromParams(dirName + os.sep + dir, "phi"))
-            boxSize = np.loadtxt(dirName + os.sep + dir + "/boxSize.dat")
-            nv = np.loadtxt(dirName + os.sep + dir + "/numVertexInParticleList.dat", dtype=int)
-            psi6 = spCorr.computeHexaticOrder(dirName + os.sep + dir, boxSize)
-            hop.append(np.mean(psi6))
-            eigvmax, _ = shapeDescriptors.getShapeDirections(dirName + os.sep + dir, boxSize, nv)
-            angles = np.arctan2(eigvmax[:,1], eigvmax[:,0])
-            p2.append(np.mean(2 * np.cos(angles - np.mean(angles))**2 - 1))
-    phi = np.array(phi)
-    hop = np.array(hop)
-    p2 = np.array(p2)
-    hop = hop[np.argsort(phi)]
-    p2 = p2[np.argsort(phi)]
-    phi = np.sort(phi)
-    hop = hop[phi>0.65]
-    p2 = p2[phi>0.65]
-    phi = phi[phi>0.65]
-    np.savetxt(dirName + os.sep + "compression.dat", np.column_stack((phi, pressure, zeta)))
-    ax[0].plot(phi, p2, color='k', linewidth=1.5)
-    ax[1].plot(phi, hop, color='k', linewidth=1.5)
-    ax[0].tick_params(axis='both', labelsize=14)
-    ax[1].tick_params(axis='both', labelsize=14)
-    ax[1].set_xlabel("$packing$ $fraction,$ $\\varphi$", fontsize=17)
-    ax[0].set_ylabel("$nematic$ $order,$ $\\langle p2 \\rangle$", fontsize=17)
-    ax[1].set_ylabel("$hexagonal$ $order,$ $\\langle \\psi_6 \\rangle$", fontsize=17)
-    plt.tight_layout()
-    plt.subplots_adjust(hspace=0)
-    plt.savefig("/home/francesco/Pictures/soft/comp-param-" + figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
 def plotSPHOPCompression(dirName, figureName):
     dataSetList = np.array(os.listdir(dirName))
     phi = dataSetList.astype(float)
@@ -1531,72 +1607,6 @@ def plotCompressionSet(dirName, figureName):
     plt.savefig("/home/francesco/Pictures/soft/compression-" + figureName + ".png", transparent=False, format = "png")
     plt.show()
 
-def plotSPHOPDynamics(dirName, figureName):
-    step = []
-    hop = []
-    err = []
-    fig = plt.figure(0, dpi = 150)
-    ax = fig.gca()
-    for dir in os.listdir(dirName)[::10]:
-        if(os.path.isdir(dirName + os.sep + dir)):
-            step.append(float(dir[1:]))
-            psi6 = spCorr.computeHexaticOrder(dirName + os.sep + dir)
-            hop.append(np.mean(psi6))
-            err.append(np.sqrt(np.var(psi6)/psi6.shape[0]))
-    step = np.array(step)
-    hop = np.array(hop)
-    err = np.array(err)
-    hop = hop[np.argsort(step)]
-    err = err[np.argsort(step)]
-    step = np.sort(step)
-    plotErrorBar(ax, step, hop, err, "$simulation$ $step$", "$hexatic$ $order$ $parameter,$ $\\psi_6$")
-    plt.savefig("/home/francesco/Pictures/soft/hexatic-" + figureName + ".png", transparent=False, format = "png")
-    plt.show()
-
-def plotSPPSI6P2Dynamics(dirName, figureName, numFrames = 20, firstStep = 1e07, stepFreq = 1e04):
-    stepList = utils.getStepList(numFrames, firstStep, stepFreq)
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    nv = np.loadtxt(dirName + os.sep + "numVertexInParticleList.dat", dtype=int)
-    numParticles = nv.shape[0]
-    hop = []
-    p2 = []
-    for i in stepList:
-        psi6 = spCorr.computeHexaticOrder(dirName + os.sep + "t" + str(i), boxSize)
-        hop.append(np.mean(psi6))
-        eigvmax, _ = shapeDescriptors.getShapeDirections(dirName + os.sep + "t" + str(i), boxSize, nv)
-        angles = np.arctan2(eigvmax[:,1], eigvmax[:,0])
-        p2.append(np.mean(2 * np.cos(angles - np.mean(angles))**2 - 1))
-    stepList -= stepList[0]
-    stepList = np.array(stepList-stepList[0])/np.max(stepList-stepList[0])
-    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(6,5), dpi=150)
-    ax[0].plot(stepList, hop, linewidth=1.2, color='b')
-    ax[1].plot(stepList, p2, linewidth=1.2, color='g')
-    ax[0].tick_params(axis='both', labelsize=14)
-    ax[1].tick_params(axis='both', labelsize=14)
-    ax[1].set_xlabel("$time$ $fraction,$ $t/t_{relax}$", fontsize=17)
-    ax[0].set_ylabel("$\\langle \\psi_6 \\rangle$", fontsize=17)
-    ax[1].set_ylabel("$\\langle P_2 \\rangle$", fontsize=17, labelpad=-5)
-    plt.tight_layout()
-    fig.subplots_adjust(hspace=0)
-    plt.savefig("/home/francesco/Pictures/soft/psi6-p2-" + figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPHOPVSphi(dirName, figureName):
-    dataSetList = np.array(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])
-    phi = []
-    hop = []
-    err = []
-    fig = plt.figure(0, dpi = 150)
-    ax = fig.gca()
-    for i in range(dataSetList.shape[0]):
-        phi.append(utils.readFromParams(dirName + os.sep + dataSetList[i], "phi"))
-        psi6 = spCorr.computeHexaticOrder(dirName + os.sep + dataSetList[i])
-        hop.append(np.mean(psi6))
-        err.append(np.sqrt(np.var(psi6)/psi6.shape[0]))
-    plotErrorBar(ax, phi, hop, err, "$packing$ $fraction,$ $\\varphi$", "$hexatic$ $order$ $parameter,$ $\\psi_6$")
-    plt.savefig("/home/francesco/Pictures/soft/hop-" + figureName + ".png", transparent=False, format = "png")
-    plt.show()
-
 def plotDeltaEvsDeltaV(dirName, figureName):
     #dataSetList = np.array(["1e-03", "3e-03", "5e-03", "7e-03", "9e-03", "1e-02", "1.3e-02", "1.5e-02", "1.7e-02", "2e-02", "2.3e-02", "2.5e-02", "2.7e-02", "3e-02", "4e-02", "5e-02", "6e-02"])
     dataSetList = np.array(["1e-03", "3e-03", "5e-03", "7e-03", "1e-02", "3e-02", "5e-02", "7e-02", "1e-01"])
@@ -1625,7 +1635,6 @@ def plotDeltaEvsDeltaV(dirName, figureName):
     plt.tight_layout()
     plt.savefig("/home/francesco/Pictures/soft/pressure-" + figureName + ".png", transparent=False, format = "png")
     plt.show()
-
 
 ################################# plot dynamics ################################
 def plotSPDynamics(dirName, figureName):
@@ -2475,9 +2484,21 @@ if __name__ == '__main__':
     dirName = sys.argv[1]
     whichPlot = sys.argv[2]
 
-    if(whichPlot == "energy"):
+    if(whichPlot == "cpugpu"):
+        figureName = sys.argv[3]
+        plotCPUGPUperformance(dirName, figureName)
+
+    elif(whichPlot == "gpu"):
+        figureName = sys.argv[3]
+        plotGPUperformance(dirName, figureName)
+
+    elif(whichPlot == "energy"):
         figureName = sys.argv[3]
         plotEnergy(dirName, figureName)
+
+    elif(whichPlot == "wall"):
+        figureName = sys.argv[3]
+        plotWallForcePressure(dirName, figureName)
 
     elif(whichPlot == "compare"):
         dirName1 = dirName + sys.argv[3]
@@ -2518,16 +2539,6 @@ if __name__ == '__main__':
     elif(whichPlot == "active"):
         figureName = sys.argv[3]
         plotActiveEnergy(dirName, figureName)
-
-    elif(whichPlot == "energyphi"):
-        sampleName = sys.argv[3]
-        figureName = sys.argv[4]
-        compareEnergyVSPhi(dirName, sampleName, figureName)
-
-    elif(whichPlot == "energyf0"):
-        sampleName = sys.argv[3]
-        figureName = sys.argv[4]
-        compareEnergyVSActivity(dirName, sampleName, figureName)
 
     elif(whichPlot == "fourier"):
         fileName = sys.argv[3]
@@ -2614,28 +2625,9 @@ if __name__ == '__main__':
         figureName = sys.argv[3]
         plotSPHOPCompression(dirName, figureName)
 
-    elif(whichPlot == "comppsi6p2"):
-        figureName = sys.argv[3]
-        plotSPPSI6P2Compression(dirName, figureName)
-
     elif(whichPlot == "compset"):
         figureName = sys.argv[3]
         plotCompressionSet(dirName, figureName)
-
-    elif(whichPlot == "hop"):
-        figureName = sys.argv[3]
-        plotSPHOPDynamics(dirName, figureName)
-
-    elif(whichPlot == "psi6p2"):
-        figureName = sys.argv[3]
-        numFrames = int(sys.argv[4])
-        firstStep = float(sys.argv[5])
-        stepFreq = float(sys.argv[6])
-        plotSPPSI6P2Dynamics(dirName, figureName, numFrames, firstStep, stepFreq)
-
-    elif(whichPlot == "hopphi"):
-        figureName = sys.argv[3]
-        plotSPHOPVSphi(dirName, figureName)
 
     elif(whichPlot == "pslope"):
         figureName = sys.argv[3]
@@ -2741,12 +2733,6 @@ if __name__ == '__main__':
         firstIndex = int(sys.argv[3])
         figureName = sys.argv[4]
         plotSPVelPDFVSMass(dirName, firstIndex, figureName)
-
-    elif(whichPlot == "pdensityvstime"):
-        sampleName = sys.argv[3]
-        numBins = int(sys.argv[4])
-        figureName = sys.argv[5]
-        plotSPDensityVarVSTime(dirName, sampleName, numBins, figureName)
 
     elif(whichPlot == "pdensitypdf"):
         sampleName = sys.argv[3]

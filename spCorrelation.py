@@ -26,6 +26,7 @@ def computePairCorr(dirName, plot="plot"):
     binCenter = 0.5 * (edges[:-1] + edges[1:])
     pairCorr /= (2 * np.pi * binCenter)
     firstPeak = binCenter[np.argmax(pairCorr)]
+    np.savetxt(dirName + os.sep + "pairCorr.dat", np.column_stack((binCenter, pairCorr)))
     print("First peak of pair corr is at distance:", firstPeak, "equal to", firstPeak/meanRad, "times the mean radius:", meanRad)
     if(plot == "plot"):
         uplot.plotCorrelation(binCenter, pairCorr, "$Pair$ $correlation$ $function,$ $g(r)$")
@@ -142,51 +143,40 @@ def computeParticleLogSelfCorrOneDim(dirName, startBlock, maxPower, freqPower):
     #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,1], "$ISF(t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
 
 ########################## Particle Self Correlations ##########################
-def computeParticleSelfCorr(dirName, maxPower):
+def computeParticleSelfCorr(dirName, plot=False):
     computeFrom = 20
-    numParticles = utils.readFromParams(dirName, "numParticles")
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    boxSize = np.loadtxt(dirName + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    pRad = np.mean(np.loadtxt(dirName + "particleRad.dat"))
     phi = utils.readFromParams(dirName, "phi")
     timeStep = utils.readFromParams(dirName, "dt")
     #pWaveVector = np.pi / (2 * np.sqrt(boxSize[0] * boxSize[1] * phi / (np.pi * numParticles)))
     #pWaveVector = np.pi / computePairCorr(dirName, plot=False)
     pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "particleRad.dat")))
     pWaveVector = np.pi / pRad
-    particleCorr = []
     # get trajectory directories
-    stepRange = utils.getDirectories(dirName)
-    stepRange = np.array(np.char.strip(stepRange, 't'), dtype=int)
-    stepRange = np.sort(stepRange)
-    pPos0 = np.array(np.loadtxt(dirName + os.sep + "t" + str(stepRange[0]) + "/particlePos.dat"))
-    pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "t" + str(stepRange[0]) + "/particleRad.dat")))
-    stepRange = stepRange[stepRange<int(10**maxPower)]
-    for i in range(1,stepRange.shape[0]):
-        pPos = np.array(np.loadtxt(dirName + os.sep + "t" + str(stepRange[i]) + "/particlePos.dat"))
-        particleCorr.append(utils.computeCorrFunctions(pPos, pPos0, boxSize, pWaveVector, pRad**2))
-        #particleCorr.append(utils.computeScatteringFunctions(pPos, pPos0, boxSize, pWaveVector, pRad**2))
-    particleCorr = np.array(particleCorr).reshape((stepRange.shape[0]-1,7))
-    stepRange = stepRange[1:]#discard initial time
-    np.savetxt(dirName + os.sep + "linCorr.dat", np.column_stack((stepRange*timeStep, particleCorr)))
-    #print("diffusivity: ", np.mean(particleCorr[-20:,0]/(4*stepRange[-20:]*timeStep)), " ", np.std(particleCorr[-20:,0]/(4*stepRange[-20:]*timeStep)))
-    #uplot.plotCorrelation(stepRange * timeStep, particleCorr[:,0], "$MSD(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logy = True, logx = True, color = 'k')
-    uplot.plotCorrelation(stepRange * timeStep, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    particleCorr = np.zeros((dirList.shape[0]-1,7))
+    pPos0 = np.array(np.loadtxt(dirName + os.sep + dirList[0] + "/particlePos.dat"))
+    for i in range(1,dirList.shape[0]):
+        pPos = np.array(np.loadtxt(dirName + os.sep + dirList[i] + "/particlePos.dat"))
+        particleCorr[i-1] = utils.computeCorrFunctions(pPos, pPos0, boxSize, pWaveVector, pRad**2)
+    np.savetxt(dirName + os.sep + "linCorr.dat", np.column_stack((timeList[1:], particleCorr)))
+    if(plot=='plot'):
+        uplot.plotCorrelation(timeList[1:], particleCorr[:,0], "$MSD(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logy = True, logx = True, color = 'k')
+        #uplot.plotCorrelation(timeList[1:], particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+        plt.show()
 
 ########## Check Self Correlations by logarithmically spaced blocks ############
 def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot", computeTau="tau"):
     colorList = cm.get_cmap('viridis', 10)
-    numParticles = utils.readFromParams(dirName, "numParticles")
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    boxSize = np.loadtxt(dirName + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    pRad = np.mean(np.loadtxt(dirName + "particleRad.dat"))
     phi = utils.readFromParams(dirName, "phi")
     timeStep = utils.readFromParams(dirName, "dt")
-    energy = np.loadtxt(dirName + "/energy.dat")
-    if(energy[-1,3] < energy[-1,4]):
-        T = np.mean(energy[:,3])
-    else:
-        T = np.mean(energy[:,4])
-    print(T)
     #pWaveVector = np.pi / (np.sqrt(boxSize[0] * boxSize[1] * phi / (np.pi * numParticles)))
     #pWaveVector = np.pi /computePairCorr(dirName, plot=False)
-    #pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "particleRad.dat")))
     firstPeak = np.loadtxt(dirName + os.sep + "pcorrFirstPeak.dat")[0]
     pWaveVector = 2*np.pi / firstPeak
     print("wave vector: ", pWaveVector)
@@ -201,7 +191,6 @@ def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot
     for block in np.arange(initialBlock, numBlocks+1, 1, dtype=int):
         particleCorr = []
         pPos0 = np.array(np.loadtxt(dirName + os.sep + "t" + str((block-1)*decade) + "/particlePos.dat"))
-        pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "t" + str((block-1)*decade) + "/particleRad.dat")))
         end = np.argwhere(stepRange==(block*decade-int(decade/10)))[0,0]
         #print((block-1)*decade, start, block*decade, end)
         stepBlock = stepRange[start:end+1]
@@ -237,21 +226,19 @@ def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot
         np.savetxt(dirName + "relaxationData.dat", np.array([[timeStep, phi, T, np.mean(tau), np.std(tau), np.mean(diff), np.std(diff)]]))
 
 ########### Time-averaged Self Correlations in log-spaced time window ##########
-def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac = 1, computeTau = "tau"):
-    numParticles = utils.readFromParams(dirName, "numParticles")
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "particleRad.dat")))
+def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower):
+    boxSize = np.loadtxt(dirName + "boxSize.dat")
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    pRad = np.mean(np.loadtxt(dirName + "particleRad.dat"))
     phi = utils.readFromParams(dirName, "phi")
     timeStep = utils.readFromParams(dirName, "dt")
-    if(qFrac == "read"):
-        if(os.path.exists(dirName + os.sep + "pairCorr.dat")):
-            pcorr = np.loadtxt(dirName + os.sep + "pairCorr.dat")
-            firstPeak = pcorr[np.argmax(pcorr[:,1]),0]
-        else:
-            firstPeak = computePairCorr(dirName, plot=False)
-        pWaveVector = 2 * np.pi / firstPeak
-    else:
-        pWaveVector = 2 * np.pi / (float(qFrac) * 2 * pRad)
+    if not(os.path.exists(dirName + os.sep + "pairCorr.dat")):
+        computePairCorr(dirName, plot=False)
+    pcorr = np.loadtxt(dirName + os.sep + "pairCorr.dat")
+    uplot.plotCorrelation(pcorr[:,0], pcorr[:,1], "$g(r)$", "$r$", color='k')
+    plt.show()
+    firstPeak = pcorr[np.argmax(pcorr[:,1]),0]
+    pWaveVector = 2 * np.pi / firstPeak
     print("wave vector: ", pWaveVector, " meanRad: ", pRad)
     particleCorr = []
     stepList = []
@@ -281,35 +268,12 @@ def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac =
     stepList = np.array(stepList)
     particleCorr = np.array(particleCorr).reshape((stepList.shape[0],7))
     particleCorr = particleCorr[np.argsort(stepList)]
-    if(qFrac == "read"):
-        np.savetxt(dirName + os.sep + "logCorr.dat", np.column_stack((stepList, particleCorr)))
-    else:
-        np.savetxt(dirName + os.sep + "logCorr-q" + qFrac + ".dat", np.column_stack((stepList, particleCorr)))
+    np.savetxt(dirName + os.sep + "logCorr.dat", np.column_stack((stepList, particleCorr)))
     #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
     uplot.plotCorrelation(stepList * timeStep, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
     #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,3], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
     plt.show()
-    if(computeTau=="tau"):
-        T = np.mean(np.loadtxt(dirName + "energy.dat")[:,4])
-        diff = np.mean(particleCorr[-1:,0]/(2 * stepRange[-1:] * timeStep))
-        ISF = particleCorr[:,1]
-        step = stepList
-        relStep = np.argwhere(ISF>np.exp(-1))[-1,0]
-        if(relStep + 1 < step.shape[0]):
-            t1 = step[relStep]
-            t2 = step[relStep+1]
-            ISF1 = ISF[relStep]
-            ISF2 = ISF[relStep+1]
-            slope = (ISF2 - ISF1)/(t2 - t1)
-            intercept = ISF2 - slope * t2
-            tau = timeStep*(np.exp(-1) - intercept)/slope
-            print("relaxation time: ", tau)
-        else:
-            tau = 0
-            print("not enough data to compute relaxation time")
-        with open(dirName + "../../../tauDiff.dat", "ab") as f:
-            np.savetxt(f, np.array([[timeStep, pWaveVector, phi, T, tau, diff]]))
-
+    
 ########## Time-averaged Single Correlations in log-spaced time window #########
 def computeSingleParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac = 1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
@@ -846,8 +810,8 @@ if __name__ == '__main__':
         computeParticleLogSelfCorrOneDim(dirName, startBlock, maxPower, freqPower)
 
     elif(whichCorr == "lincorr"):
-        maxPower = int(sys.argv[3])
-        computeParticleSelfCorr(dirName, maxPower)
+        plot = sys.argv[3]
+        computeParticleSelfCorr(dirName, plot)
 
     elif(whichCorr == "checkcorr"):
         initialBlock = int(sys.argv[3])
@@ -861,9 +825,7 @@ if __name__ == '__main__':
         startBlock = int(sys.argv[3])
         maxPower = int(sys.argv[4])
         freqPower = int(sys.argv[5])
-        qFrac = sys.argv[6]
-        computeTau = sys.argv[7]
-        computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac, computeTau=computeTau)
+        computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower)
 
     elif(whichCorr == "corrsingle"):
         startBlock = int(sys.argv[3])
