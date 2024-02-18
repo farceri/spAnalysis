@@ -5,10 +5,7 @@ Created by Francesco
 #functions and script to compute cluster correlations
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib import cm
-from scipy.spatial import Delaunay
 from scipy.fftpack import rfft, rfftfreq, fft, fftfreq
-import pyvoro
 import sys
 import os
 import utils
@@ -1007,73 +1004,6 @@ def averageLinearLJPressureProfile(dirName, LJcutoff=5.5, dirSpacing=1, nDim=2, 
         #plt.pause(0.5)
         plt.show()
 
-##################### Average IK LJ linear pressure profile #######################
-def averageIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1, nDim=2):
-    ec = 1
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    #eps = 1.8*np.max(rad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
-    bins = np.arange(0, boxSize[0], 2*LJcutoff*np.mean(rad))
-    binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # pressure bins
-    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
-    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
-        #maxLabel = utils.findLargestParticleCluster(rad, labels)
-        #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
-        pos = utils.centerCOM(pos, rad, boxSize)
-        vel = np.loadtxt(dirSample + "/particleVel.dat")
-        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-        for i in range(numParticles):
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
-                    thermal[d,j] += np.linalg.norm(vel[i])**2
-                    binIndex = j
-                    j = bins.shape[0]
-            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-            #    if((rightOfCenter == True and pos[c,0] < centers[binIndex]) or (leftOfCenter==True and pos[c,0] > centers[binIndex])):
-                radSum = rad[i] + rad[c]
-                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                distance = np.linalg.norm(delta)
-                if(distance <= (LJcutoff * radSum)):
-                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                    force = 0.5 * gradMultiple * delta / distance
-                    # find bin where this force belongs to following Irving-Kirkwood
-                    if(pos[c,0] > bins[binIndex] and pos[c,0] <= bins[binIndex+1]): # both are in the slab binIndex
-                        for dim in range(nDim):
-                            virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-                    elif(pos[c,0] <= bins[binIndex]): # i is in binIndex and c is in binIndex-1
-                        #preBinIndex = binIndex-1
-                        for dim in range(nDim):
-                            virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-                            #virial[d,preBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-                    elif(pos[c,0] > bins[binIndex+1]):
-                        #postBinIndex = (binIndex+1)%(bins.shape[0]-1)
-                        for dim in range(nDim):
-                            virial[d,binIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-                            #virial[d,postBinIndex,dim] += force[dim] * delta[dim] / np.abs(delta[0])
-    thermal = np.mean(thermal,axis=0)*sigma**2 / binArea
-    virial = np.mean(virial,axis=0)*sigma**2
-    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial)))
-    print("surface tension: ", np.sum((virial[:,0]-virial[:,1])*binWidth))
-    if(plot=="plot"):
-        uplot.plotCorrelation(centers, virial[:,0], "$Pressure$ $profile$", xlabel = "$Distance$", color='b', lw=1.5)
-        uplot.plotCorrelation(centers, virial[:,1], "$Pressure$ $profile$", xlabel = "$Distance$", color='g', lw=1.5)
-        #plt.pause(0.5)
-        plt.show()
-
 ##################### Sample average LJ linear pressure profile #######################
 def sampleLinearLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpacing=1, nDim=2, plot=False):
     ec = 1
@@ -1097,7 +1027,7 @@ def sampleLinearLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpaci
     for s in range(numSamples):
         for d in range(dirList.shape[0]):
             dirSample = dirPath + str(s) + "/langevin-lj/T0.30/dynamics/" + dirList[d]
-            #print(s, d, s*dirList.shape[0] + d, dirSample)
+            print(s, d, s*dirList.shape[0] + d, dirSample)
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
             #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
             #maxLabel = utils.findLargestParticleCluster(rad, labels)
@@ -1105,23 +1035,20 @@ def sampleLinearLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpaci
             pos = utils.centerCOM(pos, rad, boxSize)
             vel = np.loadtxt(dirSample + "/particleVel.dat")
             contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-            for bin in range(bins.shape[0]-1):
-                for i in range(numParticles):
-                    if(pos[i,0] < centers[bin]):
-                        for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
-                            if(pos[c,0] > pos[i,0] and pos[c,0] > centers[bin]):
-                                radSum = rad[i] + rad[c]
-                                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
-                                distance = np.linalg.norm(delta)
-                                add = False
-                                if(distance <= (LJcutoff * radSum)):
-                                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
-                                    force = 0.5 * gradMultiple * delta / distance
-                                    add = True
-                                if(add == True):
-                                    tangential[s*dirList.shape[0] + d,bin] += force[1] * delta[1]**2 / (distance * np.abs(delta[0]))
-                                    normal[s*dirList.shape[0] + d,bin] += force[0] * delta[0] / distance
+            for i in range(numParticles):
+                for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                    radSum = rad[i] + rad[c]
+                    delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                    distance = np.linalg.norm(delta)
+                    if(distance <= (LJcutoff * radSum)):
+                        gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                        force = 0.5 * gradMultiple * delta / distance 
                         # find bin where this force belongs to following Irving-Kirkwood
+                        for j in range(bins.shape[0]-1):
+                            if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]): # particle i is inside bin
+                                if(pos[c,0] <= bins[j] or pos[c,0] > bins[j+1]): # particle j is in the previous or next bin
+                                    tangential[s*dirList.shape[0] + d,j] += force[1] * delta[1] / np.abs(delta[0])
+                                    normal[s*dirList.shape[0] + d,j] += force[0] * delta[0] / np.abs(delta[0])
     tangential = np.mean(tangential,axis=0) / binArea
     normal = np.mean(normal,axis=0) / binArea
     np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, normal, tangential)))
@@ -1129,6 +1056,169 @@ def sampleLinearLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpaci
     if(plot=="plot"):
         uplot.plotCorrelation(centers, normal, "$\\sigma_{xx}$", xlabel = "$Distance$", color='g', lw=1)
         uplot.plotCorrelation(centers, tangential, "$\\sigma_{yy}$", xlabel = "$Distance$", color='b', lw=1)
+        #plt.pause(0.5)
+        plt.show()
+
+##################### Average IK LJ linear pressure profile #######################
+def averageIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1, nDim=2):
+    ec = 1
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    #eps = 1.8*np.max(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, boxSize[0], 2*LJcutoff*np.mean(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # pressure bins
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    for d in range(dirList.shape[0]):
+        countOut = 0
+        countOne = 0
+        countIn = 0
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
+        #maxLabel = utils.findLargestParticleCluster(rad, labels)
+        #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+        pos = utils.centerCOM(pos, rad, boxSize)
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        binIndex = np.zeros(numParticles, dtype=int)
+        for i in range(numParticles):
+            for j in range(bins.shape[0]-1):
+                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                    binIndex[i] = j
+                    thermal[d,j] += np.linalg.norm(vel[i])**2
+        for i in range(numParticles):
+            for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                radSum = rad[i] + rad[c]
+                delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                distance = np.linalg.norm(delta)
+                if(distance <= (LJcutoff * radSum)):
+                    gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                    force = 0.5 * gradMultiple * delta / distance
+                    # find bin where this force belongs to following Irving-Kirkwood
+                    if(np.abs(binIndex[i] - binIndex[c])>1):
+                        countOut += 1
+                    if(np.abs(binIndex[i] - binIndex[c])==1):
+                        countOne += 1
+                    if(binIndex[c] == binIndex[i]):
+                        countIn += 1
+                        for dim in range(nDim):
+                            virial[d,binIndex[i],dim] += force[dim] * delta[dim]
+                    elif(binIndex[c] > binIndex[i]):
+                        deltax = pos[i,0] - bins[binIndex[c]]
+                        virial[d,binIndex[i],0] += force[0] * deltax
+                        virial[d,binIndex[i],1] += force[1] * deltax * delta[1] / delta[0]
+                        deltax = bins[binIndex[c]] - pos[c,0]
+                        virial[d,binIndex[c],0] += force[0] * deltax
+                        virial[d,binIndex[c],1] += force[1] * deltax * delta[1] / delta[0]
+                        if((binIndex[c] - binIndex[i]) == 2):
+                            virial[d,binIndex[c-1],0] += force[0] * deltax
+                            virial[d,binIndex[c-1],1] += force[1] * deltax * delta[1] / delta[0]
+                    elif(binIndex[c] < binIndex[i]):
+                        deltax = pos[i,0] - bins[binIndex[i]]
+                        virial[d,binIndex[i],0] += force[0] * deltax
+                        virial[d,binIndex[i],1] += force[1] * deltax * delta[1] / delta[0]
+                        deltax = bins[binIndex[i]] - pos[c,0]
+                        virial[d,binIndex[c],0] += force[0] * deltax
+                        virial[d,binIndex[c],1] += force[1] * deltax * delta[1] / delta[0]
+                        if((binIndex[i] - binIndex[c]) == 2):
+                            deltax = bins[binIndex[i-1]] - bins[binIndex[i]]
+                            virial[d,binIndex[i-1],0] += force[0] * deltax
+                            virial[d,binIndex[i-1],1] += force[1] * deltax * delta[1] / delta[0]
+        print("number of bonds inside bin:", countIn, "bonds across two bins:", countOne, "bonds across more than two bins:", countOut)
+    thermal = np.mean(thermal,axis=0) / binArea
+    virial = np.mean(virial,axis=0) / binArea
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, thermal, virial)))
+    print("surface tension: ", np.sum((virial[:,0]-virial[:,1])*binWidth))
+    if(plot=="plot"):
+        uplot.plotCorrelation(centers, thermal + virial[:,0], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='g', lw=1)
+        uplot.plotCorrelation(centers, thermal + virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='b', lw=1)
+        uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='r', lw=1)
+        #plt.pause(0.5)
+        plt.show()
+
+##################### Sample average LJ linear pressure profile #######################
+def sampleIKLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpacing=1, nDim=2, plot=False):
+    ec = 1
+    dirName = dirPath + "0/langevin-lj/T0.30/dynamics/"
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    #eps = 1.8*np.max(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, boxSize[0], LJcutoff*np.mean(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # pressure bins
+    virial = np.zeros((dirList.shape[0]*numSamples,bins.shape[0]-1,2))
+    for s in range(numSamples):
+        for d in range(dirList.shape[0]):
+            dirSample = dirPath + str(s) + "/langevin-lj/T0.30/dynamics/" + dirList[d]
+            #print(s, d, s*dirList.shape[0] + d, dirSample)
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
+            #maxLabel = utils.findLargestParticleCluster(rad, labels)
+            #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+            pos = utils.centerCOM(pos, rad, boxSize)
+            #vel = np.loadtxt(dirSample + "/particleVel.dat")
+            contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+            binIndex = np.zeros(numParticles, dtype=int)
+            for i in range(numParticles):
+                for j in range(bins.shape[0]-1):
+                    if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                        binIndex[i] = j
+            for i in range(numParticles):
+                # first assign binIndex to each particle
+                for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                    radSum = rad[i] + rad[c]
+                    delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                    distance = np.linalg.norm(delta)
+                    if(distance <= (LJcutoff * radSum)):
+                        gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                        force = 0.5 * gradMultiple * delta / distance
+                        addIndex = np.empty(0, dtype=int)
+                        add = False
+                        if(binIndex[c] == binIndex[i]):
+                            #if(pos[i,0] < pos[c,0]):
+                            addIndex = np.append(addIndex, binIndex[i])
+                            #print(pos[c,0], pos[i,0], bins[binIndex[i]], bins[binIndex[i]+1])
+                            add = True
+                        elif(binIndex[c] > binIndex[i]):
+                            addIndex = np.append(addIndex, np.arange(binIndex[c], binIndex[i]+1,1))
+                            #print(pos[c,0], pos[i,0], bins[binIndex[c]], bins[binIndex[i]])
+                            add = True
+                        elif(binIndex[c] < binIndex[i]):
+                            addIndex = np.append(addIndex, np.arange(binIndex[i], binIndex[c]+1,1))
+                            #print(pos[c,0], pos[i,0], bins[binIndex[c]], bins[binIndex[i]])
+                            add = True
+                        if(add == True):
+                            for idx in addIndex:
+                            #print("bond is being added to bin", idx)
+                                for dim in range(nDim):
+                                    virial[d,idx,dim] += force[dim] * delta[dim] * np.abs(delta[0]) / distance
+                    #else:
+                    #    print("bond has not been added to any bin")
+    virial = np.mean(virial,axis=0) / boxSize[1]
+    np.savetxt(dirName + os.sep + "pressureProfile.dat", np.column_stack((centers, virial)))
+    print("surface tension: ", np.sum((virial[:,0] - virial[:,1])*binWidth))
+    if(plot=="plot"):
+        uplot.plotCorrelation(centers, virial[:,0], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='g', lw=1)
+        uplot.plotCorrelation(centers, virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='b', lw=1)
         #plt.pause(0.5)
         plt.show()
 
@@ -1394,7 +1484,7 @@ def averageClusterHeightVSTime(dirName, threshold=0.78, plot=False, dirSpacing=1
     np.savetxt(dirName + os.sep + "heightVStime.dat", interface)
 
 ####################### Average cluster height interface #######################
-def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpacing=1):
+def averageClusterHeightFluctuations(dirName, threshold=0.3, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
@@ -1407,31 +1497,33 @@ def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpa
     spacing = 2*sigma
     bins = np.arange(0, boxSize[1], spacing)
     centers = (bins[1:] + bins[:-1])/2
-    #freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
-    freq = np.arange(1,centers.shape[0]+1,1)/(centers.shape[0] / spacing)
+    freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
+    #freq = np.arange(1,centers.shape[0]+1,1)/(centers.shape[0] / spacing)
     deltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
     fourierDeltaHeight = np.zeros((dirList.shape[0], freq.shape[0]))
-    energyLength = np.zeros((dirList.shape[0], 2))
+    #energyLength = np.zeros((dirList.shape[0], 2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         # load particle variables
-        epot = np.loadtxt(dirSample + "/particleEnergies.dat")
+        #epot = np.loadtxt(dirSample + "/particleEnergies.dat")
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         # load simplices
-        labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
-        maxLabel = utils.findLargestParticleCluster(rad, labels)
-        pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+        labels,_ = cluster.getParticleDenseLabel(dirSample, threshold)
+        #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
+        #maxLabel = utils.findLargestParticleCluster(rad, labels)
+        pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
+        #pos = utils.centerCOM(pos, rad, boxSize)
         height = np.zeros(bins.shape[0]-1)
-        energy = np.zeros(bins.shape[0]-1)
+        #energy = np.zeros(bins.shape[0]-1)
         posInterface = np.zeros((bins.shape[0]-1,2))
-        clusterPos = pos[labels==maxLabel]
-        clusterEpot = epot[labels==maxLabel]
+        clusterPos = pos[labels==1]
+        #clusterEpot = epot[labels==maxLabel]
         for j in range(bins.shape[0]-1): # find particle positions in a bin
             rightMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
-            binEpot = clusterEpot[rightMask]
+            #binEpot = clusterEpot[rightMask]
             binPos = clusterPos[rightMask]
             leftMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
-            binEpot = binEpot[leftMask]
+            #binEpot = binEpot[leftMask]
             binPos = binPos[leftMask]
             if(binPos.shape[0] > 0):
                 center = np.mean(binPos, axis=0)[0] # center of dense cluster
@@ -1440,35 +1532,92 @@ def averageClusterHeightFluctuations(dirName, threshold=0.78, plot=False, dirSpa
                 height[j] = np.mean(binDistance[borderMask])
                 posInterface[j,0] = height[-1]
                 posInterface[j,1] = np.mean(binPos[borderMask,1])
-                energy[j,0] = np.mean(epot[borderMask])
+                #energy[j,0] = np.mean(epot[borderMask])
         if(height[height!=0].shape[0] == height.shape[0]):
-            prevPos = posInterface[0]
-            length = 0
-            for j in range(1,bins.shape[0]-1):
-                length += np.linalg.norm(posInterface[j] - prevPos)
-                prevPos = posInterface[j]
-            energyLength[d,0] = length
-            energyLength[d,1] = np.sum(energy)
+            #prevPos = posInterface[0]
+            #length = 0
+            #for j in range(1,bins.shape[0]-1):
+            #    length += np.linalg.norm(posInterface[j] - prevPos)
+            #    prevPos = posInterface[j]
+            #energyLength[d,0] = length
+            #energyLength[d,1] = np.sum(energy)
             height -= np.mean(height)
-            deltaHeight[d] = np.abs(height)**2
-            fourierDeltaHeight[d] = np.abs(rfft(height))**2
-    print(deltaHeight.shape, deltaHeight[energyLength[:,0]!=0].shape)
-    deltaHeight = np.column_stack((np.mean(deltaHeight[energyLength[:,0]!=0], axis=0), np.std(deltaHeight[energyLength[:,0]!=0], axis=0)))
-    fourierDeltaHeight = np.column_stack((np.mean(fourierDeltaHeight[energyLength[:,0]!=0], axis=0), np.std(fourierDeltaHeight[energyLength[:,0]!=0], axis=0)))
-    #fourierDeltaHeight = rfft(deltaHeight[:,1])
-    centers *= sigma
-    deltaHeight *= sigma**2
-    freq /= sigma
-    fourierDeltaHeight /= sigma**2
+            deltaHeight[d] = height
+            #fourierDeltaHeight[d] = np.abs(rfft(height))**2
+    print(deltaHeight.shape, deltaHeight[deltaHeight[:,0]!=0].shape)
+    fourierDeltaHeight = rfft(deltaHeight)
+    deltaHeight = np.column_stack((np.mean(deltaHeight, axis=0), np.std(deltaHeight, axis=0)))
+    fourierDeltaHeight = np.column_stack((np.mean(fourierDeltaHeight, axis=0), np.std(fourierDeltaHeight, axis=0)))
+    #centers *= sigma
+    #deltaHeight *= sigma**2
+    #freq /= sigma
+    #fourierDeltaHeight /= sigma**2
     np.savetxt(dirName + os.sep + "heightFluctuations.dat", np.column_stack((centers, deltaHeight, freq, fourierDeltaHeight)))
-    np.savetxt(dirName + os.sep + "energyLength.dat", np.column_stack((timeList, energyLength)))
-    print("average interface length:", np.mean(energyLength[:,0]), np.std(energyLength[:,0]))
+    #np.savetxt(dirName + os.sep + "energyLength.dat", np.column_stack((timeList, energyLength)))
+    #print("average interface length:", np.mean(energyLength[:,0]), np.std(energyLength[:,0]))
     if(plot=='plot'):
         uplot.plotCorrelation(freq[1:], fourierDeltaHeight[1:,0], "$Height$ $fluctuation$", xlabel = "$q$", color='k', logx=True, logy=True)
         #uplot.plotCorrWithError(centers, deltaHeight[:,0], deltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
         #uplot.plotCorrelation(timeList, np.sum(energyLength[:,1:],axis=1), "$Energy$", xlabel = "$Simulation$ $time$", color='k')
-        plt.pause(0.5)
-        #plt.show()
+        #plt.pause(0.5)
+        plt.show()
+
+####################### Average cluster height interface #######################
+def sampleClusterHeightFluctuations(dirPath, threshold=0.3, numSamples=30, temp="0.30", plot=False, dirSpacing=1):
+    dirName = dirPath + "0/langevin-lj/T" + temp + "/dynamics/"
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    spacing = 2*sigma
+    bins = np.arange(0, boxSize[1], spacing)
+    centers = (bins[1:] + bins[:-1])/2
+    freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    #freq = np.arange(1,centers.shape[0]+1,1)/(centers.shape[0] / spacing)
+    deltaHeight = np.zeros((dirList.shape[0]*numSamples, bins.shape[0]-1))
+    fourierDeltaHeight = np.zeros((dirList.shape[0]*numSamples, freq.shape[0]))
+    for s in range(numSamples):
+        dirName = dirPath + str(s) + "/langevin-lj/T" + temp + "/dynamics/"
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + os.sep + dirList[d]
+            #print(s, d, s*dirList.shape[0] + d, dirSample)
+            # load particle variables
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            # load simplices
+            labels,_ = cluster.getParticleDenseLabel(dirSample, threshold)
+            pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
+            height = np.zeros(bins.shape[0]-1)
+            posInterface = np.zeros((bins.shape[0]-1,2))
+            clusterPos = pos[labels==1]
+            for j in range(bins.shape[0]-1): # find particle positions in a bin
+                rightMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
+                binPos = clusterPos[rightMask]
+                leftMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
+                binPos = binPos[leftMask]
+                if(binPos.shape[0] > 0):
+                    center = np.mean(binPos, axis=0)[0] # center of dense cluster
+                    binDistance = binPos[:,0] - center
+                    borderMask = np.argsort(binDistance)[-3:]
+                    height[j] = np.mean(binDistance[borderMask])
+                    posInterface[j,0] = height[-1]
+                    posInterface[j,1] = np.mean(binPos[borderMask,1])
+            if(height[height!=0].shape[0] == height.shape[0]):
+                height -= np.mean(height)
+                deltaHeight[s*dirList.shape[0] + d] = height
+    meanHeight = np.mean(np.mean(deltaHeight, axis=1))
+    #deltaHeight -= meanHeight
+    fourierDeltaHeight = rfft(deltaHeight)
+    deltaHeight = np.column_stack((np.mean(deltaHeight, axis=0), np.std(deltaHeight, axis=0)))
+    fourierDeltaHeight = np.column_stack((np.mean(fourierDeltaHeight, axis=0), np.std(fourierDeltaHeight, axis=0)))
+    np.savetxt(dirPath + "0/../heightFlu-T" + temp + ".dat", np.column_stack((centers, deltaHeight, freq, fourierDeltaHeight)))
+    if(plot=='plot'):
+        #uplot.plotCorrWithError(centers, deltaHeight[:,0], deltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
+        uplot.plotCorrelation(freq, fourierDeltaHeight[:,0], "$Height$ $fluctuation$", xlabel = "$q$", color='k', logx=True, logy=True)
+        #plt.pause(0.5)
+        plt.show()
 
 ####################### Average cluster height interface #######################
 def computeClusterHeightCorrelation(dirName, threshold=0.78, plot=False, dirSpacing=1):
@@ -1676,6 +1825,9 @@ if __name__ == '__main__':
 
     elif(whichCorr == "sampleprofile"):
         sampleLinearLJPressureProfile(dirName, numSamples=int(sys.argv[3]), LJcutoff=float(sys.argv[4]), plot=sys.argv[5])
+
+    elif(whichCorr == "sampleikprofile"):
+        sampleIKLJPressureProfile(dirName, numSamples=int(sys.argv[3]), LJcutoff=float(sys.argv[4]), plot=sys.argv[5])
     
 ############################## Interface structure ##############################
     elif(whichCorr == "singleprofile"):
@@ -1709,6 +1861,13 @@ if __name__ == '__main__':
         threshold = float(sys.argv[3])
         plot = sys.argv[4]
         averageClusterHeightFluctuations(dirName, threshold, plot)
+
+    elif(whichCorr == "sampleheightflu"):
+        threshold = float(sys.argv[3])
+        numSamples = int(sys.argv[4])
+        temp = sys.argv[5]
+        plot = sys.argv[6]
+        sampleClusterHeightFluctuations(dirName, threshold, numSamples, temp, plot)
 
     elif(whichCorr == "exchange"):
         threshold = float(sys.argv[3])

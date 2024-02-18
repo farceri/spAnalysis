@@ -1375,7 +1375,7 @@ def centerCOM(pos, rad, boxSize, nDim=2):
         pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
     return pos
 
-def centerSlab(pos, rad, boxSize, labels, maxLabel, nDim=2):
+def centerSlab(pos, rad, boxSize, labels, maxLabel):
     slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
     #print("loaded center of mass:", centerOfMass[0], centerOfMass[1])
     slabPos = pos[labels==maxLabel]

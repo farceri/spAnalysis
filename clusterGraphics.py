@@ -1493,9 +1493,9 @@ def plotSampleWallForceVSStrain(dirPath, figureName, type='active', which='avera
     fileName = dirPath + "-0/../lineTension-Active.dat"
     fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
     if(type=='active'):
-        dirType = "langevin-lj/T0.30/active-lj/T0.30-tp" + taup + "-f01/biaxial2e-03-tmax2e05/"
+        dirType = "langevin-lj/T0.30/active-lj/T0.30-tp" + taup + "-f04/biaxial1e-03-tmax2e05/"
     elif(type=='passive'):
-        dirType = "langevin-lj/T" + temp + "/biaxial2e-03-tmax2e05/"
+        dirType = "langevin-lj/T" + temp + "/biaxial1e-03-tmax2e05/"
     else:
         print("please specify sample type, active or passive")
     # initialize force and energy with first sample
