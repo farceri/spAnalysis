@@ -850,8 +850,8 @@ def computeDelaunayCluster(dirName, threshold=0.78, filter='filter', plot=False,
     if(filter=='particle-filter'):
         contacts = np.array(np.loadtxt(dirName + os.sep + "particleContacts.dat")).astype(int)
         denseList, denseSimplexList = utils.applyParticleFilters(contacts, denseList, simplices, denseSimplexList)
-    particleList = np.column_stack((denseList, borderList))
-    simplexList = np.column_stack((denseSimplexList, borderSimplexList, simplexArea, simplexDensity))
+    particleList = np.column_stack((denseList, borderList)).astype(np.int64)
+    simplexList = np.column_stack((denseSimplexList, borderSimplexList, simplexArea, simplexDensity)).astype(np.int64)
     np.savetxt(dirName + "/particleList.dat", particleList)
     np.savetxt(dirName + "/simplexList.dat", simplexList)
     if(save=='save'):
@@ -1102,7 +1102,7 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
         plt.pause(0.5)
     return np.column_stack((timeList, clusterVel))
 
-def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=False, save='save'):
+def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.3, compute=False, save='save'):
     if(compute==True or compute=='cluster'):
         computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
@@ -1116,6 +1116,7 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=Fa
         labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
         allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
         allLabels[denseList==1] = labels
+        allLabels = allLabels.astype(np.int64)
         np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
     else:
         if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
@@ -1126,13 +1127,14 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=Fa
             # compute simplex positions for clustering algorithm
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
             labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
-            allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
-            allLabels[denseList==1] = labels
+            allLabels = -1*np.ones(denseList.shape[0])
+            allLabels[np.argwhere(denseList==1)[:,0]] = labels
+            allLabels = allLabels.astype(np.int64)
             np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
         allLabels = np.loadtxt(dirSample + os.sep + "clusterLabels.dat")
     return allLabels
 
-def getParticleDenseLabel(dirSample, threshold=0.76, compute=False, save='save'):
+def getParticleDenseLabel(dirSample, threshold=0.3, compute=False, save='save'):
     if(compute==True):
         computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
@@ -1328,22 +1330,30 @@ def computeClusterSizeVSTime(dirName, threshold=0.76, plot=False, dirSpacing=1):
         #plt.pause(0.5)
 
 ########################### Pair Correlation Function ##########################
-def computeClusterPairCorr(dirName, boxSize, bins, labels, maxLabel, plot="plot", save="save"):
+def computeClusterPairCorr(dirName, boxSize, bins, labels, maxLabel, plot="plot", which="dense", save="save"):
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     # select cluster positions
-    pos = pos[labels==maxLabel]
-    distance = utils.computeDistances(pos, boxSize)
-    pairCorr, edges = np.histogram(distance, bins=bins, density=True)
+    pos1 = pos[labels==maxLabel]
+    pos2 = pos[labels!=maxLabel]
+    distance = utils.computeDistances(pos1, boxSize)
+    pairCorr1, edges = np.histogram(distance, bins=bins, density=True)
+    distance = utils.computeDistances(pos2, boxSize)
+    pairCorr2, edges = np.histogram(distance, bins=bins, density=True)
     binCenter = 0.5 * (edges[:-1] + edges[1:])
-    pairCorr /= (2 * np.pi * binCenter)
-    firstPeak = binCenter[np.argmax(pairCorr)]
+    pairCorr1 /= (2 * np.pi * binCenter)
+    pairCorr2 /= (2 * np.pi * binCenter)
+    firstPeak = binCenter[np.argmax(pairCorr1)]
     if(save == "save"):
         #print("First peak of pair corr is at distance:", firstPeak)
-        np.savetxt(dirName + os.sep + "pairCorr.dat", np.column_stack((binCenter, pairCorr)))
+        if(which=="dense"):
+            np.savetxt(dirName + os.sep + "densePairCorr.dat", np.column_stack((binCenter, pairCorr1, pairCorr2)))
+        else:
+            np.savetxt(dirName + os.sep + "clusterPairCorr.dat", np.column_stack((binCenter, pairCorr1, pairCorr2)))
     else:
-        return pairCorr
+        return pairCorr1, pairCorr2
     if(plot == "plot"):
-        uplot.plotCorrelation(binCenter, pairCorr, "$Pair$ $correlation$ $function,$ $g(r)$")
+        uplot.plotCorrelation(binCenter, pairCorr1, "$g(r)$", color='b')
+        uplot.plotCorrelation(binCenter, pairCorr2, "$g(r)$", color='g')
         plt.pause(0.5)
     else:
         return firstPeak
@@ -1361,19 +1371,22 @@ def averageClusterPairCorr(dirName, threshold, lj='lj', dirSpacing=1):
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     labels = getParticleClusterLabels(dirName, boxSize, eps, threshold)
     maxLabel = utils.findLargestParticleCluster(rad, labels)
-    pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1))
+    pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1, 2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "pairCorr.dat")):
+        if not(os.path.exists(dirSample + os.sep + "clusterPairCorr!.dat")):
             computeClusterPairCorr(dirSample, boxSize, bins, labels, maxLabel, plot=False)
-        data = np.loadtxt(dirSample + os.sep + "pairCorr.dat")
-        pcorr[d] = data[:,1]
-    pcorr = np.column_stack((np.mean(pcorr, axis=0), np.std(pcorr, axis=0)))
-    firstPeak = bins[np.argmax(pcorr[:,0])]
+        data = np.loadtxt(dirSample + os.sep + "clusterPairCorr.dat")
+        pcorr[d,:,0] = data[:,1]
+        pcorr[d,:,1] = data[:,2]
+    pcorr1 = np.column_stack((np.mean(pcorr[:,:,0], axis=0), np.std(pcorr[:,:,0], axis=0)))
+    pcorr2 = np.column_stack((np.mean(pcorr[:,:,1], axis=0), np.std(pcorr[:,:,1], axis=0)))
+    firstPeak = bins[np.argmax(pcorr1[:,0])]
     print("First peak of pair corr in cluster is at:", firstPeak)
     binCenter = 0.5 * (bins[:-1] + bins[1:])
-    np.savetxt(dirName + os.sep + "clusterPairCorr.dat", np.column_stack((binCenter, pcorr)))
-    uplot.plotCorrWithError(binCenter, pcorr[:,0], pcorr[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='k')
+    np.savetxt(dirName + os.sep + "clusterPairCorr.dat", np.column_stack((binCenter, pcorr1, pcorr2)))
+    uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
+    uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
     plt.pause(0.5)
     #plt.show()
     
@@ -1386,19 +1399,22 @@ def averageDensePairCorr(dirName, threshold=0.3, dirSpacing=1):
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     denseList,borderList = getParticleDenseLabel(dirName, threshold)
-    pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1))
+    pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1,2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "pairCorr.dat")):
-            computeClusterPairCorr(dirSample, boxSize, bins, borderList, 1, plot=False)
-        data = np.loadtxt(dirSample + os.sep + "pairCorr.dat")
-        pcorr[d] = data[:,1]
-    pcorr = np.column_stack((np.mean(pcorr, axis=0), np.std(pcorr, axis=0)))
-    firstPeak = bins[np.argmax(pcorr[:,0])]
+        if not(os.path.exists(dirSample + os.sep + "densePairCorr!.dat")):
+            computeClusterPairCorr(dirSample, boxSize, bins, denseList, 1, plot=False, which="dense")
+        data = np.loadtxt(dirSample + os.sep + "densePairCorr.dat")
+        pcorr[d,:,0] = data[:,1]
+        pcorr[d,:,1] = data[:,2]
+    pcorr1 = np.column_stack((np.mean(pcorr[:,:,0], axis=0), np.std(pcorr[:,:,0], axis=0)))
+    pcorr2 = np.column_stack((np.mean(pcorr[:,:,1], axis=0), np.std(pcorr[:,:,1], axis=0)))
+    firstPeak = bins[np.argmax(pcorr1[:,0])]
     print("First peak of pair corr in cluster is at:", firstPeak)
     binCenter = 0.5 * (bins[:-1] + bins[1:])
-    np.savetxt(dirName + os.sep + "densePairCorr.dat", np.column_stack((binCenter, pcorr)))
-    uplot.plotCorrWithError(binCenter, pcorr[:,0], pcorr[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='k')
+    np.savetxt(dirName + os.sep + "densePairCorr.dat", np.column_stack((binCenter, pcorr1, pcorr2)))
+    uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
+    uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
     plt.pause(0.5)
     #plt.show()
 
@@ -2293,19 +2309,21 @@ def computeClusterMSD(dirName, numBlocks, blockPower, blockFreq=1e04, spacing='l
         #plt.pause(0.5)
         plt.show()
 
-def computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold=0.3):
+def computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold=0.3, plot=False):
     boxSize = np.loadtxt(dirName + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + "particleRad.dat").astype(np.float64)
-    meanRad = np.mean(rad)
-    bins = np.linspace(0.1*meanRad, 10*meanRad, 50)
+    sigma = 2 * np.mean(rad)
+    bins = np.linspace(0.1*sigma, 10*sigma, 50)
     timeStep = utils.readFromParams(dirName, "dt")
-    labels,_ = getParticleDenseLabel(dirName, threshold)
-    if not(os.path.exists(dirName + os.sep + "pairCorr.dat")):
-        computeClusterPairCorr(dirName, boxSize, bins, labels, 1, plot=False)
-    pcorr = np.loadtxt(dirName + os.sep + "pairCorr.dat")
-    firstPeak = pcorr[np.argmax(pcorr[:,1]),0]
-    pWaveVector = 2 * np.pi / firstPeak
+    #labels,_ = getParticleDenseLabel(dirName, threshold)
+    #labels = np.ones(numParticles)
+    #if not(os.path.exists(dirName + os.sep + "pairCorr.dat")):
+    #    computeClusterPairCorr(dirName, boxSize, bins, labels, 1, plot=False)
+    #pcorr = np.loadtxt(dirName + os.sep + "pairCorr.dat")
+    #firstPeak = pcorr[np.argmax(pcorr[:,1]),0]
+    longWave = 2 * np.pi / sigma
+    shortWave = 2 * np.pi / boxSize[1]
     particleCorr = []
     stepList = []
     freqDecade = int(10**freqPower)
@@ -2325,9 +2343,9 @@ def computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold=0.3):
                         #print(multiple, i, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
                         pos1, pos2 = utils.readParticlePair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
                         # select cluster positions
-                        pos1 = pos1[labels==1]
-                        pos2 = pos2[labels==1]
-                        stepParticleCorr.append(utils.computeCorrFunctions(pos1, pos2, boxSize, pWaveVector, meanRad**2))
+                        #pos1 = pos1[labels==1]
+                        #pos2 = pos2[labels==1]
+                        stepParticleCorr.append(utils.computeLongShortWaveCorr(pos1, pos2, boxSize, longWave, shortWave, sigma))
                         numPairs += 1
             if(numPairs > 0):
                 stepList.append(spacing*spacingDecade)
@@ -2335,13 +2353,18 @@ def computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold=0.3):
         stepDecade *= 10
         spacingDecade *= 10
     stepList = np.array(stepList) * timeStep
-    particleCorr = np.array(particleCorr).reshape((stepList.shape[0],7))
+    particleCorr = np.array(particleCorr).reshape((stepList.shape[0],5))
     particleCorr = particleCorr[np.argsort(stepList)]
     np.savetxt(dirName + os.sep + "clusterLogCorr.dat", np.column_stack((stepList, particleCorr)))
-    #uplot.plotCorrelation(stepList, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
-    uplot.plotCorrelation(stepList, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
-    #uplot.plotCorrelation(stepList, particleCorr[:,3], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
-    plt.show()
+    data = np.column_stack((stepList, particleCorr))
+    tau = utils.computeTau(data)
+    print("Relaxation time:", tau)
+    if(plot=="plot"):
+        #uplot.plotCorrelation(stepList, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
+        uplot.plotCorrelation(stepList, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
+        uplot.plotCorrelation(stepList, particleCorr[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+        #plt.pause(0.5)
+        plt.show()
 
 ################## Cluster mixing time for fixed cluster size ##################
 def computeClusterMixingByLabel(dirName, numBlocks, blockPower, spacing='log', plot=False, dirSpacing=1):
@@ -2631,7 +2654,8 @@ if __name__ == '__main__':
         maxPower = int(sys.argv[4])
         freqPower = float(sys.argv[5])
         threshold = float(sys.argv[6])
-        computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold)
+        plot = sys.argv[7]
+        computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold, plot)
 
     elif(whichCorr == "mixingbylabel"):
         numBlocks = int(sys.argv[3])

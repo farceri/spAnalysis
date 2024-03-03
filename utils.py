@@ -12,6 +12,7 @@ import spCluster as cluster
 import random
 import shutil
 import os
+import time
 
 ############################## general utilities ###############################
 def pbcDistance(r1, r2, boxSize):
@@ -177,6 +178,13 @@ def computeNumberOfContacts(dirName):
 def calcLJgradMultiple(ec, distance, radSum):
     return (24 * ec / distance) * (2 * (radSum / distance)**12 - (radSum / distance)**6)
 
+def calcLJgradMultipleRep(ec, distance, radSum):
+    return 2 * (24 * ec / distance) * (radSum / distance)**12
+
+def calcLJgradMultipleAtt(ec, distance, radSum):
+    return -(24 * ec / distance) * (radSum / distance)**6
+
+
 ############################ correlation functions #############################
 def computeIsoCorrFunctions(pos1, pos2, boxSize, waveVector, scale, oneDim = False):
     #delta = pbcDistance(pos1, pos2, boxSize)
@@ -192,6 +200,29 @@ def computeIsoCorrFunctions(pos1, pos2, boxSize, waveVector, scale, oneDim = Fal
     isf = np.mean(np.sin(waveVector * delta) / (waveVector * delta))
     chi4 = np.mean((np.sin(waveVector * delta) / (waveVector * delta))**2) - isf*isf
     return msd, isf, chi4
+
+def computeLongShortWaveCorr(pos1, pos2, boxSize, longWave, shortWave, scale):
+    #delta = pbcDistance(pos1, pos2, boxSize)
+    delta = pos1 - pos2
+    drift = np.mean(pos1 - pos2, axis=0)
+    delta[:,0] -= drift[0]
+    delta[:,1] -= drift[1]
+    SqLong = []
+    SqShort = []
+    angleList = np.arange(0, 2*np.pi, np.pi/8)
+    for angle in angleList:
+        q = np.array([np.cos(angle), np.sin(angle)])
+        SqLong.append(np.mean(np.exp(1j*longWave*np.sum(np.multiply(q, delta), axis=1))))
+        SqShort.append(np.mean(np.exp(1j*shortWave*np.sum(np.multiply(q, delta), axis=1))))
+    SqLong = np.array(SqLong)
+    SqShort = np.array(SqShort)
+    ISFLong = np.real(np.mean(SqLong))
+    ISFShort = np.real(np.mean(SqShort))
+    Chi4Long = np.real(np.mean(SqLong**2) - np.mean(SqLong)**2)
+    Chi4Short = np.real(np.mean(SqShort**2) - np.mean(SqShort)**2)
+    delta = np.linalg.norm(delta, axis=1)
+    MSD = np.mean(delta**2)/scale**2
+    return MSD, ISFLong, ISFShort, Chi4Long, Chi4Short
 
 def computeCorrFunctions(pos1, pos2, boxSize, waveVector, scale):
     #delta = pbcDistance(pos1, pos2, boxSize)
@@ -308,6 +339,23 @@ def computeDeltaChi(data):
         return t2 - t1
     else:
         return 0
+    
+def getHeightCorr(height, maxCorrIndex):
+    corr = np.zeros(maxCorrIndex)
+    counts = np.zeros(maxCorrIndex)
+    meanHeight = np.mean(height)
+    meanHeightSq = np.mean(height**2)
+    height -= meanHeight
+    for j in range(maxCorrIndex):
+        for i in range(height.shape[0]):
+            index = i+j
+            if(index > height.shape[0]-1 and j < int(height.shape[0]/2)):
+                index -= height.shape[0]
+            if(index < height.shape[0]):
+                #corr[j] += (height[i] - height[index])**2
+                corr[j] += (height[i]*height[index] - meanHeight**2) / (meanHeightSq - meanHeight**2)
+                counts[j] += 1
+    return np.divide(corr, counts)
 
 
 ############################## Fourier Analysis ################################
@@ -766,7 +814,7 @@ def computeInterfaceWidth(x, y):
     except RuntimeError:
         print("Error - curve_fit failed")
         failed = True
-        return 0
+        return np.zeros(3)
     if(failed == False):
         return popt[3]
 
@@ -1006,10 +1054,16 @@ def computeLocalTempGrid(pos, vel, xbin, ybin, localTemp): #this works only for 
 ################################ DB clustering #################################
 def getDBClusterLabels(pos, boxSize, eps, min_samples = 2, denseList = np.empty(0)):
     if(denseList.shape[0] > 0):
-        distance = computeDistances(pos[denseList==1], boxSize)
-    db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
-    labels = db.labels_
-    return labels
+        start = time.time()
+        #distance = computeDistances(pos[denseList==1], boxSize)
+        #db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(pos[denseList==1])
+        end = time.time()
+        print("elapsed time:", end - start)
+        labels = db.labels_
+        return labels
+    else:
+        return np.zeros(pos.shape[0])
 
 def computeSimplexPos(simplices, pos):
     simplexPos = np.zeros((simplices.shape[0],2))
@@ -1437,6 +1491,25 @@ def sortBorderPos(borderPos, borderList, boxSize, checkNumber=5):
             borderPos[swapIndex] = tempPos
     return borderPos
 
+def shiftToOrigin(dirName, dirSave):
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
+    pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
+    print("Center of mass:", np.mean(pos, axis=0))
+    center = np.mean(pos, axis=0)
+    pos[:,0] -= center[0]
+    pos[:,1] -= center[1]
+    print("Center of mass:", np.mean(pos, axis=0))
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particlePos.dat', pos)
+    np.savetxt(dirSave + '/particleVel.dat', vel)
+    np.savetxt(dirSave + '/particleRad.dat', rad)
+
 def increaseDensity(dirName, dirSave, targetDensity):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
@@ -1498,14 +1571,14 @@ def adjustBoxSize(dirName, dirSave, xratio, yratio):
     pos = np.loadtxt(dirName + '/particlePos.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
-    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    #angle = np.loadtxt(dirName + '/particleAngles.dat')
     numParticles = rad.shape[0]
     density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
     np.savetxt(dirSave + '/particleVel.dat', vel)
-    np.savetxt(dirSave + '/particleAngles.dat', angle)
+    #np.savetxt(dirSave + '/particleAngles.dat', angle)
     np.savetxt(dirSave + '/particleRad.dat', rad)
     # increase boxsize along the x direction and pbc particles in new box
     print(boxSize)
@@ -1521,6 +1594,31 @@ def adjustBoxSize(dirName, dirSave, xratio, yratio):
     currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1]) #boxSize[0] has changed
     print("Current density: ", currentDensity)
 
+def scalePacking(dirName, dirSave, scale):
+    # load all the packing files
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    #angle = np.loadtxt(dirName + '/particleAngles.dat')
+    density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
+    print(boxSize)
+    print("Current density: ", density)
+    # save unchanged files to new directory
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    np.savetxt(dirSave + '/particleVel.dat', vel)
+    # scale boxsize and radii
+    boxSize /= scale
+    rad /= scale
+    print(boxSize)
+    density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
+    print("Current density: ", density)
+    pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
+    pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particlePos.dat', pos)
+    np.savetxt(dirSave + '/particleRad.dat', rad)
 def setSigmaToOne(dirName, dirSave):
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     pos = np.loadtxt(dirName + '/particlePos.dat')
