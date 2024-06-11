@@ -4,7 +4,6 @@ Created by Francesco
 '''
 #functions for clustering visualization
 import numpy as np
-import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -16,6 +15,7 @@ from scipy.special import kn
 import itertools
 import sys
 import os
+import warnings
 import utils
 import spCluster as cluster
 import spInterface as interface
@@ -217,7 +217,7 @@ def plotSPDensityProfile(dirName, figureName):
     #print("taup:", 1/(utils.readFromDynParams(dirName, "Dr")
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if not(os.path.exists(dirName + "densityProfile.dat")):
-        cluster.averageLinearDensityProfile(dirName)
+        interface.averageLinearDensityProfile(dirName)
     data = np.loadtxt(dirName + "densityProfile.dat")
     center = np.mean(data[:,0])
     x = np.abs(data[:,0]-center)
@@ -270,9 +270,9 @@ def plotSPClusterWidth(dirName, figureName, which='active', param='1e-04'):
         length[d,1] = np.std(energyLength[:,1])
         if not(os.path.exists(dirSample + "densityProfile.dat")):
             if(which=='lj'):
-                cluster.averageLinearDensityProfile(dirSample, 0.3)
+                interface.averageLinearDensityProfile(dirSample, 0.3)
             elif(which=='active'):
-                cluster.averageLinearDensityProfile(dirSample, 0.78)
+                interface.averageLinearDensityProfile(dirSample, 0.78)
         data = np.loadtxt(dirSample + "densityProfile.dat")
         center = np.mean(data[:,0])
         x = np.abs(data[:,0]-center)
@@ -491,242 +491,311 @@ def plotSPClusterISF(dirName, figureName):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPWallForceVSTime(dirName, figureName, which='average', index=4, numSamples=20):
-    fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
-    count = np.sqrt(np.mean(np.loadtxt(dirName + "/../count/energy.dat")[:,4]))
-    if(os.path.exists(dirName + "/../count/singleProfile.dat")):
-        data = np.loadtxt(dirName + "/../count/singleProfile.dat")
+def plotSPPairCorrelation(dirName, figureName, which='passive'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which=='passive'):
+        dirList = np.array(['0.42', '0.43', '0.44', '0.45', '0.46', '0.47'])
+        temp = dirList.astype(np.float64)
+    elif(which=='active'):
+        dirList = np.array(['1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01', '1e02', '1e03'])
+        taup = dirList.astype(np.float64)
+    else:
+        print("Please specify the sample type")
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+2)
+    peak = np.zeros((dirList.shape[0],2))
+    if(which=='passive'):
+        dirSample = dirName + "/T" + dirList[0] + "/dynamics-test/"
+    elif(which=='active'):
+        dirSample = dirName + "../dynamics-test/"
+    if(os.path.exists(dirSample)):
+        sigma = utils.readFromDynParams(dirSample, "sigma")
+        if(which=='active'):
+            if not(os.path.exists(dirSample + "densePairCorr.dat")):
+                cluster.averageDensePairCorr(dirSample, 0.3, 100000)
+            data = np.loadtxt(dirSample + "densePairCorr.dat")
+            peak0 = data[np.argmax(data[:,1]),0]
+            ax.errorbar(data[:,0], data[:,1], data[:,2], marker='s', markersize=6, lw=1, fillstyle='none', color='k', capsize=3, label="$T=0.42$")
+    for d in range(dirList.shape[0]):
+        if(which=='passive'):
+            dirSample = dirName + "/T" + dirList[d] + "/dynamics-test/"
+            labelName = "$T=$"
+        elif(which=='active'):
+            dirSample = dirName + "/T0.42-tp" + dirList[d] + "-f04/dynamics-test/"
+            labelName = "$\\tau_p=$"
+        if(os.path.exists(dirSample)):
+            print(dirSample)
+            if not(os.path.exists(dirSample + "densePairCorr.dat")):
+                cluster.averageDensePairCorr(dirSample, 0.3, 100000)
+            data = np.loadtxt(dirSample + "densePairCorr.dat")
+            peak[d,0] = data[np.argmax(data[:,1]),0]
+            peak[d,1] = data[np.argmax(data[:,1]),2]
+            ax.errorbar(data[:,0], data[:,1], data[:,2], marker='o', markersize=6, lw=1, fillstyle='none', color=colorList(d/dirList.shape[0]), capsize=3, label=labelName + dirList[d])
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=12, loc='best', ncol=2)
+    ax.set_xlim(0.45,2.55)
+    ax.set_xlabel("$Interparticle$ $distance,$ $r/\\sigma$", fontsize=16)
+    ax.set_ylabel("$g(r/\\sigma)$", fontsize=16)
+    plt.tight_layout()
+    if(which=='passive'):
+        figureName = "Temp-" + figureName
+    elif(which=='active'):
+        figureName = "Taup-" + figureName
+    figure1Name = "/home/francesco/Pictures/soft/mips/pairCorrVS" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(6.5,5), dpi = 120)
+    if(which=='passive'):
+        x = temp 
+        xlabel = "$Temperature,$ $T$"
+    elif(which=='active'):
+        x = taup
+        ax.set_xscale('log')
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+    x = x[peak[:,0]!=0]
+    x = x[peak[:,0]!=0]
+    if(which=='active'):
+        print("Relative peaks:", peak[:,0]/peak0, peak[:,0]/(2**(1/6)*sigma))
+    peak[:,0] /= 2**(1/6)*sigma
+    ax.errorbar(x, peak[:,0], peak[:,1], color='k', markersize=10, fillstyle='none', marker='^', lw=1, capsize=3)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=16)
+    #ax.set_ylabel("$\\frac{r_{max}(\\tau_p)}{r_{max}(0)}$", fontsize=24, rotation='horizontal', labelpad=40)
+    ax.set_ylabel("$\\frac{r_{max}(\\tau_p)}{2^{1/6} \\sigma}$", fontsize=24, rotation='horizontal', labelpad=40)
+    plt.tight_layout()
+    figure2Name = "/home/francesco/Pictures/soft/mips/peakVS" + figureName
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotProfileVSTemp(dirName, figureName, which='passive'):
+    fig, ax = plt.subplots(figsize=(7,5.5), dpi = 120)
+    if(which=='passive'):
+        dirList = np.array(['0.42', '0.43', '0.44', '0.45', '0.46', '0.47'])
+        temp = dirList.astype(np.float64)
+    elif(which=='active'):
+        dirList = np.array(['1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01', '1e02', '1e03'])
+        taup = dirList.astype(np.float64)
+    else:
+        print("Please specify the sample type")
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+2)
+    width = np.zeros((dirList.shape[0],2))
+    fluidWidth = np.zeros((dirList.shape[0],2))
+    density = np.zeros((dirList.shape[0],2))
+    if(which=='active'):
+        dirSample = dirName + "../dynamics-test/"
+        if(os.path.exists(dirSample)):
+            if not(os.path.exists(dirSample + "densityProfile.dat")):
+                interface.averageLinearDensityProfile(dirSample, 0.3)
+            data = np.loadtxt(dirSample + "densityProfile.dat")
+            ax.errorbar(data[:,0], data[:,1], data[:,2], marker='s', markersize=6, lw=1, fillstyle='none', color='k', capsize=3, label="$T=0.42$")
+    for d in range(dirList.shape[0]):
+        if(which=='passive'):
+            dirSample = dirName + "/T" + dirList[d] + "/dynamics-test/"
+            labelName = "$T=$"
+        elif(which=='active'):
+            dirSample = dirName + "/T0.42-tp" + dirList[d] + "-f04/dynamics-test/"
+            labelName = "$\\tau_p=$"
+        if(os.path.exists(dirSample)):
+            print(dirSample)
+            if not(os.path.exists(dirSample + "densityProfile.dat")):
+                interface.averageLinearDensityProfile(dirSample, 0.3)
+            data = np.loadtxt(dirSample + "densityProfile.dat")
+            x = data[:,0]
+            y = data[:,1]
+            xFluid = x[np.argwhere(y>0.5)[:,0]]
+            if(xFluid.shape[0] != 0):
+                fluidWidth[d,0] = xFluid[-1] - xFluid[0]
+                fluidWidth[d,1] = np.std(data[data[:,1]>0.5,1])
+            density[d,0] = np.mean(data[data[:,1]>0.5,1])
+            density[d,1] = np.std(data[data[:,1]>0.5,1])
+            ax.errorbar(data[:,0], data[:,1], data[:,2], marker='o', markersize=6, lw=1, fillstyle='none', color=colorList(d/dirList.shape[0]), capsize=3, label=labelName + dirList[d])
+            data = np.loadtxt(dirSample + "interfaceWidth.dat")
+            width[d,0] = np.mean(data[:,1])
+            width[d,1] = np.std(data[:,1])
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=10, loc='best', ncol=2)
+    ax.set_xlabel("$x$", fontsize=16)
+    ax.set_ylabel("$\\varphi(x)$", fontsize=16)
+    plt.tight_layout()
+    if(which=='passive'):
+        figureName = "Temp-" + figureName
+    elif(which=='active'):
+        figureName = "Taup-" + figureName
+    figure1Name = "/home/francesco/Pictures/soft/mips/profileVS" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(6.5,5), dpi = 120)
+    if(which=='passive'):
+        x = temp 
+        xlabel = "$Temperature,$ $T$"
+    elif(which=='active'):
+        x = taup
+        ax.set_xscale('log')
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+    ax.errorbar(x, width[:,0], width[:,1], color='k', markersize=10, fillstyle='none', marker='^', lw=1, capsize=3)
+    #ax.errorbar(x, density[:,0], density[:,1], color='k', markersize=10, fillstyle='none', marker='^', lw=1, capsize=3)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$Interface$ $width,$ $w$", fontsize=16)
+    #ax.set_ylabel("$Liquid$ $density,$ $\\varphi_{Liquid}$", fontsize=16)
+    plt.tight_layout()
+    figure2Name = "/home/francesco/Pictures/soft/mips/widthVS" + figureName
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotWallForceVSTemperature(dirName, figureName, which='passive'):
+    fig, ax = plt.subplots(figsize=(6.5,5), dpi = 120)
+    if(which=='passive'):
+        dirList = np.array(['0.42', '0.43', '0.44', '0.45', '0.46', '0.47'])
+        temp = dirList.astype(np.float64)
+    elif(which=='active'):
+        dirList = np.array(['1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01', '1e02', '1e03'])
+        taup = dirList.astype(np.float64)
+    else:
+        print("Please specify the sample type")
+    force = np.zeros((dirList.shape[0],2))
+    force1 = np.zeros((dirList.shape[0],2))
+    force2 = np.zeros((dirList.shape[0],2))
+    force3 = np.zeros((dirList.shape[0],2))
+    force4 = np.zeros((dirList.shape[0],2))
+    force5 = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        if(which=='passive'):
+            dirSample = dirName + "/T" + dirList[d] + "/dynamics-test/"
+        elif(which=='active'):
+            dirSample = dirName + "/T0.42-tp" + dirList[d] + "-f04/dynamics-test/"
+        if(os.path.exists(dirSample)):
+            width = 0
+            if(os.path.exists(dirSample + "/densityProfile.dat")):
+                data = np.loadtxt(dirSample + "/densityProfile.dat")
+                x = data[:,0]
+                y = data[:,1]
+                xFluid = x[np.argwhere(y>0.5)[:,0]]
+                if(xFluid.shape[0] != 0):
+                    width = xFluid[-1] - xFluid[0]
+            else:
+                width, _, _ = interface.averageLinearDensityProfile(dirSample)
+            #print(dirSample)
+            if(width!=0):
+                data = np.loadtxt(dirSample + "/energy.dat")
+                force[d,0] = np.mean(data[:,4])/(2*width)
+                force[d,1] = np.std(data[:,4])/(2*width)
+                data = np.loadtxt(dirSample + "/wallForce-size0.0.dat")
+                force1[d,0] = np.mean(data[:,2])/(2*width)
+                force1[d,1] = np.std(data[:,2])/(2*width)
+                data = np.loadtxt(dirSample + "/wallForce-size0.25.dat")
+                force2[d,0] = np.mean(data[:,2])/(2*width)
+                force2[d,1] = np.std(data[:,2])/(2*width)
+                data = np.loadtxt(dirSample + "/wallForce-size0.5.dat")
+                force3[d,0] = np.mean(data[:,2])/(2*width)
+                force3[d,1] = np.std(data[:,2])/(2*width)
+                data = np.loadtxt(dirSample + "/wallForce-size0.75.dat")
+                force4[d,0] = np.mean(data[:,2])/(2*width)
+                force4[d,1] = np.std(data[:,2])/(2*width)
+                data = np.loadtxt(dirSample + "/wallForce-size1.0.dat")
+                force5[d,0] = np.mean(data[:,2])/(2*width)
+                force5[d,1] = np.std(data[:,2])/(2*width)
+    if(which=='passive'):
+        x = temp 
+        xlabel = "$Temperature,$ $T$"
+        figureName = "Temp-" + figureName
+    elif(which=='active'):
+        x = taup
+        ax.set_xscale('log')
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+        figureName = "Taup-" + figureName
+    #ax.errorbar(x, force[:,0], force[:,1], marker='o', markersize=8, fillstyle='none', color='k', label="$Simulation$")
+    ax.errorbar(x, force1[:,0], force1[:,1], marker='o', lw=1, markersize=8, fillstyle='none', color='g', capsize=3, label="$d_{wall} = 0$")
+    ax.errorbar(x, force2[:,0], force2[:,1], marker='s', lw=1, markersize=8, fillstyle='none', color='b', capsize=3, label="$d_{wall} = 0.25 \\langle \\sigma_i \\rangle$")
+    ax.errorbar(x, force3[:,0], force3[:,1], marker='v', lw=1, markersize=8, fillstyle='none', color=[1,0.5,0], capsize=3, label="$d_{wall} = 0.5 \\langle \\sigma_i \\rangle$")
+    ax.errorbar(x, force4[:,0], force4[:,1], marker='^', lw=1, markersize=8, fillstyle='none', color='r', capsize=3, label="$d_{wall} = 0.75 \\langle \\sigma_i \\rangle$")
+    ax.errorbar(x, force5[:,0], force5[:,1], marker='D', lw=1, markersize=8, fillstyle='none', color='k', capsize=3, label="$d_{wall} = \\langle \\sigma_i \\rangle$")
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(loc='lower right', fontsize=12)
+    ax.set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=16)
+    ax.set_ylabel("$\\frac{F_{wall} \\sigma}{w}$", fontsize=24, rotation="horizontal", labelpad=30)
+    if(which=='passive'):
+        figureName = "Temp-" + figureName
+    elif(which=='active'):
+        figureName = "Taup-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/wallForceVS-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotForcePDF(dirName, figureName, numBins=20):
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    if(os.path.exists(dirName + "/singleProfile.dat")):
+        data = np.loadtxt(dirName + "/singleProfile.dat")
         x = data[:,0]
         y = data[:,1]
         xFluid = x[np.argwhere(y>0.5)[:,0]]
         width = xFluid[-1] - xFluid[0]
     else:
-        width, _,_ = interface.computeLinearDensityProfile(dirName + "/../count/")
-    boxSize = np.loadtxt(dirName + "/../count/boxSize.dat")
-    boxWidth = boxSize[0]
-    if(which=="single"):
-        data = np.loadtxt(dirName + "/energy.dat")
-        ax.plot(data[:,1], data[:,index], linewidth=1.2, marker='o', markersize=3, fillstyle='none', color='k')
-    elif(which=="average"):
-        data = np.loadtxt(dirName + "/0/energy.dat")
-        time = data[:,1]
-        wall = np.zeros((numSamples, data.shape[0]))
-        wall[0] = data[:,index]
-        for i in range(1,numSamples):
-            data = np.loadtxt(dirName + "/" + str(i) + "/energy.dat")
-            wall[i] = data[:,index]#*width/(count*boxWidth)
-        mean = np.mean(wall, axis=0)
-        error = np.std(wall, axis=0)
-        ax.errorbar(time, mean, error, linewidth=1.2, marker='o', markersize=3, fillstyle='none', color='k', capsize=3)
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Time,$ $t$", fontsize=16)
-    ax.set_xscale('log')
-    if(index==2):
-        ax.set_ylabel("$\\frac{E_{pot}}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
-        figureName = "/home/francesco/Pictures/soft/mips/wallEnergyVSTime-" + figureName
-    elif(index==4):
-        ax.set_ylabel("$Force$ $on$ $wall,$ $F$", fontsize=16)
-        figureName = "/home/francesco/Pictures/soft/mips/wallForceVSTime-" + figureName
-    elif(index==5):
-        ax.set_ylabel("$Pressure,$ $p$", fontsize=16)
-        figureName = "/home/francesco/Pictures/soft/mips/wallPressureVSTime-" + figureName
-    plt.tight_layout()
-    if(which=='average'):
-        figureName += "-average"
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPWallForceVSStrain(dirName, figureName, which='average', index=4, limit=130):
-    fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
-    numParticles = utils.readFromParams(dirName, "numParticles")
-    #count = np.sqrt(np.mean(np.loadtxt(dirName + "/../count/energy.dat")[:,4]))
-    count = np.sqrt(16384)
-    print(count, np.sqrt(numParticles))
-    dirList, strain = utils.getOrderedStrainDirectories(dirName)
-    mean = np.zeros(dirList.shape[0])
-    error = np.zeros(dirList.shape[0])
-    length = np.zeros(dirList.shape[0])
-    width = np.zeros(dirList.shape[0])
-    boxWidth = np.zeros(dirList.shape[0])
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + dirList[d]
-        if(which=='average'):
-            dirSample += "/simple/"
-        if(os.path.exists(dirSample)):
-            #print(dirSample)
-            if(os.path.exists(dirSample + os.sep + "singleProfile.dat")):
-                data = np.loadtxt(dirSample + os.sep + "singleProfile.dat")
-                x = data[:,0]
-                y = data[:,1]
-                xFluid = x[np.argwhere(y>0.5)[:,0]]
-                width[d] = xFluid[-1] - xFluid[0]
-            else:
-                width[d], _,_ = interface.computeLinearDensityProfile(dirSample)
-            boxSize = np.loadtxt(dirSample + "/boxSize.dat")
-            boxWidth[d] = boxSize[0]
-            length[d] = boxSize[1]
-            data = np.loadtxt(dirSample + "/energy.dat")
-            if(index==2):
-                mean[d] = np.mean(data[:,index] + 0.5 * data[:,index+1])
-                error[d] = np.std(data[:,index] + 0.5 * data[:,index+1])
-            else:
-                mean[d] = np.mean(data[:,index]*width[d]/(count*boxWidth[d]))
-                error[d] = np.std(data[:,index]*width[d]/(count*boxWidth[d]))/10
-    if(which=='average'):
-        mean = mean[mean!=0]
-        error = error[error!=0]
-        strain = strain[length!=0]
-        length = length[length!=0]
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Strain,$ $\\epsilon$", fontsize=16)
-    #ax.set_ylim(-0.04, 0.64)
-    ax.errorbar(strain, mean, error, lw=1, marker='s', markersize=5, color='k', capsize=3, markeredgecolor='k', fillstyle='left', label='$From$ $simulation$')
-    if(index==2):
-        ax.set_ylabel("$\\frac{E_{pot}}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
-        figure1Name = "/home/francesco/Pictures/soft/mips/wallEnergyVSStrain-" + figureName
-        # fit line to energy versus length or strain
-        energy = mean
-        failed = False
-        try:
-            #popt, pcov = curve_fit(lineFit, strain[strain<limit], energy[strain<limit])
-            popt, pcov = curve_fit(lineFit, length[length<limit], energy[length<limit])
-        except RuntimeError:
-            print("Error - curve_fit failed")
-            failed = True
-        if(failed == False):
-            #ax.plot(strain, lineFit(strain, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax^2 + bx + c$")
-            ax.plot(length, lineFit(length, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax^2 + bx + c$")
-            print("Energy: a, b:", popt, "line tension from fit:", popt[0])
-    elif(index==4):
-        ax.set_ylabel("$\\frac{F \\sigma}{\\varepsilon_{LJ}}$", fontsize=24, rotation='horizontal', labelpad=20)
-        figure1Name = "/home/francesco/Pictures/soft/mips/wallForceVSStrain-" + figureName
-    elif(index==5):
-        ax.set_ylabel("$Pressure,$ $p$", fontsize=16)
-        figure1Name = "/home/francesco/Pictures/soft/mips/wallPressureVSStrain-" + figureName
-    plt.tight_layout()
-    if(which=='average'):
-        figure1Name += "-average"
-    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    if(index==4):
-        fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
-        dirSample = dirName + "/../simple/"
-        boxSize = np.loadtxt(dirSample + "boxSize.dat")
-        if(os.path.exists(dirSample + "singleProfile.dat")):
-            data = np.loadtxt(dirSample + "singleProfile.dat")
-            x = data[:,0]
-            y = data[:,1]
-            xFluid = x[np.argwhere(y>0.5)[:,0]]
-            width = xFluid[-1] - xFluid[0]
-        else:
-            width, _,_ = interface.computeLinearDensityProfile(dirSample)
-        data = np.loadtxt(dirSample + "energy.dat")
-        temp = np.mean(data[:,3])
-        ertemp = np.std(data[:,3])
-        data[:,4] *= width / (count * boxSize[0])
-        force0 = np.array([np.mean(data[:,4]), np.std(data[:,4])])
-        force = mean
-        length0 = boxSize[1]
-        print("average force at zero strain:", force0[0], "+-", force0[1], "height: ", boxSize[1])
-        print("average delta force:", np.mean(mean[1:]), "+-", np.std(mean[1:]))
-        work = np.zeros(force.shape[0])
-        #delta = strain[1] - strain[0]
-        delta = length[1] - length[0]
-        #width = np.mean(width[:-1] - width[1:])
-        work = np.zeros(force.shape[0])
-        for i in range(work.shape[0]):
-            #work[i] = force[i] * strain[i] * width[i]
-            #work[i] += force[i] * delta
-            #work[i] = 0.5 * force[i] * delta
-            work[i] = 0.5 * np.sum(force[:i]) * delta
-            #work[i] = 0.5 * np.sum(force[:i] - force0[0]) * delta
-            #work[i] = np.sum(force0[0] - force[:i]) * delta
-        failed = False
-        try:
-            #popt, pcov = curve_fit(lineFit, strain[strain<limit], work[strain<limit])
-            popt, pcov = curve_fit(lineFit, length[length<limit], work[length<limit])
-        except RuntimeError:
-            print("Error - curve_fit failed")
-            failed = True
-        if(failed == False):
-            #ax.plot(strain, lineFit(strain, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax^2 + bx + c$")
-            ax.plot(length/length0 - 1, lineFit(length, *popt), color='b', lw=1.2, linestyle='dashdot', label="$Linear$ $fit$")
-            print("Work: a, b:", popt, "line tension from fit:", popt[0], popt[0]/temp)
-            print("Temperature:", temp, ertemp)
-        #ax.plot(strain, work, marker='o', fillstyle='none', color='k', lw=1.2)
-        ax.plot(length/length0 - 1, work, marker='o', markersize=8, fillstyle='none', color='k', lw=1, markeredgewidth=1.2)
-        ax.tick_params(axis='both', labelsize=14)
-        #ax.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
-        ax.set_xlabel("$Strain,$ $\\epsilon$", fontsize=16)
-        ax.set_ylabel("$\\frac{1}{2}\\int_{H^0}^{H}$ $F(H')$ $dH'$", fontsize=16)
-        #ax.set_ylabel("$W(L_y) - W(L_y^0)$", fontsize=16)
-        plt.tight_layout()
-        figure2Name = "/home/francesco/Pictures/soft/mips/workVSlength-" + figureName
-        fig.savefig(figure2Name + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotSPWidthVSStrain(dirName, figureName, which='average', limit=130):
-    fig1, ax1 = plt.subplots(figsize=(6,5), dpi = 120)
-    fig2, ax2 = plt.subplots(figsize=(6,5), dpi = 120)
-    dirList, strain = utils.getOrderedStrainDirectories(dirName)
-    width = np.zeros(dirList.shape[0])
-    liquid = np.zeros(dirList.shape[0])
-    vapor = np.zeros(dirList.shape[0])
-    strain = np.zeros(dirList.shape[0])
-    length = np.zeros(dirList.shape[0])
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + dirList[d]
-        if(which=='average'):
-            dirSample += "/simple/"
-        if(os.path.exists(dirSample)):
-            #print(dirSample)
-            if(os.path.exists(dirSample + os.sep + "singleProfile.dat")):
-                data = np.loadtxt(dirSample + os.sep + "singleProfile.dat")
-                x = data[:,0]
-                y = data[:,1]
-                xFluid = x[np.argwhere(y>0.5)[:,0]]
-                width[d] = xFluid[-1] - xFluid[0]
-                liquid[d] = np.mean(y[y>0.5])
-                vapor[d] = np.mean(y[y<0.5])
-            else:
-                width[d], liquid[d], vapor[d] = interface.computeLinearDensityProfile(dirSample)
-            boxSize = np.loadtxt(dirSample + "/boxSize.dat")
-            length[d] = boxSize[1]
-    if(which=='average'):
-        width = width[length!=0]
-        liquid = liquid[length!=0]
-        vapor = vapor[length!=0]
-        strain = strain[length!=0]
-        length = length[length!=0]
-    ax1.tick_params(axis='both', labelsize=14)
-    ax1.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
-    ax1.set_ylabel("$Liquid$ $width,$ $w$", fontsize=16)
-    ax1.plot(length, width * length, lw=1, marker='v', markersize=5, color='k', markeredgecolor='k', fillstyle='none')
-    ax2.tick_params(axis='both', labelsize=14)
-    ax2.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
-    ax2.set_ylabel("$Density,$ $\\varphi$", fontsize=16)
-    ax2.plot(length, liquid, lw=1, marker='o', markersize=8, color='b', fillstyle='none', label='$Liquid$')
-    ax2.plot(length, vapor, lw=1, marker='s', markersize=8, color='g', fillstyle='none', label='$Vapor$')
-    figure1Name = "/home/francesco/Pictures/soft/mips/widthVSStrain-" + figureName
-    figure2Name = "/home/francesco/Pictures/soft/mips/densityVSStrain-" + figureName
-    fig1.tight_layout()
-    fig2.tight_layout()
-    if(which=='average'):
-        figure1Name += "-average"
-        figure2Name += "-average"
-    fig1.savefig(figure1Name + ".png", transparent=True, format = "png")
-    fig2.savefig(figure2Name + ".png", transparent=True, format = "png")
-    plt.show()
-
-def plotForcePDF(dirName, figureName, index=4, numBins=20):
-    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
-    data = np.loadtxt(dirName + "/energy.dat")[:,index]
-    pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), numBins), density=True)
+        width, _, _ = interface.computeLinearDensityProfile(dirName)
+    data = np.loadtxt(dirName + "/energy.dat")
+    #data[:,4] /= width
+    pdf, edges = np.histogram(data[:,4], bins=np.linspace(np.min(data[:,4]), np.max(data[:,4]), numBins), density=True)
     edges = (edges[1:] + edges[:-1])/2
     ax.plot(edges[pdf>0], pdf[pdf>0], marker='o', markersize=8, lw=1, fillstyle='none', markeredgewidth=1, color='k')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$F_{wall}$", fontsize=16)
     ax.set_ylabel("$PDF(F_{wall})$", fontsize=16)
+    print("Average force:", np.mean(data[:,4]), np.std(data[:,4]))
     figureName = "/home/francesco/Pictures/soft/mips/forcePDF-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotForcePDFVSTemperature(dirName, figureName, which='passive', numBins=20):
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    if(which=='passive'):
+        dirList = np.array(['0.42', '0.43', '0.44', '0.45', '0.46', '0.47'])
+    elif(which=='active'):
+        dirList = np.array(['1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01', '1e02', '1e03'])
+    else:
+        print("Please specify the sample type")
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+2)
+    numParticles = np.zeros(dirList.shape[0])
+    mean = np.zeros(dirList.shape[0])
+    error = np.zeros(dirList.shape[0])
+    labelName = "$T=$"
+    for d in range(dirList.shape[0]):
+        if(which=='passive'):
+            dirSample = dirName + "/T" + dirList[d] + "/dynamics-test/"
+            labelName = "$T=$"
+        elif(which=='active'):
+            dirSample = dirName + "/T0.42-tp" + dirList[d] + "-f04/dynamics-test/"
+            labelName = "$f_0=$"
+        if(os.path.exists(dirSample)):
+            width = 0
+            if(os.path.exists(dirSample + "/densityProfile.dat")):
+                data = np.loadtxt(dirSample + "/densityProfile.dat")
+                x = data[:,0]
+                y = data[:,1]
+                xFluid = x[np.argwhere(y>0.5)[:,0]]
+                if(xFluid.shape[0] != 0):
+                    width = xFluid[-1] - xFluid[0]
+            else:
+                width, _, _ = interface.averageLinearDensityProfile(dirSample)
+            #print(dirSample)
+            numParticles[d] = utils.readFromParams(dirSample, "numParticles")
+            data = np.loadtxt(dirSample + "/energy.dat")
+            if(width!=0):
+                #data = data[:,4]/(2*width)
+                data = data[:,5]
+                mean[d] = np.mean(data)
+                error[d] = np.std(data)
+                print("sample:", dirList[d], "width:", width, "line tension:", np.mean(data), np.std(data))
+                pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), numBins), density=True)
+                edges = (edges[1:] + edges[:-1])/2
+                ax.plot(edges[pdf>0], pdf[pdf>0], marker='o', markersize=8, lw=1, fillstyle='none', markeredgewidth=1, color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(loc='best', fontsize=12)
+    ax.set_xlabel("$F_{wall} \\sigma / w$", fontsize=16)
+    ax.set_ylabel("$PDF(F_{wall} \\sigma / w)$", fontsize=16)
+    if(which=='passive'):
+        figureName = "Temp-" + figureName
+    elif(which=='active'):
+        figureName = "Taup-" + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/forcePDFVS-" + figureName
     plt.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -805,6 +874,942 @@ def plotForcePDFVSStrain(dirName, figureName, which="average", index=4, numBins=
     figureName = "/home/francesco/Pictures/soft/mips/forcePDFvsStrain-" + figureName
     plt.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPWallForceVSTime(dirName, figureName, which='average', index=4, numSamples=20):
+    fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
+    count = np.sqrt(np.mean(np.loadtxt(dirName + "/../count/energy.dat")[:,4]))
+    if(os.path.exists(dirName + "/../count/singleProfile.dat")):
+        data = np.loadtxt(dirName + "/../count/singleProfile.dat")
+        x = data[:,0]
+        y = data[:,1]
+        xFluid = x[np.argwhere(y>0.5)[:,0]]
+        width = xFluid[-1] - xFluid[0]
+    else:
+        width, _,_ = interface.computeLinearDensityProfile(dirName + "/../count/")
+    boxSize = np.loadtxt(dirName + "/../count/boxSize.dat")
+    boxWidth = boxSize[0]
+    if(which=="single"):
+        data = np.loadtxt(dirName + "/energy.dat")
+        ax.plot(data[:,1], data[:,index], linewidth=1.2, marker='o', markersize=3, fillstyle='none', color='k')
+    elif(which=="average"):
+        data = np.loadtxt(dirName + "/0/energy.dat")
+        time = data[:,1]
+        wall = np.zeros((numSamples, data.shape[0]))
+        wall[0] = data[:,index]
+        for i in range(1,numSamples):
+            data = np.loadtxt(dirName + "/" + str(i) + "/energy.dat")
+            wall[i] = data[:,index]#*width/(count*boxWidth)
+        mean = np.mean(wall, axis=0)
+        error = np.std(wall, axis=0)
+        ax.errorbar(time, mean, error, linewidth=1.2, marker='o', markersize=3, fillstyle='none', color='k', capsize=3)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Time,$ $t$", fontsize=16)
+    ax.set_xscale('log')
+    if(index==2):
+        ax.set_ylabel("$\\frac{E_{pot}}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
+        figureName = "/home/francesco/Pictures/soft/mips/wallEnergyVSTime-" + figureName
+    elif(index==4):
+        ax.set_ylabel("$Force$ $on$ $wall,$ $F$", fontsize=16)
+        figureName = "/home/francesco/Pictures/soft/mips/wallForceVSTime-" + figureName
+    elif(index==5):
+        ax.set_ylabel("$Pressure,$ $p$", fontsize=16)
+        figureName = "/home/francesco/Pictures/soft/mips/wallPressureVSTime-" + figureName
+    plt.tight_layout()
+    if(which=='average'):
+        figureName += "-average"
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plot2FluidsISF(dirName, figureName, T1='0.80', T2='0.40', decade=7, which='short'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which=='short'):
+        index1 = 2
+        index2 = 7
+    else:
+        index1 = 3
+        index2 = 8
+    if not(os.path.exists(dirName + "/2logCorr.dat")):
+        interface.compute2FluidsCorr(dirName, 0, decade, decade-1)
+    data = np.loadtxt(dirName + "/2logCorr.dat")
+    ax.semilogx(data[:,0], data[:,index1], color='g', marker='o', markersize=8, fillstyle='none', lw=1, label="$T_A=$"+T1)
+    ax.semilogx(data[:,0], data[:,index2], color='b', marker='v', markersize=8, fillstyle='none', lw=1, label="$T_B=$"+T2)
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Time,$ $t / \\sqrt{m/\\varepsilon} \\sigma$", fontsize=16)
+    ax.set_ylabel("$ISF$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/2fluidsISF-" + figureName + "-T1-" + T1 + "-T2-" + T2
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def compare2FluidsISF(dirName, figureName, which='short'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    dirList = np.array(['0.40', '0.50', '0.60', '0.70', '0.80', '0.90'])
+    temp = dirList.astype(float)
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+1)
+    markerList = ['o', 's', 'v', '^', 'P', 'd']
+    tau1 = np.zeros(dirList.shape[0])
+    tau2 = np.zeros(dirList.shape[0])
+    if(which=='short'):
+        index1 = 2
+        index2 = 7
+    else:
+        index1 = 3
+        index2 = 8
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + "T" + dirList[d] + "/nve/dynamics-log/"
+        if not(os.path.exists(dirSample + "/2logCorr.dat")):
+            interface.compute2FluidsCorr(dirSample, 0, 7, 6)
+        data = np.loadtxt(dirSample + "/2logCorr.dat")
+        tauData = np.column_stack((data[:,0], data[:,index1-1], data[:,index1]))
+        tau1[d] = utils.computeTau(tauData)
+        ax.semilogx(data[:,0], data[:,index1], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=8, fillstyle='none', lw=1, label="$T_A=$" + dirList[d])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + "T" + dirList[d] + "/nve/dynamics-log/"
+        data = np.loadtxt(dirSample + "/2logCorr.dat")
+        tauData = np.column_stack((data[:,0], data[:,index2-1], data[:,index2]))
+        tau2[d] = utils.computeTau(tauData)
+        ax.semilogx(data[:,0], data[:,index2], color=colorList(d/dirList.shape[0]), lw=5, alpha=0.5, ls='dashed', label="$T_B=$" + dirList[d])
+    ax.legend(fontsize=11, loc='best', ncol=2)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Time,$ $t \\; / \\sqrt{\\frac{m}{\\varepsilon}} \\sigma$", fontsize=16)
+    ax.set_ylabel("$ISF$", fontsize=16)
+    figure1Name = "/home/francesco/Pictures/soft/mips/compareISF-" + figureName
+    plt.tight_layout()
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.plot(temp, tau1, color='g', marker='o', markersize=8, fillstyle='none', lw=1, label="$Fluid$ $A$")
+    ax.plot(temp, tau2, color='b', marker='v', markersize=8, fillstyle='none', lw=1, label="$Fluid$ $B$")
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Temperature,$ $T/\\varepsilon$", fontsize=16)
+    ax.set_ylabel("$Relaxation$ $time,$ $\\tau \; / \\sqrt{\\frac{m}{\\varepsilon}} \\sigma$", fontsize=16)
+    figure2Name = "/home/francesco/Pictures/soft/mips/compareTau-" + figureName
+    plt.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPEnergyVSStrain(dirName, figureName, which='total', simple=False, limit=1.01, plot=True):
+    # read initial energies
+    energy = np.loadtxt(dirName + "../energy.dat")
+    etot0 = np.mean(energy[:,4])
+    dirList, strain = utils.getOrderedStrainDirectories(dirName)
+    mean = np.zeros((dirList.shape[0],5))
+    error = np.zeros((dirList.shape[0],5))
+    length = np.zeros(dirList.shape[0])
+    if(which=='time'):
+        etot = []
+        epot = []
+        ekin = []
+        time = []
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(simple=='simple'):
+            dirSample += "/simple/"
+        if(os.path.exists(dirSample)):
+            length[d] = np.loadtxt(dirSample + "/boxSize.dat")[1]
+            width = np.loadtxt(dirSample + "/boxSize.dat")[0]
+            data = np.loadtxt(dirSample + "/energy.dat")
+            if(which=='time' and d!=(dirList.shape[0]-1)):
+                etot.append(data[:,4])
+                epot.append(data[:,2])
+                ekin.append(data[:,3])
+                time.append(data[:,1]+np.ones(data[:,1].shape[0])*2*d)
+            data[:,4] -= etot0 
+            mean[d,0] = np.mean(data[:,4])
+            error[d,0] = np.std(data[:,4])
+            mean[d,1] = np.mean(data[:,2])
+            error[d,1] = np.std(data[:,2])
+            mean[d,2] = np.mean(data[:,3])
+            error[d,2] = np.std(data[:,3])
+            if(which == 'force'):
+                mean[d,3] = np.mean(data[:,5])
+                error[d,3] = np.std(data[:,5])
+    if(which=='time'):
+        etot = np.array(etot).flatten()
+        epot = np.array(epot).flatten()
+        ekin = np.array(ekin).flatten()
+        time = np.array(time).flatten()
+    mean = mean[length!=0]
+    error = error[length!=0]
+    strain = strain[length!=0]
+    length = length[length!=0]
+    length /= length[0]
+    np.savetxt(dirName + "/energyStrain.dat", np.column_stack((strain, length, mean[:,0], error[:,0], mean[:,1], error[:,1], mean[:,2], error[:,2], mean[:,3], error[:,3])))
+    if(plot == True):
+        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        if(which=='total'):
+            figureName = "etotgamma-" + figureName
+            ax.errorbar(length, mean[:,0], error[:,0], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Total$")
+            if(limit != 0):
+                failed = False
+                try:
+                    popt, pcov = curve_fit(lineFit, length[length<limit], mean[length<limit,0])
+                except RuntimeError:
+                    print("Error - curve_fit failed")
+                    failed = True
+                if(failed == False):
+                    ax.plot(length, lineFit(length, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
+                    print("Energy: a, b:", popt, "line tension from fit:", popt[0])
+        elif(which=='potential'):
+            ax.errorbar(length, mean[:,1], error[:,1], color='g', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Potential$")
+            figureName = "epotgamma-" + figureName
+        elif(which=='kinetic'):
+            ax.errorbar(length, mean[:,2], error[:,2], color='r', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Kinetic$")
+            figureName = "ekingamma-" + figureName
+        elif(which=='force'):
+            ax.errorbar(length, mean[:,3], error[:,3], color='c', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Force$")
+            figureName = "forcegamma-" + figureName
+        elif(which=='time'):
+            ax.plot(time, etot, color='b', marker='o', fillstyle='none', lw=1, label='$Total$')
+        else:
+            figureName = "egamma-" + figureName
+            ax.errorbar(length, mean[:,0], error[:,0], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Total$")
+            ax.errorbar(length, mean[:,1], error[:,1], color='g', marker='v', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Potential$")
+            ax.errorbar(length, mean[:,2], error[:,2], color='r', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Kinetic$")
+        ax.legend(fontsize=12, loc='best')
+        ax.tick_params(axis='both', labelsize=14)
+        ax.locator_params(axis='x', nbins=5)
+        if(which=='time'):
+            ax.set_xlabel("$Time,$ $t$", fontsize=16)
+        else:
+            ax.set_xlabel("$Box$ $height,$ $L_y/L_y^0$", fontsize=16)
+        #ax.set_xlabel("$Strain,$ $\\epsilon$", fontsize=16)
+        if(which=='force'):
+            ax.set_ylabel("$Force$ $across$ $wall,$ $F_{wall}$", fontsize=16)
+        else:
+            if(which=='total'):
+                ax.set_ylabel("$\\frac{\\Delta E}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
+            else:
+                ax.set_ylabel("$\\frac{E}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
+        figureName = "/home/francesco/Pictures/soft/mips/" + figureName
+        plt.tight_layout()
+        fig.savefig(figureName + ".png", transparent=True, format = "png")
+        plt.show()
+
+def plotSPStrainForceVSTime(dirName, figureName, strainStep = 1e-05, maxStrain = 2, compext='ext', plot=False):
+    # read initial energies
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    data = np.loadtxt(dirName + "/energy.dat")
+    strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+    freq = 10
+    every = freq * 60
+    force = np.zeros((strain.shape[0],2))
+    for i in range(0,strain.shape[0],every):
+        #print(strain[i])
+        stepForce = []
+        for j in range(every):
+            #print(i+j, strain[i+j])
+            stepForce.append(np.mean(data[(i+j)*freq:(i+j+1)*freq,5]))
+        # two interfaces
+        force[i,0] = np.mean(stepForce)/2
+        force[i,1] = np.std(stepForce)/2
+    strain = strain[force[:,0]!=0]
+    force = force[force[:,0]!=0]
+    if(compext == 'ext' or compext == 'ext-wall'):
+        otherStrain = -strain / (1 + strain)
+        width = (np.ones(strain.shape[0]) + otherStrain) * boxSize[0]
+        height = (np.ones(strain.shape[0]) + strain) * boxSize[1]
+    elif(compext == 'comp' or compext == 'comp-wall'):
+        otherStrain = -strain / (1 + strain)
+        width = (np.ones(strain.shape[0]) + strain) * boxSize[0]
+        height = (np.ones(strain.shape[0]) + otherStrain) * boxSize[1]
+    force[:,0] /= (2*width)
+    force[:,1] /= (2*width)
+    #force = force[strain<limit]
+    #strain = strain[strain<limit]
+    np.savetxt(dirName + "/forceTime.dat", np.column_stack((strain, force, height, width)))
+    if(plot == True):
+        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        #ax.errorbar(width/boxSize[0], force[:,0], force[:,1], color='k', marker='o', markersize=4, fillstyle='none', lw=1, capsize=3)
+        ax.errorbar(height/boxSize[1], force[:,0], force[:,1], color='k', marker='o', markersize=4, fillstyle='none', lw=1, capsize=3)
+        ax.set_ylabel("$\\frac{F_{wall} \\sigma^2}{2 L_x\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=25)
+        print("average line tension:", np.mean(force[:,0]), "+-", np.std(force[:,0]))
+        print('Lx', boxSize[0], 'Ly', boxSize[1])
+        ax.tick_params(axis='both', labelsize=14)
+        ax.locator_params(axis='x', nbins=5)
+        ax.set_xlabel("$L_x/L_x^0$", fontsize=16)
+        #ax.set_xlabel("$Strain,$ $\\gamma$", fontsize=16)
+        figureName = "/home/francesco/Pictures/soft/mips/forceTime-" + figureName
+        plt.tight_layout()
+        fig.savefig(figureName + ".png", transparent=True, format = "png")
+        plt.show()
+
+def compareForceVSTimeStrain(dirName, figureName, which='temp', compext='comp-wall'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(which == 'temp'):
+        dirList = np.array(['0.60', '0.70', '0.80', '0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', 
+                            '1.60', '1.70', '1.80', '1.90', '2.00', '2.10', '2.20', '2.40', '2.60', '2.80', '3.00'])
+        strain = np.ones(dirList.shape[0])*5e-06
+        maxStrain = np.ones(dirList.shape[0])*0.4
+    elif(which == 'strain'):
+        dirList = np.array(['2e-06', '3e-06', '5e-06', '1e-05', '2e-05', '3e-05'])
+        strain = dirList.astype(np.float32)
+        maxStrain = np.array([0.16, 0.4, 0.4, 0.4, 0.4, 0.4])
+    tension = np.zeros((dirList.shape[0],2))
+    temp = dirList.astype(np.float64)
+    for d in range(dirList.shape[0]):
+        if(which == 'temp'):
+            dirSample = dirName + '/T' + dirList[d] + '/nve-biaxial-' + compext + '5e-06-tmax1e03/'
+        elif(which == 'strain'):
+            dirSample = dirName + '/T0.80/nve-biaxial-' + compext + dirList[d] + '-tmax1e03/'
+        if(os.path.exists(dirSample)):
+            boxSize = np.loadtxt(dirSample + '/boxSize.dat')
+            numParticles = utils.readFromParams(dirSample, 'numParticles')
+            if not(os.path.exists(dirSample + "/forceTime.dat")):
+                plotSPStrainForceVSTime(dirSample, figureName, strain[d], maxStrain[d], compext=compext, plot=False)
+            data = np.loadtxt(dirSample + "/forceTime.dat")
+            force = data[:,1]
+            tension[d,0] = np.mean(force)
+            tension[d,1] = np.std(force)
+            print("average tension:", tension[d], "temp:", temp[d])
+    if(which == 'temp'):
+        x = temp
+        xlabel = "$Temperature,$ $T/\\varepsilon$"
+    elif(which == 'strain'):
+        x = strain
+        xlabel = "$Strain$ $step,$ $\\Delta \\gamma$"
+    ax.errorbar(x[tension[:,0]!=0], tension[tension[:,0]!=0,0], tension[tension[:,0]!=0,1], color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.locator_params(axis='x', nbins=5)
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$\\frac{F_{wall} \\sigma^2}{2L_x\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=30)
+    if(which == 'temp'):
+        figureName = 'vsTemp-' + figureName
+    elif(which == 'strain'):
+        ax.set_xscale('log')
+        figureName = 'vsStrain-' + figureName
+    figureName = "/home/francesco/Pictures/soft/mips/force-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep = 1e-05, limit = 2.2, compext = 'ext', plot=False):
+    # read initial energies
+    numParticles = utils.readFromParams(dirName, 'numParticles')
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    data = np.loadtxt(dirName + "/energy.dat")
+    maxStrain = (data.shape[0] // 10) * strainStep
+    strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+    freq = 10
+    every = freq * 40
+    etot = np.zeros((strain.shape[0],2))
+    epot = np.zeros((strain.shape[0],2))
+    ekin = np.zeros((strain.shape[0],2))
+    for i in range(0,strain.shape[0]-every,every):
+        #print(strain[i])
+        stepEtot = []
+        stepEpot = []
+        stepEkin = []
+        for j in range(every):
+            #print(i+j, strain[i+j])
+            stepEtot.append(np.mean(data[(i+j)*freq:(i+j+1)*freq,4]))
+            stepEpot.append(np.mean(data[(i+j)*freq:(i+j+1)*freq,2]))
+            stepEkin.append(np.mean(data[(i+j)*freq:(i+j+1)*freq,3]))
+        # two interfaces
+        etot[i,0] = np.mean(stepEtot)/2
+        etot[i,1] = np.std(stepEtot)/2
+        epot[i,0] = np.mean(stepEpot)
+        epot[i,1] = np.std(stepEpot)
+        ekin[i,0] = np.mean(stepEkin)
+        ekin[i,1] = np.std(stepEkin)
+    strain = strain[etot[:,0]!=0]
+    epot = epot[etot[:,0]!=0]
+    ekin = ekin[etot[:,0]!=0]
+    etot = etot[etot[:,0]!=0]
+    etot = etot[strain<limit]/2
+    #etot[:,0] -= etot[0,0]
+    epot = epot[strain<limit]
+    ekin = ekin[strain<limit]
+    strain = strain[strain<limit]
+    otherStrain = -strain/(1 + strain)
+    if(compext == 'ext' or compext == 'ext-wall'):
+        height = (1 + strain)*boxSize[1]
+        width = (1 + otherStrain)*boxSize[0]
+    elif(compext == 'comp' or compext == 'comp-wall'):
+        height = (1 + otherStrain)*boxSize[1]
+        width = (1 + strain)*boxSize[0]
+    np.savetxt(dirName + "/energyTime.dat", np.column_stack((strain, etot, epot, ekin, height, width)))
+    if(plot == True):
+        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        if(which=='total'):
+            etot *= numParticles/2
+            etot[:,0] -= etot[0,0]
+            height -= boxSize[1]
+            ax.plot(height, etot[:,0], color='k', fillstyle='none', lw=1)
+            #ax.plot(strain, etot[:,0], color='k', fillstyle='none', lw=1)
+            failed = False
+            try:
+                popt, pcov = curve_fit(lineFit, height[strain<0.4], etot[strain<0.4,0])
+            except RuntimeError:
+                print("Error - curve_fit failed")
+                failed = True
+            if(failed == False):
+                ax.plot(height, lineFit(height, *popt), color='g', lw=3, linestyle='dashdot', label="$ax + b$", alpha=0.4)
+                print("Energy: a, b:", popt, "slope:", popt[0])
+            ax.set_ylabel("$\\frac{\\Delta E}{2\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
+        elif(which=='potential'):
+            ax.plot(width/boxSize[0], epot[:,0], color='g', fillstyle='none', lw=1)
+            ax.set_ylabel("$Potential$ $energy,$ $U/N$", fontsize=16)
+        elif(which=='kinetic'):
+            ax.plot(width/boxSize[0], ekin[:,0], color='r', fillstyle='none', lw=1)
+            ax.set_ylabel("$Kinetic$ $energy,$ $K/N$", fontsize=16)
+        else:
+            print("please specify the type of plot between total, potential, kinetic and force")
+        ax.tick_params(axis='both', labelsize=14)
+        ax.locator_params(axis='x', nbins=5)
+        #ax.set_xlabel("$Strain,$ $\\gamma$", fontsize=16)
+        ax.set_xlabel("$L_y-L_y^0$", fontsize=16)
+        figureName = "/home/francesco/Pictures/soft/mips/" + figureName
+        plt.tight_layout()
+        fig.savefig(figureName + ".png", transparent=True, format = "png")
+        plt.show()
+
+def compareEnergyVSTimeStrain(dirName, figureName, type='nh-lmp', dirType='ext', versus='strain', which='time', log=False):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(versus == 'strain'):
+        strainList = np.array([1e-05, 2e-05, 5e-05])
+        dirList = np.array(['0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/', '0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '2e-05-tmax1e03/', 
+                            '0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '5e-05-tmax1e03/'])
+        labelList = ['$\\Delta \\gamma = 5 \\times 10^{-6}$', '$\\Delta \\gamma = 10^{-5}$', '$\\Delta \\gamma = 2 \\times 10^{-5}$', '$\\Delta \\gamma = 5\\times 10^{-5}$']
+    elif(versus == 'tmax'):
+        strainList = np.array([1e-05, 1e-05, 1e-05])
+        dirList = np.array(['0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/', '0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '1e-05-tmax2e03/', 
+                            '0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '1e-05-tmax5e03/'])
+        labelList = ['$t_{step} = 0.1$', '$t_{step} = 0.2$', '$t_{step} = 0.5$']
+    elif(versus == 'temp'):
+        dirList = np.array([type + '/T0.60/nve-biaxial-' + dirType + '5e-06-tmax1e03/', type + '/T0.70/nve-biaxial-' + dirType + '5e-06-tmax1e03/',
+                            type + '/T0.80/nve-biaxial-' + dirType + '5e-06-tmax1e03/', type + '/T0.90/nve-biaxial-' + dirType + '5e-06-tmax1e03/', 
+                            type + '/T1.00/nve-biaxial-' + dirType + '5e-06-tmax1e03/', type + '/T1.20/nve-biaxial-' + dirType + '5e-06-tmax1e03/',
+                            type + '/T1.40/nve-biaxial-' + dirType + '5e-06-tmax1e03/', type + '/T1.60/nve-biaxial-' + dirType + '5e-06-tmax1e03/'])
+        strainList = np.ones(dirList.shape[0])*5e-06
+        labelList = ['$T = 0.6$', '$T = 0.7$', '$T = 0.8$', '$T = 0.9$', '$T = 1.0$', '$T = 1.2$', '$T = 1.4$', '$T = 1.6$'] 
+                    # '$T = 1.6$', '$T = 1.7$', '$T = 1.8$', '$T = 1.9$', '$T = 2.0$', '$T = 2.1$', '$T = 2.2$', '$T = 2.4$', '$T = 2.6$', '$T = 2.8$', '$T = 3.0$']
+    elif(versus == 'compext'):
+        strainList = np.array([1e-05, 1e-05])
+        #dirList = np.array(['box13/2lj/0.64/' + type + '/T0.80/nve-biaxial-comp1e-05-tmax1e03/', 'box31/2lj/0.64/' + type + '/T0.80/nve-biaxial-ext1e-05-tmax1e03/'])
+        dirList = np.array(['box31/2lj/0.64/' + type + '/T0.80/nve-biaxial-ext1e-05-tmax1e03/', 
+                            'box31/2lj/0.64/' + type + '/T0.80/nve-biaxial-ext1e-05-tmax1e03/strain2.0000/nve-biaxial-comp1e-05-tmax1e03/'])
+        labelList = ['$Extension$', '$Compression$']
+        typeList = ['ext', 'comp']
+    elif(versus == 'ens'):
+        strainList = np.array([1e-05, 1e-05, 1e-05])
+        dirList = np.array(['0.64/' + type + '/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/', 
+                            '0.64/' + type + '/T0.80/nh-biaxial-' + dirType + '1e-05-tmax1e03/',
+                            '0.64/' + type + '/T0.80/nvt-biaxial-' + dirType + '1e-05-tmax1e03/'])
+        labelList = ['$NVE$', '$NH$', '$NVT$']
+    elif(versus == 'check'):
+        strainList = np.array([5e-06, 5e-06])
+        dirList = np.array(['0.64/nh2/T0.80/nve-biaxial-' + dirType + '5e-06-tmax1e03/', '0.64/nh2/T0.80/nve-biaxial-' + dirType + '-wall5e-06-tmax1e03/'])
+        labelList = ['$Run$ $1$', '$Run$ $2$']
+    else:
+        dirList = np.array(['0.64/nh-ljmp/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/', '0.64/nh-ljwca/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/', 
+                            '0.64/nh2/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/'])
+        strainList = np.ones(dirList.shape[0])*1e-05
+        labelList = ['$LJ^{\\pm}$', '$LJ-WCA$', '$LJ, \\varepsilon_{AA} = \\varepsilon_{BB} = 2, \\varepsilon_{AB} = 0.5$']
+    if(versus == 'temp'):
+        colorList = cm.get_cmap('viridis', dirList.shape[0])
+    else:
+        colorList = ['g', 'b', 'r', 'k', 'c', [1,0.5,0], [0,0.5,1]]
+    markerList = ['o', 's', 'v', 'd', 'x', '+', 'D']
+    lsList = ['solid', 'dashed', 'dashdot', 'dotted', '-.', ':', '--']
+    e0 = 0
+    tension = np.zeros((dirList.shape[0],2))
+    temp = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(os.path.exists(dirSample)):
+            numParticles = utils.readFromParams(dirSample, 'numParticles')
+            boxSize = np.loadtxt(dirSample + '/boxSize.dat')
+            if(which == 'time'):
+                if not(os.path.exists(dirSample + "/energyTime.dat")):
+                    if(versus == 'compext'):
+                        plotSPStrainEnergyVSTime(dirSample, 'temp', 'total', strainList[d], compext=typeList[d], plot=False)
+                    else:
+                        plotSPStrainEnergyVSTime(dirSample, 'temp', 'total', strainList[d], compext=dirType, plot=False)
+                data = np.loadtxt(dirSample + "/energyTime.dat")
+                if(versus == 'compext'):
+                    if(d==0):
+                        e0 = data[0,1]
+                    energy = (data[:,1]-e0)
+                    height = data[:,-2]
+                elif(versus == 'ens'):
+                    energy = data[:,1]*numParticles/2
+                    height = data[:,-2] - boxSize[1]
+                else:
+                    energy = data[:,1]*numParticles/2
+                    energy -= energy[0]
+                    height = data[:,-2] - boxSize[1]
+                    #energy = energy[data[:,0] < 0.4]
+                    #height = height[data[:,0] < 0.4]
+                if(versus == 'temp'):
+                    ax.plot(height, energy, color=colorList(d/dirList.shape[0]), ls='solid', label=labelList[d])
+                else:
+                    ax.plot(height, energy, color=colorList[d], ls=lsList[d], label=labelList[d])
+                failed = False
+                try:
+                    popt, pcov = curve_fit(lineFit, height[data[:,0] < 1], energy[data[:,0] < 1])
+                except RuntimeError:
+                    print("Error - curve_fit failed")
+                    failed = True
+                if(failed == False):
+                    label = "$slope: $" + str(np.format_float_positional(popt[0], precision=3))
+                    if(versus == 'temp'):
+                        ax.plot(height, lineFit(height, *popt), color=colorList(d/dirList.shape[0]), lw=3, linestyle='dashed', alpha=0.4)#, label=label)
+                    else:
+                        ax.plot(height, lineFit(height, *popt), color=colorList[d], lw=3, linestyle=lsList[d], alpha=0.4)#, label=label)
+                    #print("Energy: a, b:", popt, "slope:", popt[0])
+                    if(versus == 'temp' or versus == 'ens'):
+                        tension[d,0] = popt[0]
+                        tension[d,1] = np.std(energy/numParticles)
+                        temp[d] = np.mean(data[:,5])
+                        print("tension from fit:", tension[d], "temp:", temp[d])
+            else:
+                if not(os.path.exists(dirSample + "/energyStrain.dat")):
+                    plotSPEnergyVSStrain(dirSample, 'temp', 'total', 0, 0, plot=False)
+                data = np.loadtxt(dirSample + "/energyStrain.dat")
+                ax.errorbar(data[:,1], data[:,2], data[:,3], color=colorList[d], marker=markerList[d], markersize=8, fillstyle='none', lw=1, capsize=3, label=labelList[d])
+    if(log=='log'):
+        ax.set_yscale('log')
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.locator_params(axis='x', nbins=5)
+    #ax.set_xlabel("$Strain,$ $\\gamma$", fontsize=16)
+    if(versus == 'compext'):
+        #ax.set_xlabel("$Box$ $ratio,$ $L_y / L_x$", fontsize=16)
+        #ax.set_xticks([1/3, 2/3, 1, 2, 3])
+        #ax.set_xticklabels(['1/3', '2/3', '1', '2', '3'])
+        ax.set_ylabel("$\\frac{E - E_0^{ext}}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
+    elif(versus == 'ens'):
+        ax.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+        ax.set_ylabel("$Total$ $energy,$ $E$", fontsize=16)
+    else:
+        #ax.set_xlabel("$Strain,$ $\\gamma$", fontsize=16)
+        #ax.set_xlabel("$Interface$ $length,$ $L / L_0$", fontsize=16)
+        ax.set_xlabel("$L_y-L_y^0$", fontsize=16)
+        figureName = dirType + "-" + figureName
+        ax.set_ylabel("$\\frac{\\Delta E}{2\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
+    #ax.set_ylabel("$\\frac{K}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
+    figure1Name = "/home/francesco/Pictures/soft/mips/energy-" + figureName
+    if(log=='log'):
+        figure1Name += "-log"
+    plt.tight_layout()
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    if(versus == 'temp'):
+        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        ax.errorbar(temp[tension[:,0]!=0], tension[tension[:,0]!=0,0], tension[tension[:,0]!=0,1], color='k', marker='o', markersize=8, capsize=3, fillstyle='none', lw=1)
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_xlabel("$Temperature,$ $T / \\varepsilon$", fontsize=16)
+        ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
+        figure2Name = "/home/francesco/Pictures/soft/mips/tension-" + figureName
+        plt.tight_layout()
+        fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotEnergyVSTempPhi(dirName, figureName, which='temp'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    phiList = np.array(['0.66', '0.68', '0.70', '0.72'])
+    tempList = np.array(['0.40', '0.60', '0.80', '1.00'])
+    phi = phiList.astype(np.float64)
+    temp = tempList.astype(np.float64)
+    colorList = ['k', 'b', 'c', 'g']
+    markerList = ['o', 's', 'v', 'd']
+    epot = np.zeros((phiList.shape[0],tempList.shape[0],2))
+    ekin = np.zeros((phiList.shape[0],tempList.shape[0],2))
+    etot = np.zeros((phiList.shape[0],tempList.shape[0],2))
+    for d in range(phiList.shape[0]):
+        for t in range(tempList.shape[0]):
+            dirSample = dirName + phiList[d] + "/nve/T" + tempList[t] + "/dynamics/"
+            if(os.path.exists(dirSample + "/energy.dat")): 
+                data = np.loadtxt(dirSample + "/energy.dat")
+                epot[d,t,0] = np.mean(data[:,2])
+                epot[d,t,1] = np.std(data[:,2])
+                ekin[d,t,0] = np.mean(data[:,3])
+                ekin[d,t,1] = np.std(data[:,3]) 
+                etot[d,t,0] = np.mean(data[:,4])
+                etot[d,t,1] = np.std(data[:,4])
+    if(which=='temp'):
+        xlabel = "$Temperature,$ $T$"
+        figureName = "temp-" + figureName
+        for d in range(phiList.shape[0]):
+            ax.errorbar(temp, epot[d,:,0], epot[d,:,1], color=colorList[d], marker='o', markersize=10, fillstyle='none', capsize=3, lw=1.2, 
+                        label="$\\varphi=$" + phiList[d])
+            ax.errorbar(temp, ekin[d,:,0], ekin[d,:,1], color=colorList[d], marker='v', markersize=10, fillstyle='none', capsize=3, lw=1.2)
+            ax.errorbar(temp, etot[d,:,0], etot[d,:,1], color=colorList[d], marker='s', markersize=10, fillstyle='none', capsize=3, lw=1.2)
+    elif(which=='phi'):
+        xlabel = "$Packing$ $fraction,$ $\\varphi$"
+        figureName = "phi-" + figureName
+        for d in range(tempList.shape[0]):
+            ax.errorbar(phi, epot[:,d,0], epot[:,d,1], color=colorList[d], marker='o', markersize=10, fillstyle='none', capsize=3, lw=1.2, 
+                        label="$T=$" + tempList[d])
+            ax.errorbar(phi, ekin[:,d,0], ekin[:,d,1], color=colorList[d], marker='v', markersize=10, fillstyle='none', capsize=3, lw=1.2)
+            ax.errorbar(phi, etot[:,d,0], etot[:,d,1], color=colorList[d], marker='s', markersize=10, fillstyle='none', capsize=3, lw=1.2)
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$Energy$ $per$ $particle$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/energyVS-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plot2DensityProfile(dirName, figureName, num1=0):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    tempList = np.array(['0.40', '0.60', '0.80', '1.00'])
+    colorList = ['k', 'b', 'c', 'g']
+    markerList = ['o', 's', 'v', 'd']
+    for t in range(tempList.shape[0]):
+        dirSample = dirName + "/nve/T" + tempList[t] + "/dynamics/"
+        if not(os.path.exists(dirSample + "/densityProfile.dat")): 
+            interface.average2DensityProfile(dirSample, num1)
+        data = np.loadtxt(dirSample + "densityProfile.dat")
+        ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList[t], marker=markerList[t], markersize=8, fillstyle='none', capsize=3, lw=1.2, 
+                    label="$T=$" + tempList[t])
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$x$", fontsize=16)
+    ax.set_ylabel("$Density$ $profile,$ $\\varphi_1(x)$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/2profile-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plot2PhaseWidthVSTime(dirName, figureName, num1=0):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    tempList = np.array(['0.40', '0.60', '0.80', '1.00'])
+    colorList = ['k', 'b', 'c', 'g']
+    markerList = ['o', 's', 'v', 'd']
+    for t in range(tempList.shape[0]):
+        dirSample = dirName + "/nve/T" + tempList[t] + "/dynamics/"
+        boxWidth = np.loadtxt(dirSample + "boxSize.dat")[0]
+        timeStep = utils.readFromParams(dirSample, "dt")
+        if not(os.path.exists(dirSample + "/phaseWidth.dat")): 
+            interface.average2DensityProfile(dirSample, num1)
+        data = np.loadtxt(dirSample + "phaseWidth.dat")
+        data[:,0] *= timeStep
+        plt.plot(data[:,0], data[:,1]/boxWidth, color=colorList[t], marker=markerList[t], markersize=8, fillstyle='none', lw=1.2)
+    ax.set_ylim(-0.02,0.57)
+    x = np.linspace(np.min(data[:,0]), np.max(data[:,0]),100)
+    plt.plot(x, 0.5 * np.ones(100), ls='dashed', color='k')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $time,$ $t$", fontsize=16)
+    ax.set_ylabel("$Width,$ $w_1/L_x$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/widthtime" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plot2CorrelationVSTime(dirName, figureName, num1=0):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    #tempList = np.array(['0.40', '0.60', '0.80', '1.00'])
+    potList = np.array(['nh-ljmp', 'nh-ljwca', 'nh2'])
+    labelList = np.array(['$LJ^{\\pm}$', '$LJ-WCA$', '$LJ, \\varepsilon_{AA} = \\varepsilon_{BB} = 2, \\varepsilon_{AB} = 0.5$'])
+    colorList = ['k', 'b', 'c', 'g']
+    markerList = ['o', 's', 'v', 'd']
+    for t in range(potList.shape[0]):
+        #dirSample = dirName + "/nve/T" + tempList[t] + "/dynamics/"
+        dirSample = dirName + "/" + potList[t] + "/T0.80/dynamics-log/"
+        boxWidth = np.loadtxt(dirSample + "boxSize.dat")[0]
+        timeStep = utils.readFromParams(dirSample, "dt")
+        if not(os.path.exists(dirSample + "/2logCorr.dat")): 
+            interface.compute2FluidsCorr(dirSample, 0, 7, 6, num1)
+        data = np.loadtxt(dirSample + "2logCorr.dat")
+        plt.plot(data[:,0], data[:,3], color=colorList[t], lw=1.2, ls='dashed')
+        plt.plot(data[:,0], data[:,7], color=colorList[t], marker=markerList[t], markersize=8, fillstyle='none', lw=1.2, label=labelList[t])
+    ax.set_xscale('log')
+    ax.legend(loc='best', fontsize=12)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $time,$ $t$", fontsize=16)
+    ax.set_ylabel("$ISF$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/corrtime" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plot2PhaseWidthVSStrain(dirName, figureName, num1=0):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if not(os.path.exists(dirName + "/phaseWidth.dat")): 
+        interface.compute2PhaseWidthVSStrain(dirName, num1)
+    data = np.loadtxt(dirName + "phaseWidth.dat")
+    data[:,1] /= data[0,1]
+    x = np.linspace(np.min(data[:,1]), np.max(data[:,1]),100)
+    plt.plot(x, 0.5 * np.ones(100), ls='dashed', color='k')
+    plt.plot(data[:,1], data[:,3]/data[:,2], color='g', lw=1.2)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Box$ $height,$ $L_y/L_y^0$", fontsize=16)
+    ax.set_ylabel("$Width,$ $w_1/L_x$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/widthgamma" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+    
+def plotSPEnergyVSStrainVStmax(dirName, figureName, simple=False, limit=0):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    dirtmax = np.array(['2e05', '4e05', '6e05', '8e05', '2e06'])
+    colorList = ['k', 'b', 'g', 'c', 'r']
+    markerList = ['o', 's', 'v', '^', 'd']
+    labelName = "$t_{max}=$"
+    for t in range(dirtmax.shape[0]):
+        dirPath = dirName + "/biaxial1e-03-tmax" + dirtmax[t] +  "/"
+        dirList, strain = utils.getOrderedStrainDirectories(dirPath)
+        energy = np.zeros((dirList.shape[0],3))
+        error = np.zeros((dirList.shape[0],3))
+        length = np.zeros(dirList.shape[0])
+        for d in range(dirList.shape[0]):
+            dirSample = dirPath + dirList[d]
+            if(simple=='simple'):
+                dirSample += "/simple/"
+            if(os.path.exists(dirSample)):
+                length[d] = np.loadtxt(dirSample + "/boxSize.dat")[1]
+                data = np.loadtxt(dirSample + "/energy.dat")
+                energy[d,0] = np.mean(data[:,2] + data[:,3])
+                error[d,0] = np.std(data[:,2] + data[:,3])
+        energy = energy[length!=0]
+        error = error[length!=0]
+        strain = strain[length!=0]
+        length = length[length!=0]
+        if(limit!=0):
+            energy = energy[length<limit]
+            error = error[length<limit]
+            length = length[length<limit]
+        plt.errorbar(length/length[0], energy[:,0], error[:,0], marker=markerList[t], markersize=8, color=colorList[t], lw=1, capsize=3, fillstyle='none', label=labelName + dirtmax[t])
+    ax.set_yscale('log')
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Box$ $height,$ $L_y/L_y^0$", fontsize=16)
+    ax.set_ylabel("$Energy$ $per$ $particle$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/energyVStmax-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPEnergyVSStrainVSTemp(dirName, figureName, simple=False, limit=0, tmax='1e06'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    dirTemp = np.array(['0.4', '0.6'])
+    colorList = ['k', 'b', 'g', 'c', 'r']
+    markerList = ['o', 's', 'v', '^', 'd']
+    labelName = "$T=$"
+    for t in range(dirTemp.shape[0]):
+        dirPath = dirName + "T" + dirTemp[t] + "/0.72/nve/biaxial1e-03-tmax" + tmax +  "/"
+        dirList, strain = utils.getOrderedStrainDirectories(dirPath)
+        energy = np.zeros((dirList.shape[0],3))
+        error = np.zeros((dirList.shape[0],3))
+        length = np.zeros(dirList.shape[0])
+        for d in range(dirList.shape[0]):
+            dirSample = dirPath + dirList[d]
+            if(simple=='simple'):
+                dirSample += "/simple/"
+            if(os.path.exists(dirSample)):
+                length[d] = np.loadtxt(dirSample + "/boxSize.dat")[1]
+                data = np.loadtxt(dirSample + "/energy.dat")
+                energy[d,0] = np.mean(data[:,2] + data[:,3])
+                error[d,0] = np.std(data[:,2] + data[:,3])
+                energy[d,1] = np.mean(data[:,2])
+                error[d,1] = np.std(data[:,2])
+                energy[d,2] = np.mean(data[:,3])
+                error[d,2] = np.std(data[:,3])
+        energy = energy[length!=0]
+        error = error[length!=0]
+        strain = strain[length!=0]
+        length = length[length!=0]
+        if(limit!=0):
+            energy = energy[length<limit]
+            error = error[length<limit]
+            length = length[length<limit]
+        plt.errorbar(length/length[0], energy[:,0]/energy[0,0], error[:,0], marker=markerList[t], markersize=8, color=colorList[t], lw=1, capsize=3, fillstyle='none', label=labelName + dirTemp[t])
+    #ax.set_yscale('log')
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Box$ $height,$ $L_y/L_y^0$", fontsize=16)
+    ax.set_ylabel("$Energy$ $per$ $particle$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/energyVSTemp-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+
+def plotSPWallForceVSStrain(dirName, figureName, which='average', index=4, limit=130):
+    fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
+    numParticles = utils.readFromParams(dirName, "numParticles")
+    #count = np.sqrt(np.mean(np.loadtxt(dirName + "/../count/energy.dat")[:,4]))
+    count = np.sqrt(16384)
+    print(count, np.sqrt(numParticles))
+    dirList, strain = utils.getOrderedStrainDirectories(dirName)
+    mean = np.zeros(dirList.shape[0])
+    error = np.zeros(dirList.shape[0])
+    length = np.zeros(dirList.shape[0])
+    width = np.zeros(dirList.shape[0])
+    boxWidth = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(which=='average'):
+            dirSample += "/simple/"
+        if(os.path.exists(dirSample)):
+            #print(dirSample)
+            if(os.path.exists(dirSample + os.sep + "singleProfile.dat")):
+                data = np.loadtxt(dirSample + os.sep + "singleProfile.dat")
+                x = data[:,0]
+                y = data[:,1]
+                xFluid = x[np.argwhere(y>0.5)[:,0]]
+                width[d] = xFluid[-1] - xFluid[0]
+            else:
+                width[d], _,_ = interface.computeLinearDensityProfile(dirSample)
+            boxSize = np.loadtxt(dirSample + "/boxSize.dat")
+            boxWidth[d] = boxSize[0]
+            length[d] = boxSize[1]
+            data = np.loadtxt(dirSample + "/energy.dat")
+            if(index==2):
+                mean[d] = np.mean(data[:,index] + 0.5 * data[:,index+1])
+                error[d] = np.std(data[:,index] + 0.5 * data[:,index+1])
+            else:
+                mean[d] = np.mean(data[:,index]/width[d])#*width[d]/(count*boxWidth[d]))
+                error[d] = np.std(data[:,index]/width[d])#*width[d]/(count*boxWidth[d]))/10
+    if(which=='average'):
+        mean = mean[mean!=0]
+        error = error[error!=0]
+        strain = strain[length!=0]
+        length = length[length!=0]
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+    #ax.set_xlabel("$Strain,$ $\\epsilon$", fontsize=16)
+    #ax.set_ylim(-0.04, 0.64)
+    ax.errorbar(length, mean, error, lw=1, marker='s', markersize=5, color='k', capsize=3, markeredgecolor='k', fillstyle='left', label='$From$ $simulation$')
+    #ax.errorbar(strain, mean, error, lw=1, marker='s', markersize=5, color='k', capsize=3, markeredgecolor='k', fillstyle='left', label='$From$ $simulation$')
+    if(index==2):
+        ax.set_ylabel("$\\frac{E_{pot}}{N}$", fontsize=24, rotation='horizontal', labelpad=20)
+        figure1Name = "/home/francesco/Pictures/soft/mips/wallEnergyVSStrain-" + figureName
+        # fit line to energy versus length or strain
+        energy = mean
+        failed = False
+        try:
+            #popt, pcov = curve_fit(lineFit, strain[strain<limit], energy[strain<limit])
+            popt, pcov = curve_fit(lineFit, length[length<limit], energy[length<limit])
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            #ax.plot(strain, lineFit(strain, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
+            ax.plot(length, lineFit(length, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
+            print("Energy: a, b:", popt, "line tension from fit:", popt[0])
+    elif(index==4):
+        ax.set_ylabel("$\\frac{F \\sigma}{\\varepsilon_{LJ}}$", fontsize=24, rotation='horizontal', labelpad=20)
+        figure1Name = "/home/francesco/Pictures/soft/mips/wallForceVSStrain-" + figureName
+    elif(index==5):
+        ax.set_ylabel("$Pressure,$ $p$", fontsize=16)
+        figure1Name = "/home/francesco/Pictures/soft/mips/wallPressureVSStrain-" + figureName
+    plt.tight_layout()
+    if(which=='average'):
+        figure1Name += "-average"
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    if(index==4):
+        fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
+        dirSample = dirName + "/../simple/"
+        boxSize = np.loadtxt(dirSample + "boxSize.dat")
+        if(os.path.exists(dirSample + "singleProfile.dat")):
+            data = np.loadtxt(dirSample + "singleProfile.dat")
+            x = data[:,0]
+            y = data[:,1]
+            xFluid = x[np.argwhere(y>0.5)[:,0]]
+            width = xFluid[-1] - xFluid[0]
+        else:
+            width, _,_ = interface.computeLinearDensityProfile(dirSample)
+        data = np.loadtxt(dirSample + "energy.dat")
+        temp = np.mean(data[:,3])
+        ertemp = np.std(data[:,3])
+        data[:,4] *= width / (count * boxSize[0])
+        force0 = np.array([np.mean(data[:,4]), np.std(data[:,4])])
+        force = mean
+        length0 = boxSize[1]
+        print("average force at zero strain:", force0[0], "+-", force0[1], "height: ", boxSize[1])
+        print("average delta force:", np.mean(mean[1:]), "+-", np.std(mean[1:]))
+        work = np.zeros(force.shape[0])
+        #delta = strain[1] - strain[0]
+        delta = length[1] - length[0]
+        #width = np.mean(width[:-1] - width[1:])
+        work = np.zeros(force.shape[0])
+        for i in range(work.shape[0]):
+            #work[i] = force[i] * strain[i] * width[i]
+            #work[i] += force[i] * delta
+            #work[i] = 0.5 * force[i] * delta
+            work[i] = 0.5 * np.sum(force[:i]) * delta
+            #work[i] = 0.5 * np.sum(force[:i] - force0[0]) * delta
+            #work[i] = np.sum(force0[0] - force[:i]) * delta
+        failed = False
+        try:
+            #popt, pcov = curve_fit(lineFit, strain[strain<limit], work[strain<limit])
+            popt, pcov = curve_fit(lineFit, length[length<limit], work[length<limit])
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            #ax.plot(strain, lineFit(strain, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
+            ax.plot(length/length0 - 1, lineFit(length, *popt), color='b', lw=1.2, linestyle='dashdot', label="$Linear$ $fit$")
+            print("Work: a, b:", popt, "line tension from fit:", popt[0], popt[0]/temp)
+            print("Temperature:", temp, ertemp)
+        #ax.plot(strain, work, marker='o', fillstyle='none', color='k', lw=1.2)
+        ax.plot(length/length0 - 1, work, marker='o', markersize=8, fillstyle='none', color='k', lw=1, markeredgewidth=1.2)
+        ax.tick_params(axis='both', labelsize=14)
+        #ax.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+        ax.set_xlabel("$Strain,$ $\\epsilon$", fontsize=16)
+        ax.set_ylabel("$\\frac{1}{2}\\int_{H^0}^{H}$ $F(H')$ $dH'$", fontsize=16)
+        #ax.set_ylabel("$W(L_y) - W(L_y^0)$", fontsize=16)
+        plt.tight_layout()
+        figure2Name = "/home/francesco/Pictures/soft/mips/workVSlength-" + figureName
+        fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotSPWidthVSStrain(dirName, figureName, which='average', limit=130):
+    fig1, ax1 = plt.subplots(figsize=(6,5), dpi = 120)
+    fig2, ax2 = plt.subplots(figsize=(6,5), dpi = 120)
+    dirList, strain = utils.getOrderedStrainDirectories(dirName)
+    width = np.zeros(dirList.shape[0])
+    liquid = np.zeros(dirList.shape[0])
+    vapor = np.zeros(dirList.shape[0])
+    strain = np.zeros(dirList.shape[0])
+    length = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(which=='average'):
+            dirSample += "/simple/"
+        if(os.path.exists(dirSample)):
+            #print(dirSample)
+            if(os.path.exists(dirSample + os.sep + "singleProfile.dat")):
+                data = np.loadtxt(dirSample + os.sep + "singleProfile.dat")
+                x = data[:,0]
+                y = data[:,1]
+                xFluid = x[np.argwhere(y>0.5)[:,0]]
+                width[d] = xFluid[-1] - xFluid[0]
+                liquid[d] = np.mean(y[y>0.5])
+                vapor[d] = np.mean(y[y<0.5])
+            else:
+                width[d], liquid[d], vapor[d] = interface.computeLinearDensityProfile(dirSample)
+            boxSize = np.loadtxt(dirSample + "/boxSize.dat")
+            length[d] = boxSize[1]
+    if(which=='average'):
+        width = width[length!=0]
+        liquid = liquid[length!=0]
+        vapor = vapor[length!=0]
+        strain = strain[length!=0]
+        length = length[length!=0]
+    ax1.tick_params(axis='both', labelsize=14)
+    ax1.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+    ax1.set_ylabel("$Liquid$ $width,$ $w$", fontsize=16)
+    ax1.plot(length, width * length, lw=1, marker='v', markersize=5, color='k', markeredgecolor='k', fillstyle='none')
+    ax2.tick_params(axis='both', labelsize=14)
+    ax2.set_xlabel("$Box$ $height,$ $L_y$", fontsize=16)
+    ax2.set_ylabel("$Density,$ $\\varphi$", fontsize=16)
+    ax2.plot(length, liquid, lw=1, marker='o', markersize=8, color='b', fillstyle='none', label='$Liquid$')
+    ax2.plot(length, vapor, lw=1, marker='s', markersize=8, color='g', fillstyle='none', label='$Vapor$')
+    figure1Name = "/home/francesco/Pictures/soft/mips/widthVSStrain-" + figureName
+    figure2Name = "/home/francesco/Pictures/soft/mips/densityVSStrain-" + figureName
+    fig1.tight_layout()
+    fig2.tight_layout()
+    if(which=='average'):
+        figure1Name += "-average"
+        figure2Name += "-average"
+    fig1.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig2.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
 def plotSampleWallForceVSTime(dirName, figureName, type='active', which='average', index=4, numSamples=30):
@@ -919,7 +1924,7 @@ def plotSampleWallForceVSStrain(dirPath, figureName, type='active', which='avera
             print("Error - curve_fit failed")
             failed = True
         if(failed == False):
-            ax.plot(length, lineFit(length, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax^2 + bx + c$")
+            ax.plot(length, lineFit(length, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
             #print("Sample", s, "a, b:", popt, "line tension from fit:", popt[0])
             ax.plot(length, work, marker='o', fillstyle='none', color='k', lw=1.2)
             gamma[s] = popt[0]
@@ -971,8 +1976,8 @@ def plotSampleWallForceVSStrain(dirPath, figureName, type='active', which='avera
             print("Error - curve_fit failed")
             failed = True
         if(failed == False):
-            #ax.plot(midStrain, lineFit(midStrain, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax^2 + bx + c$")
-            ax.plot(midLength, lineFit(midLength, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax^2 + bx + c$")
+            #ax.plot(midStrain, lineFit(midStrain, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
+            ax.plot(midLength, lineFit(midLength, *popt), color='g', lw=1.2, linestyle='dashdot', label="$ax + b$")
             #print((lineFit(midStrain, *popt))/midStrain)
             print("From average force:", popt[0])
         #ax.plot(midStrain, work, marker='o', fillstyle='none', color='k', lw=1.2)
@@ -1229,35 +2234,6 @@ def plotSPClusterExchangeVSTemp(dirName, figureName, which='lj', Ly='1', numBins
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPPairCorrelation(dirName, figureName, which='passive'):
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if(which=='passive'):
-        dirList = np.array(['0.20', '0.24', '0.28', '0.32', '0.36', '0.40', '0.44'])
-    elif(which=='active'):
-        dirList = np.array(['1', '2', '4', '8'])
-    else:
-        print("Please specify the sample type")
-    colorList = cm.get_cmap('viridis', dirList.shape[0]+2)
-    for d in range(dirList.shape[0]):
-        if(which=='passive'):
-            dirSample = dirName + "/T" + dirList[d] + "/dynamics/"
-            labelName = "$T=$"
-        elif(which=='active'):
-            dirSample = dirName + "/T0.30-tp1e-03-f0" + dirList[d] + "/dynamics/"
-            labelName = "$f_0=$"
-        if not(os.path.exists(dirSample + "densePairCorr.dat")):
-            cluster.averageDensePairCorr(dirSample, 0.3, 1)
-        data = np.loadtxt(dirSample + "densePairCorr.dat")
-        ax.errorbar(data[:,0], data[:,1], data[:,2], marker='o', markersize=6, lw=1, fillstyle='none', color=colorList(d/dirList.shape[0]), label=labelName + dirList[d])
-    ax.tick_params(axis='both', labelsize=14)
-    ax.legend(fontsize=12, loc='best', ncol=2)
-    ax.set_xlabel("$Interparticle$ $distance,$ $r/\\sigma$", fontsize=16)
-    ax.set_ylabel("$g(r/\\sigma)$", fontsize=16)
-    figureName = "/home/francesco/Pictures/soft/mips/pairCorr-" + figureName + "-" + which
-    plt.tight_layout()
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
 def plotSPTemperatureLV(dirName, figureName, which='passive', numBins=50):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(which=='passive'):
@@ -1333,7 +2309,7 @@ if __name__ == '__main__':
         which = sys.argv[4]
         plotSPClusterWidthVSTemp(dirName, figureName, which)
 
-    elif(whichPlot == "energytemp"):
+    elif(whichPlot == "activetemp"):
         figureName = sys.argv[3]
         plotSPActiveEnergyVSTemp(dirName, figureName)
 
@@ -1341,12 +2317,110 @@ if __name__ == '__main__':
         figureName = sys.argv[3]
         plotSPClusterISF(dirName, figureName)
 
+    elif(whichPlot == "pcdense"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotSPPairCorrelation(dirName, figureName, which)
+
+    elif(whichPlot == "profiletemp"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotProfileVSTemp(dirName, figureName, which)
+
     elif(whichPlot == "walltime"):
         figureName = sys.argv[3]
         which = sys.argv[4]
         index = int(sys.argv[5])
         numSamples = int(sys.argv[6])
         plotSPWallForceVSTime(dirName, figureName, which, index, numSamples)
+
+    elif(whichPlot == '2isf'):
+        figureName = sys.argv[3]
+        T1 = sys.argv[4]
+        T2 = sys.argv[5]
+        decade = int(sys.argv[6])
+        which = sys.argv[7]
+        plot2FluidsISF(dirName, figureName, T1, T2, decade, which)
+
+    elif(whichPlot == 'compare2isf'):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        compare2FluidsISF(dirName, figureName, which)
+
+    elif(whichPlot == "energystrain"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        simple = sys.argv[5]
+        limit = float(sys.argv[6])
+        plotSPEnergyVSStrain(dirName, figureName, which, simple, limit, plot=True)
+
+    elif(whichPlot == "forcetime"):
+        figureName = sys.argv[3]
+        strainStep = float(sys.argv[4])
+        maxStrain = float(sys.argv[5])
+        compext = sys.argv[6]
+        plotSPStrainForceVSTime(dirName, figureName, strainStep, maxStrain, compext, plot=True)
+
+    elif(whichPlot == "forcecompare"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        compext = sys.argv[5]
+        compareForceVSTimeStrain(dirName, figureName, which, compext)
+
+    elif(whichPlot == "energytime"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        strainStep = float(sys.argv[5])
+        limit = float(sys.argv[6])
+        compext = sys.argv[7]
+        plotSPStrainEnergyVSTime(dirName, figureName, which, strainStep, limit, compext, plot=True)
+
+    elif(whichPlot == "energycompare"):
+        figureName = sys.argv[3]
+        type = sys.argv[4]
+        dirType = sys.argv[5]
+        versus = sys.argv[6]
+        which = sys.argv[7]
+        log = sys.argv[8]
+        compareEnergyVSTimeStrain(dirName, figureName, type, dirType, versus, which, log)
+
+    elif(whichPlot == "2energy"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotEnergyVSTempPhi(dirName, figureName, which)
+
+    elif(whichPlot == "2profile"):
+        figureName = sys.argv[3]
+        num1 = int(sys.argv[4])
+        plot2DensityProfile(dirName, figureName, num1)
+
+    elif(whichPlot == "2widthtime"):
+        figureName = sys.argv[3]
+        num1 = int(sys.argv[4])
+        plot2PhaseWidthVSTime(dirName, figureName, num1)
+
+    elif(whichPlot == "2corrtime"):
+        figureName = sys.argv[3]
+        num1 = int(sys.argv[4])
+        plot2CorrelationVSTime(dirName, figureName, num1)
+
+    elif(whichPlot == "2widthgamma"):
+        figureName = sys.argv[3]
+        num1 = int(sys.argv[4])
+        plot2PhaseWidthVSStrain(dirName, figureName, num1)
+
+    elif(whichPlot == "energytmax"):
+        figureName = sys.argv[3]
+        simple = sys.argv[4]
+        limit = float(sys.argv[5])
+        plotSPEnergyVSStrainVStmax(dirName, figureName, simple, limit)
+
+    elif(whichPlot == "energytemp"):
+        figureName = sys.argv[3]
+        simple = sys.argv[4]
+        limit = float(sys.argv[5])
+        tmax = sys.argv[6]
+        plotSPEnergyVSStrainVSTemp(dirName, figureName, simple, limit, tmax)
 
     elif(whichPlot == "wallstrain"):
         figureName = sys.argv[3]
@@ -1360,11 +2434,21 @@ if __name__ == '__main__':
         which = sys.argv[4]
         plotSPWidthVSStrain(dirName, figureName, which)
 
+    elif(whichPlot == "forcetemp"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotWallForceVSTemperature(dirName, figureName, which)
+
     elif(whichPlot == "forcepdf"):
         figureName = sys.argv[3]
-        index = int(sys.argv[4])
+        numBins = int(sys.argv[4])
+        plotForcePDF(dirName, figureName, numBins)
+
+    elif(whichPlot == "pdftemp"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
         numBins = int(sys.argv[5])
-        plotForcePDF(dirName, figureName, index, numBins)
+        plotForcePDFVSTemperature(dirName, figureName, which, numBins)
 
     elif(whichPlot == "pdfsize"):
         figureName = sys.argv[3]
@@ -1431,11 +2515,6 @@ if __name__ == '__main__':
         Ly = sys.argv[5]
         numBins = int(sys.argv[6])
         plotSPClusterExchangeVSTemp(dirName, figureName, which, Ly, numBins)
-
-    elif(whichPlot == "pcdense"):
-        figureName = sys.argv[3]
-        which = sys.argv[4]
-        plotSPPairCorrelation(dirName, figureName, which)
 
     elif(whichPlot == "templv"):
         figureName = sys.argv[3]

@@ -163,8 +163,8 @@ def computeParticleSelfCorr(dirName, plot=False):
         particleCorr[i-1] = utils.computeCorrFunctions(pPos, pPos0, boxSize, pWaveVector, pRad**2)
     np.savetxt(dirName + os.sep + "linCorr.dat", np.column_stack((timeList[1:], particleCorr)))
     if(plot=='plot'):
-        uplot.plotCorrelation(timeList[1:], particleCorr[:,0], "$MSD(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logy = True, logx = True, color = 'k')
-        #uplot.plotCorrelation(timeList[1:], particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+        #uplot.plotCorrelation(timeList[1:], particleCorr[:,0], "$MSD(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logy = True, logx = True, color = 'k')
+        uplot.plotCorrelation(timeList[1:], particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
         plt.show()
 
 ########## Check Self Correlations by logarithmically spaced blocks ############
@@ -258,7 +258,7 @@ def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower):
                     if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
                         #print(multiple, i, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
                         pPos1, pPos2 = utils.readParticlePair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
-                        stepParticleCorr.append(utils.computeCorrFunctions(pPos1, pPos2, boxSize, pWaveVector, pRad**2))
+                        stepParticleCorr.append(utils.computeCorrFunctions(pPos1, pPos2, boxSize, pWaveVector, 1))
                         numPairs += 1
             if(numPairs > 0):
                 stepList.append(spacing*spacingDecade)

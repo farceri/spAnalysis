@@ -1347,8 +1347,10 @@ def computeClusterPairCorr(dirName, boxSize, bins, labels, maxLabel, plot="plot"
         #print("First peak of pair corr is at distance:", firstPeak)
         if(which=="dense"):
             np.savetxt(dirName + os.sep + "densePairCorr.dat", np.column_stack((binCenter, pairCorr1, pairCorr2)))
-        else:
+        elif(which=="cluster"):
             np.savetxt(dirName + os.sep + "clusterPairCorr.dat", np.column_stack((binCenter, pairCorr1, pairCorr2)))
+        else:
+            print("specify type of clustering for saving")
     else:
         return pairCorr1, pairCorr2
     if(plot == "plot"):
@@ -1358,12 +1360,12 @@ def computeClusterPairCorr(dirName, boxSize, bins, labels, maxLabel, plot="plot"
     else:
         return firstPeak
 
-def averageClusterPairCorr(dirName, threshold, lj='lj', dirSpacing=1):
+def averageClusterPairCorr(dirName, threshold=0.3, lj='lj', dirSpacing=1, plot=False):
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat").astype(np.float64)
     eps = 1.8*np.max(rad)
     meanRad = np.mean(rad)
-    bins = np.linspace(0.1*meanRad, 10*meanRad, 50)
+    bins = np.linspace(0.1*meanRad, 10*meanRad, 100)
     if(lj=='lj'):
         rad *= 2**(1/6)
     dirList, timeList = utils.getOrderedDirectories(dirName)
@@ -1374,8 +1376,8 @@ def averageClusterPairCorr(dirName, threshold, lj='lj', dirSpacing=1):
     pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1, 2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "clusterPairCorr!.dat")):
-            computeClusterPairCorr(dirSample, boxSize, bins, labels, maxLabel, plot=False)
+        if not(os.path.exists(dirSample + os.sep + "clusterPairCorr.dat")):
+            computeClusterPairCorr(dirSample, boxSize, bins, labels, maxLabel, plot=False, which="cluster")
         data = np.loadtxt(dirSample + os.sep + "clusterPairCorr.dat")
         pcorr[d,:,0] = data[:,1]
         pcorr[d,:,1] = data[:,2]
@@ -1385,16 +1387,17 @@ def averageClusterPairCorr(dirName, threshold, lj='lj', dirSpacing=1):
     print("First peak of pair corr in cluster is at:", firstPeak)
     binCenter = 0.5 * (bins[:-1] + bins[1:])
     np.savetxt(dirName + os.sep + "clusterPairCorr.dat", np.column_stack((binCenter, pcorr1, pcorr2)))
-    uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
-    uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
-    plt.pause(0.5)
-    #plt.show()
+    if(plot=="plot"):
+        uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
+        uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
+        plt.pause(0.5)
+        #plt.show()
     
-def averageDensePairCorr(dirName, threshold=0.3, dirSpacing=1):
+def averageDensePairCorr(dirName, threshold=0.3, dirSpacing=1, plot=False):
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat").astype(np.float64)
     meanRad = np.mean(rad)
-    bins = np.linspace(0.1*meanRad, 10*meanRad, 50)
+    bins = np.linspace(0.1*meanRad, 10*meanRad, 150)
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1413,10 +1416,11 @@ def averageDensePairCorr(dirName, threshold=0.3, dirSpacing=1):
     print("First peak of pair corr in cluster is at:", firstPeak)
     binCenter = 0.5 * (bins[:-1] + bins[1:])
     np.savetxt(dirName + os.sep + "densePairCorr.dat", np.column_stack((binCenter, pcorr1, pcorr2)))
-    uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
-    uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
-    plt.pause(0.5)
-    #plt.show()
+    if(plot=="plot"):
+        uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
+        uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
+        plt.pause(0.5)
+        #plt.show()
 
 def getClusterContactCollisionIntervalPDF(dirName, check=False, numBins=40):
     timeStep = utils.readFromParams(dirName, "dt")
@@ -2558,12 +2562,14 @@ if __name__ == '__main__':
         threshold = float(sys.argv[3])
         lj = sys.argv[4]
         dirSpacing = int(sys.argv[5])
-        averageClusterPairCorr(dirName, threshold, lj, dirSpacing)
+        plot = sys.argv[6]
+        averageClusterPairCorr(dirName, threshold, lj, dirSpacing, plot)
 
     elif(whichCorr == "pcdense"):
         threshold = float(sys.argv[3])
         dirSpacing = int(sys.argv[4])
-        averageDensePairCorr(dirName, threshold, dirSpacing)
+        plot = sys.argv[5]
+        averageDensePairCorr(dirName, threshold, dirSpacing, plot)
 
     elif(whichCorr == "clustercol"):
         check = sys.argv[3]

@@ -1097,7 +1097,7 @@ def sampleHLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpacing=1,
         plt.show()
 
 ##################### Average IK LJ linear pressure profile #######################
-def averageIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1, nDim=2):
+def averageIKLJPressureProfile(dirName, LJcutoff=4, nDim=2, plot=False, dirSpacing=1):
     ec = 1
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
@@ -1109,19 +1109,19 @@ def averageIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1, 
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     # distance bins
-    bins = np.arange(0, boxSize[0], 2*LJcutoff*np.mean(rad))
+    bins = np.arange(0, boxSize[0], np.mean(rad))
     binWidth = bins[1] - bins[0]
-    binArea = binWidth*boxSize[1]
+    if(nDim == 2):
+        binArea = binWidth*boxSize[1]
+    elif(nDim == 3):
+        binArea = binWidth*boxSize[1]*boxSize[2]
     centers = (bins[1:] + bins[:-1])/2
     # pressure bins
-    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
-    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,nDim))
-    binCount = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    virial = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    pressure = np.zeros((dirList.shape[0],nDim))
     for d in range(dirList.shape[0]):
-        countOut = 0
-        countOne = 0
-        countTwo = 0
-        countIn = 0
+        init = time.time()
         dirSample = dirName + os.sep + dirList[d]
         print(dirSample)
         if(os.path.exists(dirSample + "/IKProfile!.dat")):
@@ -1129,70 +1129,72 @@ def averageIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1, 
             thermal[d] = data[:,1]
             virial[d,:,0] = data[:,2]
             virial[d,:,1] = data[:,3]
-            binCount[d] = data[:,4]
         else:
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
-            #maxLabel = utils.findLargestParticleCluster(rad, labels)
-            #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
-            pos = utils.centerCOM(pos, rad, boxSize)
+            #pos = utils.centerCOM(pos, rad, boxSize)
             vel = np.loadtxt(dirSample + "/particleVel.dat")
             contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-            init = time.time()
             for i in range(numParticles):
+                for dim in range(nDim):
+                    pressure[d,dim] += vel[i,dim]**2
                 for j in range(bins.shape[0]-1):
                     if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
-                        thermal[d,j] += 0.5 * np.linalg.norm(vel[i])**2
-            for i in range(numParticles):
-                #if(i%1000 == 0): print(i)
+                        thermal[d,j,0] += vel[i,0]**2
+                        if(nDim == 2):
+                            thermal[d,j,1] += vel[i,1]**2
+                        elif(nDim == 3):
+                            thermal[d,j,1] += (vel[i,1]**2 + vel[i,2]**2)
+                        binIndex = j
                 for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
                     radSum = rad[i] + rad[c]
                     delta = utils.pbcDistance(pos[i], pos[c], boxSize)
                     distance = np.linalg.norm(delta)
                     if(distance <= (LJcutoff * radSum)):
                         gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                        force = gradMultiple * delta / distance
+                        for dim in range(nDim):
+                            pressure[d,dim] += 0.5 * force[dim] * delta[dim]
                         # find bin where this force belongs to following Irving-Kirkwood
-                        count = 0
-                        #delta = -delta
-                        if(pos[i,0] < pos[c,0]):
-                            for j in range(bins.shape[0]-1):
-                                if((pos[i,0] <= centers[j]) and (pos[c,0] >= centers[j])):
-                                    count += 1
-                                    binCount[d,j] += 1
-                                    for dim in range(nDim):
-                                        virial[d,j,dim] -= 0.5 * gradMultiple * delta[dim]**2 / (distance * np.abs(delta[0]))
-                                    
-                        else:
-                            for j in range(bins.shape[0]-1):
-                                if((pos[c,0] <= centers[j]) and (pos[i,0] >= centers[j])):
-                                    count += 1
-                                    binCount[d,j] += 1
-                                    for dim in range(nDim):
-                                        virial[d,j,dim] -= 0.5 * gradMultiple * delta[dim]**2 / (distance * np.abs(delta[0]))
-                        #if(count == 0):
-                        #    print(count, pos[i,0], pos[c,0])
-                        if(count == 1):
-                            countIn += 1
-                        elif(count == 2):
-                            countOne += 1
-                        elif(count == 3):
-                            countTwo += 1
-                        else:
-                            countOut += 1
-            print("IK: bonds inside bin:", countIn, "across 2:", countOne, "across 3:", countTwo, "not counted:", countOut)
+                        if(pos[c,0] > bins[binIndex] and pos[c,0] <= bins[binIndex+1]): # count bond entirely in binIndex
+                            virial[d,binIndex,0] += 0.5 * force[0] * delta[0] / np.abs(delta[0])
+                            if(nDim == 2):
+                                virial[d,binIndex,1] += 0.5 * force[1] * delta[1] / np.abs(delta[0])
+                            elif(nDim == 3):
+                                virial[d,binIndex,1] += 0.5 * (force[1] * delta[1] + force[2] * delta[2]) / np.abs(delta[0])
+                        elif(pos[c,0] > bins[binIndex+1]): # count bond from i to right edge of binIndex
+                            virial[d,binIndex,0] += 0.5 * force[0] * delta[0] / (bins[binIndex+1] - pos[i,0])
+                            if(nDim == 2):
+                                virial[d,binIndex,1] += 0.5 * force[1] * delta[1] / (bins[binIndex+1] - pos[i,0])
+                            elif(nDim == 3):
+                                virial[d,binIndex,1] += 0.5 * (force[1] * delta[1] + force[2] * delta[2]) / (bins[binIndex+1] - pos[i,0])
+                        elif(pos[c,0] < bins[binIndex]): # count bond from i to left edge of binIndex
+                            virial[d,binIndex,0] += 0.5 * force[0] * delta[0] / (pos[i,0] - bins[binIndex])
+                            if(nDim == 2):
+                                virial[d,binIndex,1] += 0.5 * force[1] * delta[1] / (pos[i,0] - bins[binIndex])
+                            elif(nDim == 3):
+                                virial[d,binIndex,1] += 0.5 * (force[1] * delta[1] + force[2] * delta[2]) / (pos[i,0] - bins[binIndex])
+                        for j in range(bins.shape[0]-1):
+                            if(j!=binIndex):
+                                if((pos[i,0] < bins[j] and pos[c,0] >= bins[j+1]) or (pos[c,0] < bins[j] and pos[i,0] >= bins[j+1])):
+                                    virial[d,j,0] += 0.5 * force[0] * delta[0] / binWidth
+                                    if(nDim == 2):
+                                        virial[d,binIndex,1] += 0.5 * force[1] * delta[1] / binWidth
+                                    elif(nDim == 3):
+                                        virial[d,binIndex,1] += 0.5 * (force[1] * delta[1] + force[2] * delta[2]) / binWidth
             end = time.time()
-            print("elapsed time:", end - init)
-            np.savetxt(dirSample + os.sep + "IKProfile.dat", np.column_stack((centers, thermal[d]/binArea, virial[d]/binArea, binCount[d])))
+            print("elapsed time in seconds:", end - init)
+            np.savetxt(dirSample + os.sep + "IKProfile.dat", np.column_stack((centers, thermal[d]/binArea, virial[d]/binArea)))
     thermal = np.mean(thermal,axis=0) / binArea
-    virial = np.mean(virial,axis=0) / boxSize[1]
-    binCount = np.mean(binCount,axis=0)
-    np.savetxt(dirName + os.sep + "IKProfile.dat", np.column_stack((centers, thermal, virial, binCount)))
-    print("surface tension: ", np.sum((virial[:,0]-virial[:,1])*binWidth))
+    virial = np.mean(virial,axis=0) / binArea
+    pressure /= (boxSize[0] * boxSize[1])
+    print("surface tension from pressure:", boxSize[0] * np.mean(pressure[:,0] - pressure[:,1]))
+    np.savetxt(dirName + os.sep + "IKProfile.dat", np.column_stack((centers, thermal, virial)))
+    np.savetxt(dirName + os.sep + "pressure.dat", np.column_stack((timeList, pressure)))
+    print("surface tension: ", np.sum((thermal[:,0] + virial[:,0] - (thermal[:,1] + virial[:,1]))*binWidth))
     if(plot=="plot"):
-        uplot.plotCorrelation(centers, thermal + virial[:,0], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='g', lw=1)
-        uplot.plotCorrelation(centers, thermal + virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='b', lw=1)
-        uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='r', lw=1)
-        #plt.pause(0.5)
+        uplot.plotCorrelation(centers, thermal[:,0] + virial[:,0], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$x$", color='g', lw=1)
+        uplot.plotCorrelation(centers, thermal[:,1] + virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$x$", color='b', lw=1)
+        uplot.plotCorrelation(centers, thermal[:,0] + virial[:,0] - (thermal[:,1] + virial[:,1]), "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$x$", color='k', lw=1)
         plt.show()
 
 ##################### Sample average LJ linear pressure profile #######################
@@ -1227,7 +1229,7 @@ def sampleIKLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpacing=1
         plt.show()
 
 ##################### Average IK LJ linear pressure profile #######################
-def averageCGIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1, nDim=2):
+def averageCGIKLJPressureProfile(dirName, LJcutoff=4, plot=False, dirSpacing=1, nDim=2):
     ec = 1
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
@@ -1244,115 +1246,78 @@ def averageCGIKLJPressureProfile(dirName, LJcutoff=5.5, plot=False, dirSpacing=1
     binArea = binWidth*boxSize[1]
     centers = (bins[1:] + bins[:-1])/2
     # pressure bins
-    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1))
+    thermal = np.zeros((dirList.shape[0],bins.shape[0]-1,nDim))
     virial = np.zeros((dirList.shape[0],bins.shape[0]-1,nDim))
-    virialRep = np.zeros((dirList.shape[0],bins.shape[0]-1,nDim))
-    virialAtt = np.zeros((dirList.shape[0],bins.shape[0]-1,nDim))
-    binCount = np.zeros((dirList.shape[0],bins.shape[0]-1))
     for d in range(dirList.shape[0]):
-        countOut = 0
-        countOne = 0
-        countTwo = 0
-        countThree = 0
-        countIn = 0
+        init = time.time()
         dirSample = dirName + os.sep + dirList[d]
-        #print(dirSample)
+        print(dirSample)
         if(os.path.exists(dirSample + "/CGIKProfile!.dat")):
             data = np.loadtxt(dirSample + "/CGIKProfile.dat")
             thermal[d] = data[:,1]
             virial[d,:,0] = data[:,2]
             virial[d,:,1] = data[:,3]
-            binCount[d] = data[:,4]
         else:
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold)
-            #maxLabel = utils.findLargestParticleCluster(rad, labels)
-            #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
             pos = utils.centerCOM(pos, rad, boxSize)
             vel = np.loadtxt(dirSample + "/particleVel.dat")
             contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
-            binIndex = np.zeros(numParticles, dtype=int)
-            init = time.time()
             for i in range(numParticles):
                 for j in range(bins.shape[0]-1):
                     if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
-                        binIndex[i] = j
-                        thermal[d,j] += 0.5 * np.linalg.norm(vel[i])**2
-            for i in range(numParticles):
-                #if(i%1000 == 0): print(i)
+                        thermal[d,j,0] += vel[i,0]*vel[i,0]
+                        thermal[d,j,1] += vel[i,1]*vel[i,1]
+                        binIndex = j
                 for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
                     radSum = rad[i] + rad[c]
                     delta = utils.pbcDistance(pos[i], pos[c], boxSize)
                     distance = np.linalg.norm(delta)
                     if(distance <= (LJcutoff * radSum)):
                         gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - utils.calcLJgradMultiple(ec, LJcutoff*radSum, radSum)
-                        gradMultipleRep = utils.calcLJgradMultipleRep(ec, distance, radSum) - utils.calcLJgradMultipleRep(ec, LJcutoff*radSum, radSum)
-                        gradMultipleAtt = utils.calcLJgradMultipleAtt(ec, distance, radSum) - utils.calcLJgradMultipleAtt(ec, LJcutoff*radSum, radSum)
+                        force = gradMultiple * delta / distance
                         # find bin where this force belongs to following Irving-Kirkwood
                         count = 0
-                        #delta = -delta
-                        if(pos[i,0] < pos[c,0]):
-                            for j in np.arange(binIndex[i], binIndex[c]+1,1):
-                                if(pos[i,0] >= bins[j]):
-                                    xa = pos[i,0]
-                                else:
-                                    xa = bins[j]
-                                if(pos[c,0] <= bins[j+1]):
-                                    xb = pos[c,0]
-                                else:
-                                    xb = bins[j+1]
-                                count += 1
-                                binCount[d,j] += 1
-                                for dim in range(nDim):
-                                    virial[d,j,dim] -= 0.5 * gradMultiple * delta[dim] * delta[dim] * (xb - xa) / (delta[0] * distance)
-                                    virialRep[d,j,dim] -= 0.5 * gradMultipleRep * delta[dim] * delta[dim] * (xb - xa) / (delta[0] * distance)
-                                    virialAtt[d,j,dim] -= 0.5 * gradMultipleAtt * delta[dim] * delta[dim] * (xb - xa) / (delta[0] * distance)
+                        if(pos[c,0] > bins[binIndex] and pos[c,0] <= bins[binIndex+1]):
+                            for dim in range(nDim):
+                                virial[d,binIndex,dim] += 0.5 * force[dim] * delta[dim] / np.abs(delta[0])
                         else:
-                            for j in np.arange(binIndex[c], binIndex[i]+1,1):
-                                if(pos[c,0] >= bins[j]):
-                                    xb = pos[c,0]
-                                else:
-                                    xb = bins[j]
-                                if(pos[i,0] <= bins[j+1]):
-                                    xa = pos[i,0]
-                                else:
-                                    xa = bins[j+1]
-                                count += 1
-                                binCount[d,j] += 1
-                                for dim in range(nDim):
-                                    virial[d,j,dim] -= 0.5 * gradMultiple * delta[dim] * delta[dim] * (xb - xa) / (delta[0] * distance)
-                                    virialRep[d,j,dim] -= 0.5 * gradMultipleRep * delta[dim] * delta[dim] * (xb - xa) / (delta[0] * distance)
-                                    virialAtt[d,j,dim] -= 0.5 * gradMultipleAtt * delta[dim] * delta[dim] * (xb - xa) / (delta[0] * distance)
-                        #if(count == 0):
-                        #    print(count, i, c, pos[i,0], pos[c,0])
-                        if(count == 1):
-                            countIn += 1
-                        elif(count == 2):
-                            countOne += 1
-                        elif(count == 3):
-                            countTwo += 1
-                        elif(count == 4):
-                            countThree += 1
-                        else:
-                            countOut += 1
-            print(dirList[d], "CGIK: bonds inside bin:", countIn, "across 2:", countOne, "across 3:", countTwo, "across 4:", countThree, "across more than 4:", countOut)
+                            if(pos[i,0] < pos[c,0]):
+                                for j in np.arange(binIndex, bins.shape[0]-1):
+                                    if(j == binIndex):
+                                        xa = pos[i,0]
+                                    else:
+                                        xa = bins[j]
+                                    if(pos[c,0] > bins[j+1]):
+                                        xb = bins[j+1]
+                                    else:
+                                        xb = pos[c,0]
+                                    for dim in range(nDim):
+                                        virial[d,j,dim] += 0.5 * force[dim] * delta[dim] * (xb - xa) / np.abs(delta[0])
+                            else:
+                                for j in np.arange(binIndex):
+                                    if(pos[c,0] > bins[j]):
+                                        xb = pos[c,0]
+                                    else:
+                                        xb = bins[j]
+                                    if(pos[i,0] > bins[j+1]):
+                                        xa = bins[j+1]
+                                    else:
+                                        xa = pos[i,0]
+                                    for dim in range(nDim):
+                                        virial[d,j,dim] += 0.5 * force[dim] * delta[dim] * (xb - xa) / np.abs(delta[0])
             end = time.time()
             print("elapsed time:", end - init)
-            np.savetxt(dirSample + os.sep + "CGIKProfile.dat", np.column_stack((centers, thermal[d]/binArea, virial[d]/binArea, virialRep[d]/binArea, virialAtt[d]/binArea, binCount[d])))
+            np.savetxt(dirSample + os.sep + "CGIKProfile.dat", np.column_stack((centers, thermal[d]/binArea, virial[d]/binArea)))
     thermal = np.mean(thermal,axis=0) / binArea
     virial = np.mean(virial,axis=0) / binArea
-    virialRep = np.mean(virialRep,axis=0) / binArea
-    virialAtt = np.mean(virialAtt,axis=0) / binArea
-    binCount = np.mean(binCount,axis=0)
-    np.savetxt(dirName + os.sep + "CGIKProfile.dat", np.column_stack((centers, thermal, virial, virialRep, virialAtt, binCount)))
+    np.savetxt(dirName + os.sep + "CGIKProfile.dat", np.column_stack((centers, thermal, virial)))
     print("surface tension: ", np.sum((virial[:,0]-virial[:,1])*binWidth))
     if(plot=="plot"):
-        uplot.plotCorrelation(centers, virial[:,0], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='g', lw=1)
-        uplot.plotCorrelation(centers, virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='b', lw=1)
-        uplot.plotCorrelation(centers, virial[:,0] - virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='r', lw=1)
+        uplot.plotCorrelation(centers, thermal[:,0]+virial[:,0], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='g', lw=1)
+        uplot.plotCorrelation(centers, thermal[:,1]+virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='b', lw=1)
+        uplot.plotCorrelation(centers, thermal[:,0]+virial[:,0] - thermal[:,1]-virial[:,1], "$\\sigma_{xx}(green),$ $\\sigma_{yy}(blue)$", xlabel = "$Distance$", color='k', lw=1)
         #plt.pause(0.5)
         plt.show()
-    return thermal, virial, virialRep, virialAtt
 
 ##################### Sample average LJ linear pressure profile #######################
 def sampleCGIKLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpacing=1, nDim=2, plot=False, temp="T0.30"):
@@ -1390,7 +1355,7 @@ def sampleCGIKLJPressureProfile(dirPath, numSamples=30, LJcutoff=5.5, dirSpacing
         plt.show()
 
 ####################### Average linear density profile ########################
-def computeLinearDensityProfile(dirName, threshold=0.3, size=2, plot=False, dirSpacing=1):
+def computeLinearDensityProfile(dirName, threshold=0.3, size=2, plot=False):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
@@ -1430,16 +1395,59 @@ def computeLinearDensityProfile(dirName, threshold=0.3, size=2, plot=False, dirS
     print("Fluid width:", width, liquidDensity, vaporDensity)
     if(plot=='plot'):
         uplot.plotCorrelation(x, particleDensity, "$Density$ $profile$", xlabel = "$x$", color='k')
+        plt.pause(0.5)
+        #plt.show()
+    return width, liquidDensity, vaporDensity
+
+####################### Average linear density profile ########################
+def computeLinearPressureProfile(dirName, size=2, num1=0, plot=False):
+    esame = 1
+    ediff = 0.1
+    LJcutoff = 4;
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    # distance bins
+    bins = np.arange(0, boxSize[0], size*np.mean(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    profile = np.zeros(centers.shape[0])
+    # first compute particle density
+    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
+    pos = utils.centerCOM(pos, rad, boxSize)
+    contacts = np.loadtxt(dirName + "/particleNeighbors.dat").astype(np.int64)
+    for i in range(numParticles):
+        pressure = 0
+        for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+            if((i < num1 and c >= num1) or (i >= num1 and c < num1)):
+                ec = ediff
+            else:
+                ec = esame
+            radSum = rad[i] + rad[c]
+            delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+            distance = np.linalg.norm(delta)
+            if(distance <= (LJcutoff * radSum)):
+                forceShift = utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - forceShift
+                pressure += np.sum(gradMultiple * delta**2 / distance)
+        for j in range(bins.shape[0]-1):
+            if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                profile[j] += pressure
+    profile /= binArea
+    center = np.mean(centers)
+    x = centers-center
+    np.savetxt(dirName + os.sep + "singleProfile.dat", np.column_stack((x, profile)))
+    if(plot=='plot'):
+        uplot.plotCorrelation(x, profile, "$Density$ $profile$", xlabel = "$x$", color='k')
         #plt.pause(0.5)
         plt.show()
-    return width, liquidDensity, vaporDensity
 
 ####################### Average linear density profile ########################
 def averageLinearDensityProfile(dirName, threshold=0.3, plot=False, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    #eps = 1.8*np.max(rad)
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1457,10 +1465,6 @@ def averageLinearDensityProfile(dirName, threshold=0.3, plot=False, dirSpacing=1
         # first compute particle density
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         pos = utils.centerCOM(pos, rad, boxSize)
-        #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, threshold, compute=True)
-        #maxLabel = utils.findLargestParticleCluster(rad, labels)
-        #print(maxLabel, labels[labels==maxLabel].shape[0])
-        #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
         for i in range(numParticles):
             for j in range(bins.shape[0]-1):
                 if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
@@ -1475,11 +1479,338 @@ def averageLinearDensityProfile(dirName, threshold=0.3, plot=False, dirSpacing=1
     np.savetxt(dirName + os.sep + "densityProfile.dat", np.column_stack((centers, particleDensity)))
     np.savetxt(dirName + os.sep + "interfaceWidth.dat", np.column_stack((timeList, interfaceWidth)))
     print("Interface width:", np.mean(interfaceWidth[interfaceWidth>0]), "+-", np.std(interfaceWidth[interfaceWidth>0]))
+    # compute fluid width
+    x = centers-center
+    y = particleDensity[:,0]
+    xFluid = x[np.argwhere(y>0.5)[:,0]]
+    if(xFluid.shape[0] != 0):
+        width = xFluid[-1] - xFluid[0]
+    else:
+        width = 0
+    liquidDensity = np.mean(y[y>0.5])
+    vaporDensity = np.mean(y[y<0.5])
+    print("Liquid width:", width, "liquid density:", liquidDensity, "vapor density:", vaporDensity)
     if(plot=='plot'):
-        uplot.plotCorrelation(timeList, interfaceWidth, "$Interface$ $width$")
-        #uplot.plotCorrWithError(centers, particleDensity[:,0], particleDensity[:,1], "$Density$ $profile$", xlabel = "$x$", color='k')
+        #uplot.plotCorrelation(timeList, interfaceWidth, "$Interface$ $width$")
+        uplot.plotCorrWithError(centers, particleDensity[:,0], particleDensity[:,1], "$Density$ $profile$", xlabel = "$x$", color='k')
         #plt.show()
         plt.pause(0.5)
+    return width, liquidDensity, vaporDensity
+
+####################### Single linear density profile ########################
+def compute2DensityProfile(dirName, num1=0):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    # distance bins
+    bins = np.arange(0, boxSize[0], np.max(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # density lists
+    particleDensity = np.zeros((bins.shape[0]-1,2))
+    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
+    pos = utils.centerCOM(pos, rad, boxSize)
+    for i in range(numParticles):
+        for j in range(bins.shape[0]-1):
+            if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                if(i < num1):
+                    particleDensity[j,0] += np.pi*rad[i]**2
+                else:
+                    particleDensity[j,1] += np.pi*rad[i]**2
+    particleDensity[:,0] /= binArea
+    particleDensity[:,1] /= binArea
+    x = centers
+    y = particleDensity[:,0]
+    bulk = x[np.argwhere(y>0.5)[:,0]]
+    if(bulk.shape[0] != 0):
+        width = bulk[-1] - bulk[0]
+    else:
+        width = 0
+    print("width of phase 1:", width)
+    uplot.plotCorrelation(centers, particleDensity[:,0], "$Density$ $profile$", xlabel = "$x$", color='g')
+    uplot.plotCorrelation(centers, particleDensity[:,1], "$Density$ $profile$", xlabel = "$x$", color='b')
+    plt.show()
+
+####################### Average linear density profile ########################
+def average2DensityProfile(dirName, num1=0, plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    # distance bins
+    bins = np.arange(0, boxSize[0], np.max(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    # density lists
+    particleDensity = np.zeros((dirList.shape[0], bins.shape[0]-1,2))
+    width = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        # first compute particle density
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        pos = utils.centerCOM(pos, rad, boxSize)
+        for i in range(numParticles):
+            for j in range(bins.shape[0]-1):
+                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                    if(i < num1):
+                        particleDensity[d,j,0] += np.pi*rad[i]**2
+                    else:
+                        particleDensity[d,j,1] += np.pi*rad[i]**2
+        particleDensity[d,:,0] /= binArea
+        particleDensity[d,:,1] /= binArea
+        x = centers
+        y = particleDensity[d,:,0]
+        bulk = x[np.argwhere(y>0.5)[:,0]]
+        if(bulk.shape[0] != 0):
+            width[d] = bulk[-1] - bulk[0]
+        else:
+            width[d] = 0
+    particleDensity1 = np.column_stack((np.mean(particleDensity[:,:,0], axis=0), np.std(particleDensity[:,:,0], axis=0)))
+    particleDensity2 = np.column_stack((np.mean(particleDensity[:,:,1], axis=0), np.std(particleDensity[:,:,1], axis=0)))
+    np.savetxt(dirName + os.sep + "densityProfile.dat", np.column_stack((centers, particleDensity1, particleDensity2)))
+    np.savetxt(dirName + os.sep + "phaseWidth.dat", np.column_stack((timeList, width)))
+    print("average phase 1 width during compression: ", np.mean(width), "+-", np.std(width))
+    if(plot=='plot'):
+        uplot.plotCorrelation(timeList, width, "$Interface$ $width$")
+        #uplot.plotCorrWithError(centers, particleDensity1[:,0], particleDensity1[:,1], "$Density$ $profile$", xlabel = "$x$", color='g')
+        #uplot.plotCorrWithError(centers, particleDensity2[:,0], particleDensity2[:,1], "$Density$ $profile$", xlabel = "$x$", color='b')
+        #plt.show()
+        plt.pause(0.5)
+
+####################### Average linear density profile ########################
+def compute2InterfaceEnergy(dirName, num1=0, which='strain', plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    if(which == 'strain'):
+        dirList, timeList = utils.getOrderedStrainDirectories(dirName)
+    elif(which == 'time'):
+        dirList, timeList = utils.getOrderedDirectories(dirName)
+        dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+        timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    else:
+        print("Please choose the type of run between strain or time")
+    interfaceEnergy = np.zeros((dirList.shape[0], 3))
+    heteroEnergy = np.zeros((dirList.shape[0], 3))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        # first compute particle density
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        neighbors = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        energy = np.loadtxt(dirSample + "/particleEnergies.dat")
+        vel = np.loadtxt(dirSample + "/particleVel.dat")
+        for i in range(numParticles):
+            heteroType = 0
+            neighborIdx = neighbors[i, np.argwhere(neighbors[i]!=-1)[:,0]]
+            totNeighbors = neighborIdx.shape[0]
+            if(i < num1):
+                for n in neighborIdx:
+                    if(n >= num1):
+                        heteroType += 1
+            else:
+                for n in neighborIdx:
+                    if(n < num1):
+                        heteroType += 1
+            if(heteroType != 0):
+                heteroEnergy[d,0] += energy[i] + 0.5 * np.linalg.norm(vel[i])**2
+                heteroEnergy[d,1] += energy[i]
+                heteroEnergy[d,2] += 0.5 * np.linalg.norm(vel[i])**2
+                if(heteroType / totNeighbors > 0.7):
+                    interfaceEnergy[d,0] += energy[i] + 0.5 * np.linalg.norm(vel[i])**2
+                    interfaceEnergy[d,1] += energy[i]
+                    interfaceEnergy[d,2] += 0.5 * np.linalg.norm(vel[i])**2
+    np.savetxt(dirName + os.sep + "interfaceEnergy.dat", np.column_stack((timeList, interfaceEnergy, heteroEnergy)))
+    print("average interface energy: ", np.mean(interfaceEnergy[:,0]), "+-", np.std(interfaceEnergy[:,0]))
+    print("average hetero energy: ", np.mean(heteroEnergy[:,0]), "+-", np.std(heteroEnergy[:,0]))
+    if(plot=='plot'):
+        uplot.plotCorrelation(timeList, interfaceEnergy[:,0], "$Interface(black),$ $hetero(red)$", color='k')
+        uplot.plotCorrelation(timeList, heteroEnergy[:,0], "$Interface(black),$ $hetero(red)$", color='r')
+        #plt.pause(0.5)
+        plt.show()
+
+####################### Compute linear density profile ########################
+def compute2PhaseWidthVSStrain(dirName, num1=0):
+    dirList, strain = utils.getOrderedStrainDirectories(dirName)
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    # distance bins
+    bins = np.arange(0, boxSize[0], np.max(rad))
+    binWidth = bins[1] - bins[0]
+    binArea = binWidth*boxSize[1]
+    centers = (bins[1:] + bins[:-1])/2
+    width = np.zeros(dirList.shape[0])
+    lengthBox = np.zeros(dirList.shape[0])
+    widthBox = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        particleDensity = np.zeros((centers.shape[0],2))
+        dirSample = dirName + dirList[d]
+        # first compute particle density
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        pos = utils.centerCOM(pos, rad, boxSize)
+        lengthBox[d] = np.loadtxt(dirSample + "/boxSize.dat")[1]
+        widthBox[d] = np.loadtxt(dirSample + "/boxSize.dat")[0]
+        for i in range(numParticles):
+            for j in range(bins.shape[0]-1):
+                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                    if(i < num1):
+                        particleDensity[j,0] += np.pi*rad[i]**2
+                    else:
+                        particleDensity[j,1] += np.pi*rad[i]**2
+        particleDensity[:,0] /= binArea
+        particleDensity[:,1] /= binArea
+        x = centers
+        y = particleDensity[:,0]
+        bulk = x[np.argwhere(y>0.5)[:,0]]
+        if(bulk.shape[0] != 0):
+            width[d] = bulk[-1] - bulk[0]
+        else:
+            width[d] = 0
+    print("average phase 1 width during compression: ", np.mean(width), "+-", np.std(width))
+    np.savetxt(dirName + "phaseWidth.dat", np.column_stack((strain, lengthBox, widthBox, width)))
+
+####################### Compute ISF for the two fluids ########################
+def compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=False):
+    boxSize = np.loadtxt(dirName + "boxSize.dat")
+    rad = np.loadtxt(dirName + "particleRad.dat").astype(np.float64)
+    sigma = 2 * np.mean(rad)
+    timeStep = utils.readFromParams(dirName, "dt")
+    longWave = 2 * np.pi / sigma
+    shortWave = 2 * np.pi / boxSize[1]
+    if(num1 != 0):
+        particleCorr1 = []
+        particleCorr2 = []
+    else:
+        particleCorr = []
+    stepList = []
+    freqDecade = int(10**freqPower)
+    decadeSpacing = 10
+    spacingDecade = 1
+    stepDecade = 10
+    numBlocks = int(10**(maxPower-freqPower))
+    for power in range(maxPower):
+        for spacing in range(1,decadeSpacing):
+            stepRange = np.arange(0,stepDecade,spacing*spacingDecade,dtype=int)
+            #print(stepRange, spacing*spacingDecade)
+            if(num1 != 0):
+                stepParticleCorr1 = []
+                numPairs1 = 0
+                stepParticleCorr2 = []
+                numPairs2 = 0
+            else:
+                stepParticleCorr = []
+                numPairs = 0
+            for multiple in range(startBlock, numBlocks):
+                for i in range(stepRange.shape[0]-1):
+                    if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
+                        #print(multiple, i, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
+                        pos1, pos2 = utils.readParticlePair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
+                        if(num1 != 0):
+                            stepParticleCorr1.append(utils.computeLongShortWaveCorr(pos1[:num1,:], pos2[:num1,:], boxSize, longWave, shortWave, sigma))
+                            numPairs1 += 1
+                            stepParticleCorr2.append(utils.computeLongShortWaveCorr(pos1[num1:,:], pos2[num1:,:], boxSize, longWave, shortWave, sigma))
+                            numPairs2 += 1
+                        else:
+                            stepParticleCorr.append(utils.computeLongShortWaveCorr(pos1, pos2, boxSize, longWave, shortWave, sigma))
+                            numPairs += 1
+            if(num1 != 0):
+                if(numPairs1 > 0 or numPairs2 > 0):
+                    stepList.append(spacing*spacingDecade)
+                    particleCorr1.append(np.mean(stepParticleCorr1, axis=0))
+                    particleCorr2.append(np.mean(stepParticleCorr2, axis=0))
+            else:
+                if(numPairs > 0):
+                    stepList.append(spacing*spacingDecade)
+                    particleCorr.append(np.mean(stepParticleCorr, axis=0))
+        stepDecade *= 10
+        spacingDecade *= 10
+    stepList = np.array(stepList) * timeStep
+    if(num1 != 0):
+        particleCorr1 = np.array(particleCorr1).reshape((stepList.shape[0],5))
+        particleCorr1 = particleCorr1[np.argsort(stepList)]
+        particleCorr2 = np.array(particleCorr2).reshape((stepList.shape[0],5))
+        particleCorr2 = particleCorr2[np.argsort(stepList)]
+        np.savetxt(dirName + os.sep + "2logCorr.dat", np.column_stack((stepList, particleCorr1, particleCorr2)))
+        data = np.column_stack((stepList, particleCorr1))
+        tau = utils.computeTau(data)
+        print("Fluid 1: relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
+        data = np.column_stack((stepList, particleCorr2))
+        tau = utils.computeTau(data)
+        print("Fluid 2: relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
+    else:
+        particleCorr = np.array(particleCorr).reshape((stepList.shape[0],5))
+        particleCorr = particleCorr[np.argsort(stepList)]
+        np.savetxt(dirName + os.sep + "logCorr.dat", np.column_stack((stepList, particleCorr)))
+        data = np.column_stack((stepList, particleCorr))
+        tau = utils.computeTau(data)
+        print("Relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
+    if(plot=="plot"):
+        if(num1 != 0):
+            uplot.plotCorrelation(stepList, particleCorr1[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
+            uplot.plotCorrelation(stepList, particleCorr1[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+            uplot.plotCorrelation(stepList, particleCorr2[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k', ls='dashed')
+            uplot.plotCorrelation(stepList, particleCorr2[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r', ls='dashed')
+        else:
+            uplot.plotCorrelation(stepList, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
+            uplot.plotCorrelation(stepList, particleCorr[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+        #plt.pause(0.5)
+        plt.show()
+
+############################ Velocity distribution #############################
+def average2FluidsVelPDF(dirName, num1=0, plot=False, dirSpacing=1):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    #dirList = dirList[-50:]
+    vel1 = np.empty(0)
+    vel2 = np.empty(0)
+    veltot = np.empty(0)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        vel = np.loadtxt(dirSample + os.sep + "particleVel.dat")
+        velNorm = np.linalg.norm(vel, axis=1)
+        vel1 = np.append(vel1, velNorm[:num1].flatten())
+        vel2 = np.append(vel2, velNorm[num1:].flatten())
+        veltot = np.append(veltot, velNorm.flatten())
+    # fluid 1
+    vel1 = vel1[vel1>0]
+    vel2 = vel1[vel2>0]
+    veltot = veltot[veltot>0]
+    min = np.min(np.min(vel1), np.min(vel2), np.min(veltot))
+    max = np.max(np.max(vel1), np.max(vel2), np.max(veltot))
+    bins = np.linspace(min, max, 100)
+    data = vel1# / np.sqrt(2*Temp)
+    pdf1, edges = np.histogram(vel1, bins=bins, density=True)
+    pdf2, edges = np.histogram(vel2, bins=bins, density=True)
+    pdftot, edges = np.histogram(veltot, bins=bins, density=True)
+    edges = 0.5 * (edges[:-1] + edges[1:])
+    np.savetxt(dirName + os.sep + "2velPDF.dat", np.column_stack((edges, pdf1, pdf2, pdftot)))
+    mean = np.mean(vel1)
+    temp = np.var(vel1)
+    skewness = np.mean((vel1 - mean)**3)/temp**(3/2)
+    kurtosis = np.mean((vel1 - mean)**4)/temp**2
+    print("Variance of the velocity in fluid 1: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    mean = np.mean(vel2)
+    temp = np.var(vel2)
+    skewness = np.mean((vel2 - mean)**3)/temp**(3/2)
+    kurtosis = np.mean((vel2 - mean)**4)/temp**2
+    print("Variance of the velocity in fluid 2: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    mean = np.mean(veltot)
+    temp = np.var(veltot)
+    skewness = np.mean((vel - mean)**3)/temp**(3/2)
+    kurtosis = np.mean((vel - mean)**4)/temp**2
+    print("Variance of the velocity in total: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    if(plot == "plot"):
+        uplot.plotCorrelation(edges, pdf1, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
+        uplot.plotCorrelation(edges, pdf2, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
+        uplot.plotCorrelation(edges, pdftot, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='k')
+        #plt.pause(0.5)
+        plt.show()
 
 ############################## Work done on a fictitious wall #############################
 def computeWallForceVSStrain(dirName, which='lj', multiple=3):
@@ -1541,7 +1872,7 @@ def computeWallForceVSStrain(dirName, which='lj', multiple=3):
     plt.show()
 
 ############################## Work done on a fictitious wall #############################
-def computeWallForceVSTime(dirName, threshold=0.78, which='lj', nDim=2):
+def computeWallForceVSTime(dirName, threshold=0.78, which='lj', nDim=2, dirSpacing=1):
     ec = 1
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
@@ -1556,6 +1887,9 @@ def computeWallForceVSTime(dirName, threshold=0.78, which='lj', nDim=2):
     else:
         print("Please specify sample type")
     dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     wallForce = np.zeros((timeList.shape[0],2))
     boxSize = np.loadtxt(dirName + "/boxSize.dat")
     for d in range(dirList.shape[0]):
@@ -1600,9 +1934,87 @@ def computeWallForceVSTime(dirName, threshold=0.78, which='lj', nDim=2):
     uplot.plotCorrelation(timeList, wallForce[:,1], color='r', ylabel='$Force$', xlabel='$Strain,$ $\\gamma$')
     plt.pause(0.5)
 
+############################# Work done on a fictitious wall #############################
+def computeLJWallForce(dirName, LJcutoff=4, rangeForce=2, size="size", frac=1, dirSpacing=1):
+    ec = 1
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    sigma = 2 * np.mean(rad)
+    eps = 1.8 * np.max(rad)
+    rangeForce *= LJcutoff * sigma
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    wallForce = np.zeros((dirList.shape[0], 3))
+    midHeight = boxSize[1]*(1/2)
+    typicalDistance = []
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        #labels = cluster.getParticleClusterLabels(dirSample, boxSize, eps, 0.3)
+        #maxLabel = utils.findLargestParticleCluster(rad, labels)
+        contacts = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        # first compute work across fictitious wall at half height
+        for i in range(numParticles):
+            if(np.argwhere(contacts[i]!=-1)[:,0].shape[0]>0):# and labels[i]==maxLabel):
+                if(size=="size"):
+                    posCheck = np.array([pos[i,0], pos[i,1] + frac * rad[i]])
+                else:
+                    posCheck = pos[i]
+                # compute bonds across wall
+                if(posCheck[1] < midHeight and pos[i,1] > (midHeight - rangeForce)):
+                    wallPos = np.array([pos[i,0], midHeight])
+                    wallDelta = utils.pbcDistance(pos[i], wallPos, boxSize)
+                    wallDistance = np.linalg.norm(wallDelta)
+                    for c in contacts[i, np.argwhere(contacts[i]!=-1)[:,0]]:
+                        if(size=="size"):
+                            posCheck = np.array([pos[c,0], pos[c,1] - frac * rad[c]])
+                        else:
+                            posCheck = pos[c]
+                        if(posCheck[1] > midHeight and pos[c,1] < (midHeight + rangeForce)):
+                            radSum = rad[i] + rad[c]
+                            delta = utils.pbcDistance(pos[i], pos[c], boxSize)
+                            distance = np.linalg.norm(delta)
+                            if(distance <= (LJcutoff * radSum)):
+                                typicalDistance.append(distance)
+                                forceShift = utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                                gradMultiple = utils.calcLJgradMultiple(ec, distance, radSum) - forceShift
+                                wallForce[d,0] += gradMultiple * delta[0] / distance
+                                wallForce[d,1] += gradMultiple * delta[1] / distance
+                                #wallForce[d,0] += gradMultiple * wallDelta[0] / distance
+                                #wallForce[d,1] += gradMultiple * wallDelta[1] / distance
+                                if(wallDistance > distance):
+                                    print(i, c, wallDistance, distance, wallDistance / distance)
+                # compute interaction with the wall
+                radSum = rad[i]
+                wallPos = np.array([posCheck[0], midHeight])
+                wallDelta = utils.pbcDistance(wallPos, posCheck, boxSize)
+                wallDistance = np.linalg.norm(wallDelta)
+                if(wallDistance < (LJcutoff * radSum)):
+                    #forceShift = utils.calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+                    #gradMultiple = utils.calcLJgradMultiple(ec, wallDistance, radSum) - forceShift
+                    overlap = 1 - wallDistance / radSum
+                    gradMultiple = ec * overlap / radSum
+                    wallForce[d,2] += gradMultiple * wallDelta[1] / wallDistance
+        #if(d % 10 == 0):
+        #    print(d, wallForce[d], np.mean(typicalDistance))
+    wallForce *= sigma/ec
+    if(size=="size"):
+        np.savetxt(dirName + os.sep + "wallForce-size" + str(frac) + ".dat", np.column_stack((timeList, wallForce)))
+    else:
+        np.savetxt(dirName + os.sep + "wallForce.dat", np.column_stack((timeList, wallForce)))
+    print("Average force across wall - x:", np.mean(wallForce[:,0]), "+-", np.std(wallForce[:,0]))
+    print("Average force across wall - y:", np.mean(wallForce[:,1]), "+-", np.std(wallForce[:,1]))
+    print("Average force with wall:", np.mean(wallForce[:,2]), "+-", np.std(wallForce[:,2]))
+    uplot.plotCorrelation(timeList, wallForce[:,0], color='r', ylabel='$Force$', xlabel='$Simulation$ $time,$ $t$')
+    uplot.plotCorrelation(timeList, wallForce[:,1], color='k', ylabel='$Force$', xlabel='$Simulation$ $time,$ $t$')
+    plt.pause(0.5)
+    #plt.show()
+
 ####################### Average cluster height interface #######################
 def averageClusterHeightVSTime(dirName, threshold=0.78, plot=False, dirSpacing=1):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
     sigma = np.mean(rad)
@@ -1613,7 +2025,6 @@ def averageClusterHeightVSTime(dirName, threshold=0.78, plot=False, dirSpacing=1
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     spacing = 3*sigma
     bins = np.arange(0, boxSize[1], spacing)
-    centers = (bins[1:] + bins[:-1])/2
     #freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
     interface = np.zeros((dirList.shape[0], bins.shape[0]-1))
     for d in range(dirList.shape[0]):
@@ -1923,6 +2334,89 @@ def computeExchangeRates(dirName, threshold=0.3, lj='lj', plot=False, dirSpacing
         plt.pause(0.5)
         #plt.show()
 
+############################# Mixing for 2 species ##############################
+def computeMixingDistribution(dirName, num1=0, numBins=20, which='time', plot=False, dirSpacing=1):
+    if(plot=='plot'):
+        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_xlabel("$Neighbor$ $fraction,$ $f$", fontsize=16)
+        ax.set_ylabel("$P(f_{AA}),$ $P(f_{AB}),$ $P(f_{BB})$", fontsize=16)
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    if(which=='time'):
+        dirList, timeList = utils.getOrderedDirectories(dirName)
+        dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    elif(which=='strain'):
+        dirSpacing = 0.001
+        dirList, strainList = utils.getOrderedStrainDirectories(dirName)
+        dirList = dirList[np.argwhere(strainList%dirSpacing==0)[:,0]]
+    neighborFracAA = []
+    neighborFracAB = []
+    neighborFracBB = []
+    for d in range(dirList.shape[0]):
+        print(dirList[d])
+        fracAA = []
+        fracAB = []
+        fracBB = []
+        meanNum = 0
+        dirSample = dirName + os.sep + dirList[d]
+        neighbors = np.loadtxt(dirSample + "/particleNeighbors.dat").astype(np.int64)
+        # count neighbors of different types for each particle
+        for i in range(numParticles):
+            numNeighbors = np.argwhere(neighbors[i]!=-1)[:,0].shape[0]
+            meanNum += numNeighbors
+            fAA = 0
+            fAB = 0
+            fBB = 0
+            for c in range(numNeighbors):
+                if(i < num1):
+                    if(neighbors[i,c] >= num1):
+                        fAB += 1
+                    else:
+                        fAA += 1
+                else:
+                    if(neighbors[i,c] >= num1):
+                        fBB += 1
+                    else:
+                        fAB += 1
+            if(fAA != 0):
+                fracAA.append(fAA / numNeighbors)
+                neighborFracAA.append(fAA / numNeighbors)
+            if(fAB != 0):
+                fracAB.append(fAB / numNeighbors)
+                neighborFracAB.append(fAB / numNeighbors)
+            if(fBB != 0):
+                fracBB.append(fBB / numNeighbors)
+                neighborFracBB.append(fBB / numNeighbors)
+        if(plot=='plot'):
+            binMin = np.min([np.min(fracAA), np.min(fracAB), np.min(fracBB)])
+            binMax = np.max([np.max(fracAA), np.max(fracAB), np.max(fracBB)])
+            bins = np.linspace(binMin, binMax, numBins)
+            pdfAA, edges = np.histogram(fracAA, bins, density=True)
+            pdfAB, edges = np.histogram(fracAB, bins, density=True)
+            pdfBB, edges = np.histogram(fracBB, bins, density=True)
+            edges = (edges[1:] + edges[:-1]) * 0.5
+            ax.plot(edges, pdfAA, color='g')
+            ax.plot(edges, pdfAB, color='r')
+            ax.plot(edges, pdfBB, color='b')
+            plt.tight_layout()
+            plt.pause(0.5)
+        print("average number of neighbors:", meanNum/numParticles)
+    binMin = np.min([np.min(neighborFracAA), np.min(neighborFracAB), np.min(neighborFracBB)])
+    binMax = np.max([np.max(neighborFracAA), np.max(neighborFracAB), np.max(neighborFracBB)])
+    bins = np.linspace(binMin, binMax, numBins)
+    pdfAA, edges = np.histogram(neighborFracAA, bins, density=True)
+    pdfAB, edges = np.histogram(neighborFracAB, bins, density=True)
+    pdfBB, edges = np.histogram(neighborFracBB, bins, density=True)
+    edges = (edges[1:] + edges[:-1]) * 0.5
+    np.savetxt(dirName + os.sep + "neighborFraction.dat", np.column_stack((edges, pdfAA, pdfAB, pdfBB)))
+    if(plot=='plot'):
+        ax.plot(edges, pdfAA, color='g', linestyle='--', lw=1.5)
+        ax.plot(edges, pdfAB, color='r', linestyle='--', lw=1.5)
+        ax.plot(edges, pdfBB, color='b', linestyle='--', lw=1.5)
+        plt.tight_layout()
+        plt.show()
+
+
 
 if __name__ == '__main__':
     dirName = sys.argv[1]
@@ -1954,7 +2448,7 @@ if __name__ == '__main__':
     elif(whichCorr == "radialprofile"):
         averageRadialPressureProfile(dirName)
 
-    elif(whichCorr == "pprofile"):
+    elif(whichCorr == "pressureprofile"):
         shiftx = float(sys.argv[3])
         averageLinearPressureProfile(dirName, shiftx=shiftx)
 
@@ -1987,7 +2481,7 @@ if __name__ == '__main__':
         sampleHLJPressureProfile(dirName, numSamples=int(sys.argv[3]), LJcutoff=float(sys.argv[4]), plot=sys.argv[5])
 
     elif(whichCorr == "ikprofile"):
-        averageIKLJPressureProfile(dirName, LJcutoff=float(sys.argv[3]), plot=sys.argv[4])
+        averageIKLJPressureProfile(dirName, LJcutoff=float(sys.argv[3]), nDim=int(sys.argv[4]), plot=sys.argv[5])
 
     elif(whichCorr == "sampleikprofile"):
         sampleIKLJPressureProfile(dirName, numSamples=int(sys.argv[3]), LJcutoff=float(sys.argv[4]), plot=sys.argv[5], temp=sys.argv[6])
@@ -1999,16 +2493,54 @@ if __name__ == '__main__':
         sampleCGIKLJPressureProfile(dirName, numSamples=int(sys.argv[3]), LJcutoff=float(sys.argv[4]), plot=sys.argv[5], temp=sys.argv[6])
     
 ############################## Interface structure ##############################
-    elif(whichCorr == "singleprofile"):
+    elif(whichCorr == "phiprofile"):
         threshold = float(sys.argv[3])
         size = float(sys.argv[4])
         plot = sys.argv[5]
         computeLinearDensityProfile(dirName, threshold, size, plot)
 
+    elif(whichCorr == "pprofile"):
+        size = float(sys.argv[3])
+        num1 = int(sys.argv[4])
+        plot = sys.argv[5]
+        computeLinearPressureProfile(dirName, size, num1, plot)
+
     elif(whichCorr == "profile"):
         threshold = float(sys.argv[3])
         plot = sys.argv[4]
         averageLinearDensityProfile(dirName, threshold, plot)
+
+    elif(whichCorr == "2single"):
+        num1 = int(sys.argv[3])
+        compute2DensityProfile(dirName, num1)
+
+    elif(whichCorr == "2profile"):
+        num1 = int(sys.argv[3])
+        plot = sys.argv[4]
+        average2DensityProfile(dirName, num1, plot)
+
+    elif(whichCorr == "2energy"):
+        num1 = int(sys.argv[3])
+        which = sys.argv[4]
+        plot = sys.argv[5]
+        compute2InterfaceEnergy(dirName, num1, which, plot)
+
+    elif(whichCorr == "2width"):
+        num1 = int(sys.argv[3])
+        compute2PhaseWidthVSStrain(dirName, num1)
+
+    elif(whichCorr == "2corr"):
+        startBlock = int(sys.argv[3])
+        maxPower = int(sys.argv[4])
+        freqPower = float(sys.argv[5])
+        num1 = int(sys.argv[6])
+        plot = sys.argv[7]
+        compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1, plot)
+
+    elif(whichCorr == "2velpdf"):
+        num1 = int(sys.argv[3])
+        plot = sys.argv[4]
+        average2FluidsVelPDF(dirName, num1, plot)
 
     elif(whichCorr == "wallstrain"):
         which = sys.argv[3]
@@ -2019,6 +2551,13 @@ if __name__ == '__main__':
         threshold = float(sys.argv[3])
         which = sys.argv[4]
         computeWallForceVSTime(dirName, threshold, which)
+
+    elif(whichCorr == "wallforce"):
+        LJcutoff = float(sys.argv[3])
+        rangeForce = float(sys.argv[4])
+        size = sys.argv[5]
+        frac = float(sys.argv[6])
+        computeLJWallForce(dirName, LJcutoff, rangeForce, size, frac)
 
     elif(whichCorr == "height"):
         threshold = float(sys.argv[3])
@@ -2055,6 +2594,13 @@ if __name__ == '__main__':
         lj = sys.argv[4]
         plot = sys.argv[5]
         computeExchangeRates(dirName, threshold, lj, plot)
+
+    elif(whichCorr == "2mixing"):
+        num1 = int(sys.argv[3])
+        numBins = int(sys.argv[4])
+        which = sys.argv[5]
+        plot = sys.argv[6]
+        computeMixingDistribution(dirName, num1, numBins, which, plot)
 
     else:
         print("Please specify the correlation you want to compute")

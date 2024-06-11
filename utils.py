@@ -1408,7 +1408,7 @@ def centerDroplet(pos, rad, boxSize, labels, maxLabel, nDim=2):
     pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-centerOfMass[0], boxSize[1]*0.5-centerOfMass[1])
     return pos
 
-def centerCOM(pos, rad, boxSize, nDim=2):
+def centerCOM(pos, rad, boxSize):
     center = np.mean(pos, axis=0)[0]
     height = 0.5*np.pi*np.sum(rad**2) / boxSize[1]
     isOutside = 0
@@ -1427,6 +1427,11 @@ def centerCOM(pos, rad, boxSize, nDim=2):
         pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
         center = np.mean(pos, axis=0)[0]
         pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
+    return pos
+
+def shiftCOM(pos, boxSize):
+    center = np.mean(pos, axis=0)
+    pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center[0], boxSize[1]*0.5-center[1])
     return pos
 
 def centerSlab(pos, rad, boxSize, labels, maxLabel):
@@ -1510,6 +1515,60 @@ def shiftToOrigin(dirName, dirSave):
     np.savetxt(dirSave + '/particleVel.dat', vel)
     np.savetxt(dirSave + '/particleRad.dat', rad)
 
+def relabelPacking(dirName, dirSave, nDim=2):
+    # label particles to the left of the center from 0 to N/2
+    # and the particles to right of the center from N/2 + 1 to N
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    for i in range(nDim):
+        pos[:,i] -= np.floor(pos[:,i]/boxSize[i]) * boxSize[i]
+    center = boxSize[0] * 0.5
+    rightIndices = np.argwhere(pos[:,0]>center)[:,0]
+    leftIndices = np.argwhere(pos[:,0]<=center)[:,0]
+    leftNum = leftIndices.shape[0]
+    rightNum = rightIndices.shape[0]
+    print("Number of left particles:", leftNum)
+    print("Number of right particles:", rightNum)
+    print("Total number of particles:", leftNum + rightNum)
+    newPos = np.zeros(pos.shape)
+    newRad = np.zeros(rad.shape)
+    newVel = np.zeros(vel.shape)
+    newPos[:leftNum] = pos[leftIndices]
+    newPos[leftNum:] = pos[rightIndices]
+    newRad[:leftNum] = rad[leftIndices]
+    newRad[leftNum:] = rad[rightIndices]
+    newVel[:leftNum] = vel[leftIndices]
+    newVel[leftNum:] = vel[rightIndices]
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particlePos.dat', newPos)
+    np.savetxt(dirSave + '/particleVel.dat', newVel)
+    np.savetxt(dirSave + '/particleRad.dat', newRad)
+
+def resizeHalfPacking(dirName, dirSave, leftNum, scale):
+    # label particles to the left of the center from 0 to N/2
+    # and the particles to right of the center from N/2 + 1 to N
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    print("Number of left particles:", leftNum)
+    newRad = np.zeros(rad.shape)
+    newRad[:leftNum] = rad[:leftNum]/scale #22=0.66/0.03 approximate liquid gas densities
+    newRad[leftNum:] = rad[leftNum:]
+    boxArea = boxSize[0]*boxSize[1]
+    print("Loaded packing fraction:", np.pi*np.sum(rad**2)/boxArea)
+    print("Saved packing fraction:", np.pi*np.sum(newRad**2)/boxArea)
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particlePos.dat', pos)
+    np.savetxt(dirSave + '/particleVel.dat', vel)
+    np.savetxt(dirSave + '/particleRad.dat', newRad)
+
 def increaseDensity(dirName, dirSave, targetDensity):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
@@ -1539,14 +1598,14 @@ def initializeRectangle(dirName, dirSave, xratio, yratio):
     pos = np.loadtxt(dirName + '/particlePos.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
-    angle = np.loadtxt(dirName + '/particleAngles.dat')
+    #angle = np.loadtxt(dirName + '/particleAngles.dat')
     numParticles = rad.shape[0]
     density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
     np.savetxt(dirSave + '/particleVel.dat', vel)
-    np.savetxt(dirSave + '/particleAngles.dat', angle)
+    #np.savetxt(dirSave + '/particleAngles.dat', angle)
     # increase boxsize along the x direction and pbc particles in new box
     print(boxSize)
     boxSize[0] *= xratio
@@ -1565,7 +1624,7 @@ def initializeRectangle(dirName, dirSave, xratio, yratio):
     print("Current density: ", currentDensity)
     np.savetxt(dirSave + '/particleRad.dat', rad)
 
-def adjustBoxSize(dirName, dirSave, xratio, yratio):
+def adjustBoxSize(dirName, dirSave, xratio, yratio, zratio):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     pos = np.loadtxt(dirName + '/particlePos.dat')
@@ -1573,7 +1632,10 @@ def adjustBoxSize(dirName, dirSave, xratio, yratio):
     vel = np.loadtxt(dirName + '/particleVel.dat')
     #angle = np.loadtxt(dirName + '/particleAngles.dat')
     numParticles = rad.shape[0]
-    density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
+    if(zratio != 0):
+        density = np.sum(np.pi*4*rad**3/3) / (boxSize[0] * boxSize[1] * boxSize[2])
+    else:
+        density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
     # save unchanged files to new directory
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
@@ -1586,13 +1648,22 @@ def adjustBoxSize(dirName, dirSave, xratio, yratio):
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     boxSize[0] *= xratio
     boxSize[1] *= yratio
-    pos = centerCOM(pos, rad, boxSize)
+    if(zratio != 0):
+        pos[:,2] -= np.floor(pos[:,2]/boxSize[2]) * boxSize[2]
+        boxSize[2] *= zratio
+    center = np.mean(pos[:,0])
+    pos[:,0] += (0.5 * boxSize[0] - center)
+    pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
+    #pos = centerCOM(pos, rad, boxSize)
     print(boxSize)
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
     np.savetxt(dirSave + '/particlePos.dat', pos)
     # increase the particle sizes such that the density stays the same
-    currentDensity = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1]) #boxSize[0] has changed
-    print("Current density: ", currentDensity)
+    if(zratio != 0):
+        density = np.sum(np.pi*4*rad**3/3) / (boxSize[0] * boxSize[1] * boxSize[2])
+    else:
+        density = np.sum(np.pi*rad**2) / (boxSize[0] * boxSize[1])
+    print("Current density: ", density)
 
 def scalePacking(dirName, dirSave, scale):
     # load all the packing files
@@ -1619,6 +1690,7 @@ def scalePacking(dirName, dirSave, scale):
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
     np.savetxt(dirSave + '/particlePos.dat', pos)
     np.savetxt(dirSave + '/particleRad.dat', rad)
+    
 def setSigmaToOne(dirName, dirSave):
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     pos = np.loadtxt(dirName + '/particlePos.dat')

@@ -173,32 +173,54 @@ def plotGPUperformance(dirName, figureName):
     fig2.savefig(figure2Name + ".png", transparent=False, format = "png")
     plt.show()
 
-########################## nve and langevin comparison #########################
-def plotEnergy(dirName, figureName):
+########################## check energy conservation ##########################
+def plotEnergy(dirName, figureName, log=False):
     if(os.path.exists(dirName + "/energy.dat")):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
-        fileName = 'energy'
-    elif(os.path.exists(dirName + "/stressEnergy.dat")):
-        energy = np.loadtxt(dirName + os.sep + "stressEnergy.dat")
-        fileName = 'stressEnergy'
-    else:
-        print("no energy file is in the folder")
     print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
-    print("potential energy per particle:", np.mean(energy[:,2]), " +-", np.std(energy[:,2]))
+    print("energy per particle:", np.mean(energy[:,2]+energy[:,3]), " +-", np.std(energy[:,2]+energy[:,3]))
+    print("error over mean:", np.std(energy[:,2]+energy[:,3])/np.abs(np.mean(energy[:,2]+energy[:,3])))
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k')
     ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--')
     ax.plot(energy[:,0], energy[:,2] + energy[:,3], linewidth=1.5, color='b', linestyle='dotted')
-    if(fileName == 'stressEnergy'):
-        ax.plot(energy[:,0], energy[:,4], linewidth=1.5, color=[0.5,0.5,0.5])
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Simulation$ $step$", fontsize=16)
     ax.set_ylabel("$Energy$", fontsize=16)
     ax.legend(("$E_{pot}$", "$E_{kin}$", "$E_{tot}$"), fontsize=14, loc='best')
     #ax.set_ylim(50, 700)
-    #ax.set_yscale('log')
+    if(log == 'log'):
+        ax.set_xscale('log')
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/penergy-" + figureName
+    figureName = "/home/francesco/Pictures/soft/energy-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+########################## nve and langevin comparison #########################
+def plotEnergyVSTemperature(dirName, figureName, which='potential', log=False):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    dirList = np.array(['0.1', '0.2', '0.4', '0.8'])
+    colorList = np.array(['k', 'b', 'g', 'c'])
+    lsList = np.array(['solid', 'dashed', 'dotted', 'dashdot'])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + "T" + dirList[d]
+        if(os.path.exists(dirSample + "/energy.dat")):
+            energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+            print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
+            if(which=='potential'):
+                ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color=colorList[d], ls=lsList[d], label="$T / \\varepsilon=$" + dirList[d])
+            elif(which=='kinetic'):
+                ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color=colorList[d], ls=lsList[d], label="$T / \\varepsilon=$" + dirList[d])
+            else:
+                ax.plot(energy[:,0], energy[:,2] + energy[:,3], linewidth=1.5, color=colorList[d], ls=lsList[d], label="$T / \\varepsilon=$" + dirList[d])
+        ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $step$", fontsize=16)
+    ax.set_ylabel("$Energy$", fontsize=16)
+    ax.legend(fontsize=14, loc='best')
+    if(log == 'log'):
+        ax.set_xscale('log')
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/energyVStemp-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -412,10 +434,87 @@ def plotParticleForces(dirName, index0, index1, index2, dim):
         force2.append(force[index2,dim])
     fig = plt.figure(figsize = (7, 5), dpi = 120)
     ax = fig.gca()
-    ax.plot(timeList, force0, linewidth=1, color='k', marker='o', fillstyle='none', label="$vertex$" + " " + str(index0))
-    ax.plot(timeList, force1, linewidth=1, color='b', marker='o', fillstyle='none', label="$vertex$" + " " + str(index1))
-    ax.plot(timeList, force2, linewidth=1, color='g', marker='o', fillstyle='none', label="$vertex$" + " " + str(index2))
-    ax.legend(fontsize=10, loc='lower right')
+    ax.plot(timeList, force0, linewidth=1, color='k', marker='o', fillstyle='none', label="$particle$" + " " + str(index0))
+    ax.plot(timeList, force1, linewidth=1, color='b', marker='o', fillstyle='none', label="$particle$" + " " + str(index1))
+    ax.plot(timeList, force2, linewidth=1, color='g', marker='o', fillstyle='none', label="$particle$" + " " + str(index2))
+    ax.legend(fontsize=10, loc='best')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Simulation$ $step$", fontsize=15)
+    ax.set_ylabel("$Forces$", fontsize=15)
+    plt.tight_layout()
+    plt.show()
+
+def plotTest2Forces(dirName, which=None):
+    timeStep = utils.readFromParams(dirName, "dt")
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = np.array(timeList) * timeStep
+    force0x = []
+    force0y = []
+    force1x = []
+    force1y = []
+    for d in range(dirList.shape[0]):
+        force = np.loadtxt(dirName + os.sep + dirList[d] + "/particleForces.dat")
+        force0x.append(force[0,0])
+        force0y.append(force[0,1])
+        force1x.append(force[1,0])
+        force1y.append(force[1,1])
+    fig = plt.figure(figsize = (7, 5), dpi = 120)
+    ax = fig.gca()
+    if(which=='0'):
+        ax.plot(timeList, force0x, linewidth=1, color='k', marker='o', fillstyle='none', label="$p0, x$")
+        ax.plot(timeList, force0y, linewidth=1, color='k', marker='v', fillstyle='none', label="$p0, y$")
+    elif(which=='1'):
+        ax.plot(timeList, force1x, linewidth=1, color='g', marker='o', fillstyle='none', label="$p1, x$")
+        ax.plot(timeList, force1y, linewidth=1, color='g', marker='v', fillstyle='none', label="$p1, y$")
+    else:
+        ax.plot(timeList, force0x, linewidth=1, color='k', marker='o', fillstyle='none', label="$p0, x$")
+        ax.plot(timeList, force0y, linewidth=1, color='k', marker='v', fillstyle='none', label="$p0, y$")
+        ax.plot(timeList, force1x, linewidth=1, color='g', marker='o', fillstyle='none', label="$p1, x$")
+        ax.plot(timeList, force1y, linewidth=1, color='g', marker='v', fillstyle='none', label="$p1, y$")
+    ax.legend(fontsize=10, loc='best')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Simulation$ $step$", fontsize=15)
+    ax.set_ylabel("$Forces$", fontsize=15)
+    plt.tight_layout()
+    plt.show()
+
+def plotTest3Forces(dirName, which=None):
+    timeStep = utils.readFromParams(dirName, "dt")
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = np.array(timeList) * timeStep
+    force0x = []
+    force0y = []
+    force1x = []
+    force1y = []
+    force2x = []
+    force2y = []
+    for d in range(dirList.shape[0]):
+        force = np.loadtxt(dirName + os.sep + dirList[d] + "/particleForces.dat")
+        force0x.append(force[0,0])
+        force0y.append(force[0,1])
+        force1x.append(force[1,0])
+        force1y.append(force[1,1])
+        force2x.append(force[2,0])
+        force2y.append(force[2,1])
+    fig = plt.figure(figsize = (7, 5), dpi = 120)
+    ax = fig.gca()
+    if(which=='0'):
+        ax.plot(timeList, force0x, linewidth=1, color='k', marker='o', fillstyle='none', label="$p0, x$")
+        ax.plot(timeList, force0y, linewidth=1, color='k', marker='v', fillstyle='none', label="$p0, y$")
+    elif(which=='1'):
+        ax.plot(timeList, force1x, linewidth=1, color='g', marker='o', fillstyle='none', label="$p1, x$")
+        ax.plot(timeList, force1y, linewidth=1, color='g', marker='v', fillstyle='none', label="$p1, y$")
+    elif(which=='2'):
+        ax.plot(timeList, force2x, linewidth=1, color='b', marker='o', fillstyle='none', label="$p2, x$")
+        ax.plot(timeList, force2y, linewidth=1, color='b', marker='v', fillstyle='none', label="$p2, y$")
+    else:
+        ax.plot(timeList, force0x, linewidth=1, color='k', marker='o', fillstyle='none', label="$p0, x$")
+        ax.plot(timeList, force0y, linewidth=1, color='k', marker='v', fillstyle='none', label="$p0, y$")
+        ax.plot(timeList, force1x, linewidth=1, color='g', marker='o', fillstyle='none', label="$p1, x$")
+        ax.plot(timeList, force1y, linewidth=1, color='g', marker='v', fillstyle='none', label="$p1, y$")
+        ax.plot(timeList, force2x, linewidth=1, color='b', markersize=10, marker='o', fillstyle='none', label="$p2, x$")
+        ax.plot(timeList, force2y, linewidth=1, color='b', markersize=10, marker='v', fillstyle='none', label="$p2, y$")
+    ax.legend(fontsize=10, loc='best')
     ax.tick_params(axis='both', labelsize=12)
     ax.set_xlabel("$Simulation$ $step$", fontsize=15)
     ax.set_ylabel("$Forces$", fontsize=15)
@@ -2494,7 +2593,14 @@ if __name__ == '__main__':
 
     elif(whichPlot == "energy"):
         figureName = sys.argv[3]
-        plotEnergy(dirName, figureName)
+        log = sys.argv[4]
+        plotEnergy(dirName, figureName, log)
+
+    elif(whichPlot == "energytemp"):
+        figureName = sys.argv[3]
+        which = int(sys.argv[4])
+        log = sys.argv[5]
+        plotEnergyVSTemperature(dirName, figureName, which, log)
 
     elif(whichPlot == "wall"):
         figureName = sys.argv[3]
@@ -2535,6 +2641,14 @@ if __name__ == '__main__':
         index2 = int(sys.argv[5])
         dim = int(sys.argv[6])
         plotParticleForces(dirName, index0, index1, index2, dim)
+
+    elif(whichPlot == "test2"):
+        which = sys.argv[3]
+        plotTest2Forces(dirName, which)
+
+    elif(whichPlot == "test3"):
+        which = sys.argv[3]
+        plotTest3Forces(dirName, which)
 
     elif(whichPlot == "active"):
         figureName = sys.argv[3]
