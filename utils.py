@@ -184,6 +184,54 @@ def calcLJgradMultipleRep(ec, distance, radSum):
 def calcLJgradMultipleAtt(ec, distance, radSum):
     return -(24 * ec / distance) * (radSum / distance)**6
 
+def getEnergyScale(thisId, otherId, num1=0):
+    ea = 2
+    eb = 2
+    eab = 0.5
+    if(thisId < num1):
+        if(otherId < num1):
+            return ea
+        else:
+            return eab
+    else:
+        if(otherId >= num1):
+            return eb
+        else:
+            return eab
+        
+def checkWallInteractionX(thisPos, thisRad, boxSize, dim, LJcutoff=4, ec=2):
+    wallPos = np.empty(0)
+    if(thisPos[0] < thisRad):
+        wallPos = np.array([0, thisPos[1]])
+    elif((boxSize[0] - thisPos[0]) < thisRad):
+        wallPos = np.array([boxSize[0], thisPos[1]])
+    if(wallPos.shape[0] != 0):
+        radSum = thisRad
+        delta = pbcDistance(thisPos, wallPos, boxSize)
+        distance = np.linalg.norm(delta)
+        if(distance <= (LJcutoff * radSum)):
+            forceShift = calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+            gradMultiple = calcLJgradMultiple(ec, distance, radSum) - forceShift
+            # force is only on x since the wall y coordinate is equal to thisPos[1]
+            return gradMultiple * delta[0] / distance
+    return 0
+
+def checkWallInteractionY(thisPos, thisRad, boxSize, dim, LJcutoff=4, ec=2):
+    wallPos = np.empty(0)
+    if(thisPos[1] < thisRad):
+        wallPos = np.array([thisPos[0], 0])
+    elif((boxSize[1] - thisPos[1]) < thisRad):
+        wallPos = np.array([thisPos[0], boxSize[1]])
+    if(wallPos.shape[0] != 0):
+        radSum = thisRad
+        delta = pbcDistance(thisPos, wallPos, boxSize)
+        distance = np.linalg.norm(delta)
+        if(distance <= (LJcutoff * radSum)):
+            forceShift = calcLJgradMultiple(ec, LJcutoff * radSum, radSum)
+            gradMultiple = calcLJgradMultiple(ec, distance, radSum) - forceShift
+            # force is only on y since the wall x coordinate is equal to thisPos[0]
+            return gradMultiple * delta[1] / distance
+    return 0
 
 ############################ correlation functions #############################
 def computeIsoCorrFunctions(pos1, pos2, boxSize, waveVector, scale, oneDim = False):
@@ -940,21 +988,6 @@ def applyParticleFilters(contacts, denseList, simplices, denseSimplexList):
     return denseList, denseSimplexList
 
 ############################# Local density analysis ###########################
-def computeLocalDensityGrid(pos, rad, contacts, boxSize, localSquare, xbin, ybin):
-    localArea = np.zeros((xbin.shape[0]-1, ybin.shape[0]-1))
-    for pId in range(pos.shape[0]):
-        for x in range(xbin.shape[0]-1):
-            if(pos[pId,0] > xbin[x] and pos[pId,0] <= xbin[x+1]):
-                for y in range(ybin.shape[0]-1):
-                    if(pos[pId,1] > ybin[y] and pos[pId,1] <= ybin[y+1]):
-                        localArea[x, y] += np.pi*rad[pId]**2
-                        # remove the overlaps from the particle area
-                        overlapArea = 0
-                        for c in contacts[pId, np.argwhere(contacts[pId]!=-1)[:,0]]:
-                            overlapArea += computeOverlapArea(pos[pId], pos[c], rad[pId], rad[c], boxSize)
-                        localArea[x, y] += (np.pi * rad[pId]**2 - overlapArea)
-    return localArea / localSquare
-
 def computeLocalAreaGrid(pos, rad, contacts, boxSize, xbin, ybin, localArea):
     density = 0
     for pId in range(pos.shape[0]):
@@ -968,6 +1001,19 @@ def computeLocalAreaGrid(pos, rad, contacts, boxSize, xbin, ybin, localArea):
                             overlapArea += computeOverlapArea(pos[pId], pos[c], rad[pId], rad[c], boxSize)
                         localArea[x, y] += (np.pi*rad[pId]**2 - overlapArea)
                         density += (np.pi*rad[pId]**2 - overlapArea)
+    return density
+
+def computeLocalAreaBins(pos, rad, contacts, boxSize, bins, localArea):
+    density = 0
+    for pId in range(pos.shape[0]):
+        for x in range(bins.shape[0]-1):
+            if(pos[pId,0] > bins[x] and pos[pId,0] <= bins[x+1]):
+                # remove the overlaps from the particle area
+                overlapArea = 0
+                for c in contacts[pId, np.argwhere(contacts[pId]!=-1)[:,0]]:
+                    overlapArea += computeOverlapArea(pos[pId], pos[c], rad[pId], rad[c], boxSize)
+                localArea[x] += (np.pi*rad[pId]**2 - overlapArea)
+                density += (np.pi*rad[pId]**2 - overlapArea)
     return density
 
 def computeWeightedLocalAreaGrid(pos, rad, contacts, boxSize, xbin, ybin, localArea, cutoff):
@@ -1426,6 +1472,27 @@ def centerCOM(pos, rad, boxSize):
     else:
         pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
         center = np.mean(pos, axis=0)[0]
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
+    return pos
+
+def centerCOM1(pos, rad, boxSize, num1):
+    center = np.mean(pos[:num1], axis=0)[0]
+    height = 0.5*np.pi*np.sum(rad[:num1]**2) / boxSize[1]
+    isOutside = 0
+    for i in range(pos[:num1].shape[0]):
+        delta = np.abs(pbcDistance(center, pos[i,0], boxSize[0]))
+        if(delta > height):
+            isOutside += 1
+    corrected = False
+    if(isOutside > int(pos[:num1].shape[0]*0.5)):
+        corrected = True
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5, 0)
+    center = np.mean(pos[:num1], axis=0)[0]
+    if(corrected==True):
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
+    else:
+        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
+        center = np.mean(pos[:num1], axis=0)[0]
         pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-center, 0)
     return pos
 

@@ -1392,21 +1392,20 @@ def averageClusterPairCorr(dirName, threshold=0.3, lj='lj', dirSpacing=1, plot=F
         uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
         plt.pause(0.5)
         #plt.show()
-    
+
 def averageDensePairCorr(dirName, threshold=0.3, dirSpacing=1, plot=False):
     boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    rad = np.loadtxt(dirName + os.sep + "particleRad.dat").astype(np.float64)
-    meanRad = np.mean(rad)
-    bins = np.linspace(0.1*meanRad, 10*meanRad, 150)
+    sigma = 2 * np.mean(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    bins = np.linspace(0.1*sigma, 5*sigma, 150)
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    denseList,borderList = getParticleDenseLabel(dirName, threshold)
+    denseList, _ = cluster.getParticleDenseLabel(dirName, threshold)
     pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1,2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        if not(os.path.exists(dirSample + os.sep + "densePairCorr!.dat")):
-            computeClusterPairCorr(dirSample, boxSize, bins, denseList, 1, plot=False, which="dense")
+        if not(os.path.exists(dirSample + os.sep + "densePairCorr.dat")):
+            cluster.computeClusterPairCorr(dirSample, boxSize, bins, denseList, 1, plot=False, which="dense")
         data = np.loadtxt(dirSample + os.sep + "densePairCorr.dat")
         pcorr[d,:,0] = data[:,1]
         pcorr[d,:,1] = data[:,2]
@@ -1419,8 +1418,8 @@ def averageDensePairCorr(dirName, threshold=0.3, dirSpacing=1, plot=False):
     if(plot=="plot"):
         uplot.plotCorrWithError(binCenter, pcorr1[:,0], pcorr1[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='b')
         uplot.plotCorrWithError(binCenter, pcorr2[:,0], pcorr2[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='g')
-        plt.pause(0.5)
-        #plt.show()
+        #plt.pause(0.5)
+        plt.show()
 
 def getClusterContactCollisionIntervalPDF(dirName, check=False, numBins=40):
     timeStep = utils.readFromParams(dirName, "dt")
@@ -2558,18 +2557,18 @@ if __name__ == '__main__':
         computeClusterSizeVSTime(dirName, threshold, plot)
 
 ########################### Cluster dynamics #############################
+    elif(whichCorr == "pcdense"):
+        threshold = float(sys.argv[3])
+        dirSpacing = int(sys.argv[4])
+        plot = sys.argv[5]
+        averageDensePairCorr(dirName, threshold, dirSpacing, plot)
+
     elif(whichCorr == "pccluster"):
         threshold = float(sys.argv[3])
         lj = sys.argv[4]
         dirSpacing = int(sys.argv[5])
         plot = sys.argv[6]
         averageClusterPairCorr(dirName, threshold, lj, dirSpacing, plot)
-
-    elif(whichCorr == "pcdense"):
-        threshold = float(sys.argv[3])
-        dirSpacing = int(sys.argv[4])
-        plot = sys.argv[5]
-        averageDensePairCorr(dirName, threshold, dirSpacing, plot)
 
     elif(whichCorr == "clustercol"):
         check = sys.argv[3]

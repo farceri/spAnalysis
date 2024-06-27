@@ -6,6 +6,7 @@ Created by Francesco
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import cm
+from scipy.optimize import curve_fit
 from scipy.spatial import Delaunay
 import pyvoro
 import sys
@@ -33,6 +34,39 @@ def computePairCorr(dirName, plot="plot"):
         plt.show()
     else:
         return firstPeak
+    
+####################### Average linear density profile ########################
+def averagePairCorr(dirName, which, dirSpacing=1, plot=False):
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    sigma = 2 * np.mean(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    bins = np.linspace(0.1*sigma, 5*sigma, 150)
+    if(which == 'time'):
+        dirList, timeList = utils.getOrderedDirectories(dirName)
+        dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    elif(which == 'strain'):
+        dirList, _ = utils.getOrderedStrainDirectories(dirName)
+    print("Number of samples:", dirList.shape[0])
+    pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        if not(os.path.exists(dirSample + os.sep + "pairCorr.dat")):
+            pos = utils.getPBCPositions(dirSample + os.sep + "particlePos.dat", boxSize)
+            distance = utils.computeDistances(pos, boxSize)
+            pairCorr, edges = np.histogram(distance, bins=bins, density=True)
+            binCenter = 0.5 * (edges[:-1] + edges[1:])
+            pairCorr /= (2 * np.pi * binCenter)
+            np.savetxt(dirSample + os.sep + "pairCorr.dat", np.column_stack((binCenter, pairCorr)))
+        data = np.loadtxt(dirSample + os.sep + "pairCorr.dat")
+        pcorr[d,:] = data[:,1]
+    pcorr = np.column_stack((np.mean(pcorr, axis=0), np.std(pcorr, axis=0)))
+    firstPeak = bins[np.argmax(pcorr[:,0])]
+    print("First peak of pair corr is at:", firstPeak)
+    binCenter = 0.5 * (bins[:-1] + bins[1:])
+    np.savetxt(dirName + os.sep + "pairCorr.dat", np.column_stack((binCenter, pcorr)))
+    if(plot=="plot"):
+        uplot.plotCorrWithError(binCenter, pcorr[:,0], pcorr[:,1], "$g(r/\\sigma)$", "$r/\\sigma$", color='k')
+        plt.pause(0.5)
+        #plt.show()
 
 ############################ Particle Susceptibility ###########################
 def computeParticleSusceptibility(dirName, sampleName, maxPower):
@@ -416,22 +450,70 @@ def computeHexaticCorrelation(dirName, boxSize):
     hexCorr /= counts
     return binCenter, hexCorr
 
-############################ Velocity correlations #############################
+############################ Velocity distribution #############################
+def MaxwellBoltzmann(x, a):
+    return (x / a) * np.exp(-x**2 / (2 * a))
+
 def computeParticleVelPDF(dirName, plot=True):
-    vel = []
-    for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir)):
-            vel.append(np.loadtxt(dirName + os.sep + dir + os.sep + "particleVel.dat"))
-    vel = np.array(vel).flatten()
-    mean = np.mean(vel)
-    Temp = np.var(vel)
-    skewness = np.mean((vel - mean)**3)/Temp**(3/2)
-    kurtosis = np.mean((vel - mean)**4)/Temp**2
-    vel /= np.sqrt(2*Temp)
-    velPDF, edges = np.histogram(vel, bins=np.linspace(np.min(vel), np.max(vel), 100), density=True)
+    vel = np.loadtxt(dirName + os.sep + "particleVel.dat")
+    speed = np.linalg.norm(vel, axis=1)
+    mean = np.mean(speed)
+    var = np.var(speed)
+    temp = np.mean(speed**2)/2
+    skewness = np.mean((speed - mean)**3)/var**(3/2)
+    kurtosis = np.mean((speed - mean)**4)/var**2
+    velPDF, edges = np.histogram(speed, bins=np.linspace(np.min(speed), np.max(speed), 100), density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
-    print("Variance of the velocity pdf: ", Temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
-    uplot.plotCorrelation(edges, velPDF, "$Velocity$ $distribution,$ $P(c)$", logy = True)
+    print("Temperature:", temp, "variance:", var, "kurtosis:", kurtosis, "skewness:", skewness)
+    if(plot == 'plot'):
+        uplot.plotCorrelation(edges, velPDF, "$Velocity$ $distribution,$ $P(c)$")
+        failed = False
+        try:
+            popt, pcov = curve_fit(MaxwellBoltzmann, edges, velPDF)
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            uplot.plotCorrelation(edges, MaxwellBoltzmann(edges, *popt), "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
+            print("Temperature from fit:", popt[0])
+        plt.show()
+
+def averageParticleVelPDF(dirName, which='time', plot=False, dirSpacing=1):
+    if(which == 'time'):
+        dirList, timeList = utils.getOrderedDirectories(dirName)
+        dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    elif(which == 'strain'):
+        dirList, _ = utils.getOrderedStrainDirectories(dirName)
+    print("Number of samples:", dirList.shape[0])
+    speed = np.empty(0)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        vel = np.loadtxt(dirSample + os.sep + "particleVel.dat")
+        velNorm = np.linalg.norm(vel,axis=1)
+        speed = np.append(speed, velNorm.flatten())
+    bins = np.linspace(np.min(speed), np.max(speed), 100)
+    pdf, edges = np.histogram(speed, bins=bins, density=True)
+    edges = 0.5 * (edges[:-1] + edges[1:])
+    mean = np.mean(speed)
+    var = np.var(speed)
+    temp = np.mean(speed**2)/2
+    skewness = np.mean((speed - mean)**3)/var**(3/2)
+    kurtosis = np.mean((speed - mean)**4)/var**2
+    print("Temperature:", temp, "variance:", var, "kurtosis:", kurtosis, "skewness:", skewness)
+    if(plot == "plot"):
+        uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='k')
+        uplot.plotCorrelation(edges, (edges / temp) * np.exp(-edges**2/(2*temp)), "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
+        failed = False
+        try:
+            popt, pcov = curve_fit(MaxwellBoltzmann, edges, pdf)
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if(failed == False):
+            uplot.plotCorrelation(edges, MaxwellBoltzmann(edges, *popt), "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
+            print("Temperature from fit:", popt[0])
+        plt.pause(0.5)
+        #plt.show()
 
 def computeParticleVelPDFSubSet(dirName, firstIndex=10, mass=1e06, plot="plot"):
     vel = []
@@ -497,29 +579,31 @@ def computeSingleParticleVelTimeCorr(dirName, particleId = 100):
     plt.show()
 
 ##################### Particle Self Velocity Correlations ######################
-def computeParticleVelTimeCorr(dirName):
-    numParticles = utils.readFromParams(dirName, "numParticles")
+def computeParticleVelTimeCorr(dirName, plot=False):
     timeStep = utils.readFromParams(dirName, "dt")
     particleVelCorr = []
     particleVelVar = []
+    particleDirCorr = []
     # get trajectory directories
-    stepRange = utils.getDirectories(dirName)
-    stepRange = np.array(np.char.strip(stepRange, 't'), dtype=int)
-    stepRange = np.sort(stepRange)
-    pVel0 = np.array(np.loadtxt(dirName + os.sep + "t" + str(stepRange[0]) + "/particleVel.dat"))
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    pVel0 = np.array(np.loadtxt(dirName + os.sep + dirList[0] + "/particleVel.dat"))
     pVel0Squared = np.mean(np.linalg.norm(pVel0,axis=1)**2)
-    for i in range(0,stepRange.shape[0]):
-        pVel = np.array(np.loadtxt(dirName + os.sep + "t" + str(stepRange[i]) + "/particleVel.dat"))
+    pAngle0 = np.array(np.loadtxt(dirName + os.sep + dirList[0] + "/particleAngles.dat"))
+    pDir0 = np.column_stack((np.cos(pAngle0), np.sin(pAngle0)))
+    for i in range(dirList.shape[0]):
+        pVel = np.array(np.loadtxt(dirName + os.sep + dirList[i] + "/particleVel.dat"))
         particleVelCorr.append(np.mean(np.sum(np.multiply(pVel,pVel0), axis=1)))
         meanVel = np.mean(pVel, axis=0)
         particleVelVar.append(np.mean((pVel - meanVel)**2))
+        pAngle = np.array(np.loadtxt(dirName + os.sep + dirList[i] + "/particleAngles.dat"))
+        pDir = np.column_stack((np.cos(pAngle), np.sin(pAngle)))
+        particleDirCorr.append(np.mean(np.sum(np.multiply(pDir,pDir0), axis=1)))
     particleVelCorr /= pVel0Squared
-    np.savetxt(dirName + os.sep + "velCorr.dat", np.column_stack(((stepRange+1)*timeStep, particleVelCorr, particleVelVar)))
-    uplot.plotCorrelation((stepRange + 1) * timeStep, particleVelCorr, "$C_{vv}(\\Delta t)$", "$Time$ $interval,$ $\\Delta t$", color='k')
-    uplot.plotCorrelation((stepRange + 1) * timeStep, particleVelVar, "$\\langle \\vec{v}(t) - \\langle \\vec{v}(t) \\rangle \\rangle$", "$Simulation$ $time$", color='r')
-    width = stepRange[np.argwhere(particleVelCorr/particleVelCorr[0] < np.exp(-1))[0,0]]*timeStep
-    print("Measured damping coefficient: ", 1/width)
-    #plt.show()
+    np.savetxt(dirName + os.sep + "velCorr.dat", np.column_stack((timeList*timeStep, particleVelCorr, particleVelVar, particleDirCorr)))
+    if(plot == 'plot'):
+        uplot.plotCorrelation(timeList * timeStep, particleVelCorr, "$C_{vv}(\\Delta t),$ $C_{nn}(\\Delta t)$", "$Time$ $interval,$ $\\Delta t$", color='k')
+        uplot.plotCorrelation(timeList * timeStep, particleDirCorr, "$C_{vv}(\\Delta t),$ $C_{nn}(\\Delta t)$", "$Time$ $interval,$ $\\Delta t$", color='r')
+        plt.show()
 
 ##################### Particle Self Velocity Correlations ######################
 def computeParticleBlockVelTimeCorr(dirName, numBlocks):
@@ -551,16 +635,10 @@ def computeParticleBlockVelTimeCorr(dirName, numBlocks):
     print("Measured damping coefficient: ", 1/width)
 
 ############# Time-averaged Self Vel Corr in log-spaced time window ############
-def computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+def computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot=False):
     timeStep = utils.readFromParams(dirName, "dt")
-    #pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "/particleRad.dat")))
-    #phi = utils.readFromParams(dirName, "phi")
-    #waveVector = np.pi / (2 * np.sqrt(boxSize[0] * boxSize[1] * phi / (np.pi * numParticles)))
-    #pRad = np.mean(np.array(np.loadtxt(dirName + os.sep + "particleRad.dat")))
-    #waveVector = np.pi / (float(radMultiple) * pRad)
     particleVelCorr = []
-    #particleDirCorr = []
+    particleDirCorr = []
     stepList = []
     freqDecade = int(10**freqPower)
     decadeSpacing = 10
@@ -571,34 +649,33 @@ def computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower):
         for spacing in range(1,decadeSpacing):
             stepRange = np.arange(0,stepDecade,spacing*spacingDecade,dtype=int)
             stepParticleVelCorr = []
-            #stepParticleDirCorr = []
+            stepParticleDirCorr = []
             numPairs = 0
             for multiple in range(startBlock, numBlocks):
                 for i in range(stepRange.shape[0]-1):
                     if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
                         pVel1, pVel2 = utils.readVelPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
-                        #pPos1, pPos2 = utils.readParticlePair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
-                        #pDir1, pDir2 = utils.readDirectorPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
-                        #stepParticleVelCorr.append(utils.computeVelCorrFunctions(pPos1, pPos2, pVel1, pVel2, pDir1, pDir2, waveVector, numParticles))
+                        pDir1, pDir2 = utils.readDirectorPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
                         stepParticleVelCorr.append(np.mean(np.sum(np.multiply(pVel1,pVel2), axis=1)))
-                        #stepParticleDirCorr.append(np.mean(np.sum(np.multiply(pDir1,pDir2), axis=1)))
+                        stepParticleDirCorr.append(np.mean(np.sum(np.multiply(pDir1,pDir2), axis=1)))
                         numPairs += 1
             if(numPairs > 0):
                 stepList.append(spacing*spacingDecade)
                 particleVelCorr.append([np.mean(stepParticleVelCorr, axis=0), np.std(stepParticleVelCorr, axis=0)])
-                #particleDirCorr.append([np.mean(stepParticleDirCorr, axis=0), np.std(stepParticleDirCorr, axis=0)])
+                particleDirCorr.append([np.mean(stepParticleDirCorr, axis=0), np.std(stepParticleDirCorr, axis=0)])
         stepDecade *= 10
         spacingDecade *= 10
     stepList = np.array(stepList)
     particleVelCorr = np.array(particleVelCorr).reshape((stepList.shape[0],2))
     particleVelCorr = particleVelCorr[np.argsort(stepList)]
-    #particleDirCorr = np.array(particleDirCorr).reshape((stepList.shape[0],2))
-    #particleDirCorr = particleDirCorr[np.argsort(stepList)]
+    particleDirCorr = np.array(particleDirCorr).reshape((stepList.shape[0],2))
+    particleDirCorr = particleDirCorr[np.argsort(stepList)]
     np.savetxt(dirName + os.sep + "logVelCorr.dat", np.column_stack((stepList*timeStep, particleVelCorr)))
-    #np.savetxt(dirName + os.sep + "logDirCorr.dat", np.column_stack((stepList*timeStep, particleDirCorr)))
-    uplot.plotCorrWithError(stepList*timeStep, particleVelCorr[:,0], particleVelCorr[:,1], ylabel="$C_{vv}(\\Delta t)$", logx = True, color = 'k')
-    #uplot.plotCorrWithError(stepList*timeStep, particleDirCorr[:,0], particleDirCorr[:,1], ylabel="$C_{nn}(\\Delta t)$", logx = True, color = 'r')
-    plt.show()
+    np.savetxt(dirName + os.sep + "logDirCorr.dat", np.column_stack((stepList*timeStep, particleDirCorr)))
+    if(plot == 'plot'):
+        uplot.plotCorrWithError(stepList*timeStep, particleVelCorr[:,0], particleVelCorr[:,1], ylabel="$C_{vv}(\\Delta t),$ $C_{nn}(\\Delta t)$", logx = True, color = 'k')
+        uplot.plotCorrWithError(stepList*timeStep, particleDirCorr[:,0], particleDirCorr[:,1], ylabel="$C_{vv}(\\Delta t),$ $C_{nn}(\\Delta t)$", logx = True, color = 'r')
+        plt.show()
 
 ############################# Velocity Correlation #############################
 def computeParticleVelSpaceCorr(dirName):
@@ -690,30 +767,6 @@ def averageParticleVelSpaceCorr(dirName, dirSpacing=1000):
     uplot.plotCorrelation(binCenter, velCorr[:,2], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'k')
     #plt.show()
 
-########################### Average Space Correlator ###########################
-def averagePairCorr(dirName, dirSpacing=1000000):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    phi = utils.readFromParams(dirName, "phi")
-    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    minRad = np.mean(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    rbins = np.arange(0, np.sqrt(2)*boxSize[0]/2, 0.02*minRad)
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    pcorr = np.zeros(rbins.shape[0]-1)
-    for dir in dirList:
-        #pos = np.array(np.loadtxt(dirName + os.sep + dir + "/particlePos.dat"))
-        pos = utils.getPBCPositions(dirName + os.sep + dir + "/particlePos.dat", boxSize)
-        pcorr += utils.getPairCorr(pos, boxSize, rbins, minRad)/(numParticles * phi)
-    pcorr[pcorr>0] /= dirList.shape[0]
-    binCenter = (rbins[:-1] + rbins[1:])*0.5
-    firstPeak = binCenter[np.argmax(pcorr)]
-    np.savetxt(dirName + os.sep + "pairCorr.dat", np.column_stack((binCenter, pcorr)))
-    print("First peak of pair corr is at distance:", firstPeak, "equal to", firstPeak/minRad, "times the min radius:", minRad)
-    np.savetxt(dirName + os.sep + "pcorrFirstPeak.dat", np.column_stack((firstPeak, np.max(pcorr))))
-    uplot.plotCorrelation(binCenter/minRad, pcorr, "$g(r/\\sigma)$", "$r/\\sigma$")
-    plt.pause(0.5)
-
 ############################ Collision distribution ############################
 def getCollisionIntervalPDF(dirName, check=False, numBins=40):
     timeStep = utils.readFromParams(dirName, "dt")
@@ -790,9 +843,15 @@ if __name__ == '__main__':
     dirName = sys.argv[1]
     whichCorr = sys.argv[2]
 
-    if(whichCorr == "paircorr"):
+    if(whichCorr == "pcorr1"):
         plot = sys.argv[3]
         computePairCorr(dirName, plot)
+
+    elif(whichCorr == "pcorr"):
+        which = sys.argv[3]
+        dirSpacing = int(float(sys.argv[4]))
+        plot = sys.argv[5]
+        averagePairCorr(dirName, which, dirSpacing, plot)
 
     elif(whichCorr == "sus"):
         sampleName = sys.argv[3]
@@ -844,8 +903,14 @@ if __name__ == '__main__':
         plot = sys.argv[4]
         collectLocalTemperaturePDF(dirName, numBins, plot)
 
+    elif(whichCorr == "velpdf1"):
+        plot = sys.argv[3]
+        computeParticleVelPDF(dirName, plot)
+
     elif(whichCorr == "velpdf"):
-        computeParticleVelPDF(dirName)
+        which = sys.argv[3]
+        plot = sys.argv[4]
+        averageParticleVelPDF(dirName, which, plot)
 
     elif(whichCorr == "velsubset"):
         firstIndex = int(sys.argv[3])
@@ -857,7 +922,8 @@ if __name__ == '__main__':
         computeSingleParticleVelTimeCorr(dirName, particleId)
 
     elif(whichCorr == "velcorr"):
-        computeParticleVelTimeCorr(dirName)
+        plot = sys.argv[3]
+        computeParticleVelTimeCorr(dirName, plot)
 
     elif(whichCorr == "blockvelcorr"):
         numBlocks = int(sys.argv[3])
@@ -867,17 +933,14 @@ if __name__ == '__main__':
         startBlock = int(sys.argv[3])
         maxPower = int(sys.argv[4])
         freqPower = int(sys.argv[5])
-        computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower)
+        plot = sys.argv[6]
+        computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot)
 
     elif(whichCorr == "vc"):
         computeParticleVelSpaceCorr(dirName)
 
     elif(whichCorr == "averagevc"):
         averageParticleVelSpaceCorr(dirName)
-
-    elif(whichCorr == "averagepc"):
-        dirSpacing = int(sys.argv[3])
-        averagePairCorr(dirName, dirSpacing)
 
     elif(whichCorr == "collision"):
         check = sys.argv[3]

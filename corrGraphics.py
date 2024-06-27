@@ -174,25 +174,83 @@ def plotGPUperformance(dirName, figureName):
     plt.show()
 
 ########################## check energy conservation ##########################
-def plotEnergy(dirName, figureName, log=False):
+def plotEnergy(dirName, figureName, which='all', log=False):
     if(os.path.exists(dirName + "/energy.dat")):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
     print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
+    print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
     print("energy per particle:", np.mean(energy[:,2]+energy[:,3]), " +-", np.std(energy[:,2]+energy[:,3]))
     print("error over mean:", np.std(energy[:,2]+energy[:,3])/np.abs(np.mean(energy[:,2]+energy[:,3])))
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k')
-    ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--')
-    ax.plot(energy[:,0], energy[:,2] + energy[:,3], linewidth=1.5, color='b', linestyle='dotted')
+    ax.plot(energy[:,0], energy[:,2] + energy[:,3], linewidth=1.5, color='b', linestyle='dotted', label="$E_{tot}$")
+    ax.plot(energy[:,0], energy[:,4], linewidth=3, color='b', linestyle='solid', alpha=0.2)
+    if which == 'all':
+        ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', label="$E_{pot}$")
+        ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--', label="$E_{kin}$")
+    if which == 'pressure':
+        ax.clear()
+        ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='b', label="$P$")
+        ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='g', linestyle='--', label="$P_{active}$")
+        ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color='k', linestyle='dotted', label="$P_{wall}$")
+        print("\npressure:", np.mean(energy[:,5]), "+-", np.std(energy[:,5]))
+        print("active pressure:", np.mean(energy[:,6]), "+-", np.std(energy[:,6]))
+        print("wall pressure:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Simulation$ $step$", fontsize=16)
-    ax.set_ylabel("$Energy$", fontsize=16)
-    ax.legend(("$E_{pot}$", "$E_{kin}$", "$E_{tot}$"), fontsize=14, loc='best')
+    ax.legend(fontsize=14, loc='best')
     #ax.set_ylim(50, 700)
     if(log == 'log'):
         ax.set_xscale('log')
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/energy-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+########################## nve and langevin comparison #########################
+def compareEnergy(dirName1, dirName2, figureName, which='all'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    # first sample
+    numParticles = int(utils.readFromParams(dirName1, "numParticles"))
+    energy = np.loadtxt(dirName1 + os.sep + "energy.dat")
+    ax.plot(energy[:,0], energy[:,4]-energy[0,4], linewidth=3, color='b', linestyle='solid', label="$E_{tot}$")
+    if which == 'all':
+        ax.plot(energy[:,0], energy[:,2], linewidth=3, color='k', linestyle='solid', label="$E_{pot}$")
+        ax.plot(energy[:,0], energy[:,3], linewidth=3, color='r', linestyle='solid', label="$E_{kin}$")
+    # second sample
+    numParticles = int(utils.readFromParams(dirName2, "numParticles"))
+    energy = np.loadtxt(dirName2 + os.sep + "energy.dat")
+    ax.plot(energy[:,0], energy[:,4]-energy[0,4], linewidth=1.5, color='b', linestyle='dotted', label="$E_{tot}$")
+    if which == 'all':
+        ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', label="$E_{pot}$")
+        ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--', label="$E_{kin}$")
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Simulation$ $step$", fontsize=16)
+    ax.set_ylabel("$Energy$", fontsize=16)
+    ax.legend(fontsize=12, loc='best')
+    plt.tight_layout()
+    fig.subplots_adjust(wspace=0)
+    figureName = "/home/francesco/Pictures/soft/compareEnergy-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+########################## check force across wall ##########################
+def plotWallForce(dirName, figureName, log=False):
+    if(os.path.exists(dirName + "/energy.dat")):
+        energy = np.loadtxt(dirName + os.sep + "energy.dat")
+    boxSize = np.loadtxt(dirName + "/boxSize.dat")
+    energy[:,5] /= 2*boxSize[0]
+    print("average force:", np.mean(energy[:,5]), " +-", np.std(energy[:,5]))
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='r', linestyle='dotted')
+    ax.plot(energy[:,0], energy[:,5], linewidth=3, color='r', linestyle='solid', alpha=0.2)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_ylabel("$Force,$ $F\\sigma^2/2L_x$", fontsize=16)
+    ax.set_xlabel("$Simulation$ $step$", fontsize=16)
+    #ax.set_ylim(50, 700)
+    if(log == 'log'):
+        ax.set_xscale('log')
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/force-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -241,34 +299,6 @@ def plotWallForcePressure(dirName, figureName):
     ax.legend(fontsize=18, loc='best')
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/pwall-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
-########################## nve and langevin comparison #########################
-def compareEnergy(dirName1, dirName2, figureName):
-    fig, ax = plt.subplots(1, 2, sharey = True, figsize = (12, 5), dpi = 120)
-    # first sample
-    numParticles = int(utils.readFromParams(dirName1, "numParticles"))
-    energy = np.loadtxt(dirName1 + os.sep + "energy.dat")
-    ax[0].plot(energy[:,0], energy[:,2]/numParticles, linewidth=1.5, color='k')
-    ax[0].plot(energy[:,0], energy[:,3]/numParticles, linewidth=1.5, color='r', linestyle='--')
-    ax[0].plot(energy[:,0], (energy[:,2] + energy[:,3])/numParticles, linewidth=1.5, color='b', linestyle='dotted')
-    # second sample
-    numParticles = int(utils.readFromParams(dirName2, "numParticles"))
-    energy = np.loadtxt(dirName2 + os.sep + "energy.dat")
-    ax[1].plot(energy[:,0], energy[:,2]/numParticles, linewidth=1.5, color='k')
-    ax[1].plot(energy[:,0], energy[:,3]/numParticles, linewidth=1.5, color='r', linestyle='--')
-    ax[1].plot(energy[:,0], (energy[:,2] + energy[:,3])/numParticles, linewidth=1.5, color='b', linestyle='dotted')
-    ax[0].set_yscale('log')
-    ax[0].tick_params(axis='both', labelsize=14)
-    ax[1].tick_params(axis='both', labelsize=14)
-    ax[0].set_xlabel("$Simulation$ $step$", fontsize=16)
-    ax[1].set_xlabel("$Simulation$ $step$", fontsize=16)
-    ax[0].set_ylabel("$Energy$", fontsize=16)
-    ax[0].legend(("$E_{pot}$", "$E_{kin}$", "$E_{tot}$"), fontsize=15, loc=(0.75, 0.45))
-    plt.tight_layout()
-    fig.subplots_adjust(wspace=0)
-    figureName = "/home/francesco/Pictures/soft/pCompareEnergy-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -2593,8 +2623,21 @@ if __name__ == '__main__':
 
     elif(whichPlot == "energy"):
         figureName = sys.argv[3]
+        which = sys.argv[4]
+        log = sys.argv[5]
+        plotEnergy(dirName, figureName, which, log)
+
+    elif(whichPlot == "compare"):
+        dirName1 = dirName + sys.argv[3]
+        dirName2 = dirName + sys.argv[4]
+        figureName = sys.argv[5]
+        which = sys.argv[6]
+        compareEnergy(dirName1, dirName2, figureName, which)
+
+    elif(whichPlot == "force"):
+        figureName = sys.argv[3]
         log = sys.argv[4]
-        plotEnergy(dirName, figureName, log)
+        plotWallForce(dirName, figureName, log)
 
     elif(whichPlot == "energytemp"):
         figureName = sys.argv[3]
@@ -2605,12 +2648,6 @@ if __name__ == '__main__':
     elif(whichPlot == "wall"):
         figureName = sys.argv[3]
         plotWallForcePressure(dirName, figureName)
-
-    elif(whichPlot == "compare"):
-        dirName1 = dirName + sys.argv[3]
-        dirName2 = dirName + sys.argv[4]
-        figureName = sys.argv[5]
-        compareEnergy(dirName1, dirName2, figureName)
 
     elif(whichPlot == "energynum"):
         whichDir = sys.argv[3]
