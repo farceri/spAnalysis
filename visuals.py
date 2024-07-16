@@ -985,6 +985,7 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
     frameTime = 350
     dirList, strainList = utils.getOrderedStrainDirectories(dirName)
     dirList = dirList[strainList < maxStrain]
+    strainList = strainList[strainList < maxStrain]
     dirList = dirList[0:-1:strainFreq]
     strainList = strainList[0:-1:strainFreq]
     print(strainList)

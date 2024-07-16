@@ -42,9 +42,9 @@ def averagePairCorr(dirName, which, dirSpacing=1, plot=False):
     bins = np.linspace(0.1*sigma, 5*sigma, 150)
     if(which == 'time'):
         dirList, timeList = utils.getOrderedDirectories(dirName)
-        dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     elif(which == 'strain'):
         dirList, _ = utils.getOrderedStrainDirectories(dirName)
+    dirList = dirList[0:-1:dirSpacing]
     print("Number of samples:", dirList.shape[0])
     pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1))
     for d in range(dirList.shape[0]):
@@ -375,7 +375,7 @@ def computeLocalTemperaturePDF(dirName, numBins, plot = False):
     numSamples = 0
     for dir in os.listdir(dirName):
         if(os.path.exists(dirName + os.sep + dir + os.sep + "particleRad.dat")):
-            localEkin = np.zeros((numBins, numBins))
+            localTemp = np.zeros((numBins, numBins))
             pVel = np.array(np.loadtxt(dirName + os.sep + dir + os.sep + "particleVel.dat"))
             pPos = np.array(np.loadtxt(dirName + os.sep + dir + os.sep + "particlePos.dat"))
             Temp = np.mean(np.linalg.norm(pVel,axis=1)**2)
@@ -656,7 +656,7 @@ def computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot
                     if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
                         pVel1, pVel2 = utils.readVelPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
                         pDir1, pDir2 = utils.readDirectorPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
-                        stepParticleVelCorr.append(np.mean(np.sum(np.multiply(pVel1,pVel2), axis=1)))
+                        stepParticleVelCorr.append(np.mean(np.sum(np.multiply(pVel1,pVel2), axis=1))/np.mean(np.linalg.norm(pVel1, axis=1)**2))
                         stepParticleDirCorr.append(np.mean(np.sum(np.multiply(pDir1,pDir2), axis=1)))
                         numPairs += 1
             if(numPairs > 0):
@@ -675,7 +675,8 @@ def computeParticleLogVelTimeCorr(dirName, startBlock, maxPower, freqPower, plot
     if(plot == 'plot'):
         uplot.plotCorrWithError(stepList*timeStep, particleVelCorr[:,0], particleVelCorr[:,1], ylabel="$C_{vv}(\\Delta t),$ $C_{nn}(\\Delta t)$", logx = True, color = 'k')
         uplot.plotCorrWithError(stepList*timeStep, particleDirCorr[:,0], particleDirCorr[:,1], ylabel="$C_{vv}(\\Delta t),$ $C_{nn}(\\Delta t)$", logx = True, color = 'r')
-        plt.show()
+        #plt.show()
+        plt.pause(0.5)
 
 ############################# Velocity Correlation #############################
 def computeParticleVelSpaceCorr(dirName):

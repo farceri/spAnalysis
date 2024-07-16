@@ -1842,6 +1842,7 @@ def compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
         tau = utils.computeTau(data)
         print("Relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
     if(plot=="plot"):
+        stepList /= timeStep
         if(num1 != 0):
             uplot.plotCorrelation(stepList, particleCorr1[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
             uplot.plotCorrelation(stepList, particleCorr1[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
@@ -1850,8 +1851,8 @@ def compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
         else:
             uplot.plotCorrelation(stepList, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
             uplot.plotCorrelation(stepList, particleCorr[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
-        #plt.pause(0.5)
-        plt.show()
+        plt.pause(0.5)
+        #plt.show()
 
 ############################ Velocity distribution #############################
 def average2FluidsVelPDF(dirName, num1=0, plot=False, dirSpacing=1):

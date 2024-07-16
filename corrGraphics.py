@@ -177,60 +177,90 @@ def plotGPUperformance(dirName, figureName):
 def plotEnergy(dirName, figureName, which='all', log=False):
     if(os.path.exists(dirName + "/energy.dat")):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
-    print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
-    print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
-    print("energy per particle:", np.mean(energy[:,2]+energy[:,3]), " +-", np.std(energy[:,2]+energy[:,3]))
-    print("error over mean:", np.std(energy[:,2]+energy[:,3])/np.abs(np.mean(energy[:,2]+energy[:,3])))
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    ax.plot(energy[:,0], energy[:,2] + energy[:,3], linewidth=1.5, color='b', linestyle='dotted', label="$E_{tot}$")
-    ax.plot(energy[:,0], energy[:,4], linewidth=3, color='b', linestyle='solid', alpha=0.2)
-    if which == 'all':
-        ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', label="$E_{pot}$")
-        ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--', label="$E_{kin}$")
-    if which == 'pressure':
-        ax.clear()
-        ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='b', label="$P$")
-        ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='g', linestyle='--', label="$P_{active}$")
-        ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color='k', linestyle='dotted', label="$P_{wall}$")
-        print("\npressure:", np.mean(energy[:,5]), "+-", np.std(energy[:,5]))
-        print("active pressure:", np.mean(energy[:,6]), "+-", np.std(energy[:,6]))
-        print("wall pressure:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Simulation$ $step$", fontsize=16)
-    ax.legend(fontsize=14, loc='best')
-    #ax.set_ylim(50, 700)
-    if(log == 'log'):
-        ax.set_xscale('log')
-    plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/energy-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
+        print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
+        print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
+        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$E_{pot}$")
+        ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$E_{kin}$")
+        etot = energy[:,2] + energy[:,3]
+        index = 4
+        if which == 'simple':
+            label = "$E_{tot}$"
+        if which == 'damping':
+            etot += energy[:,4]
+            ax.plot(energy[:,0], energy[:,4], linewidth=4, color='c', linestyle='dashdot', alpha=0.6, label="$W_{damping}$")
+            print("damping work:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]))
+            label = "$E_{tot}$ $+$ $W_{tot}$"
+            index = 5
+        if which == 'active':
+            etot += energy[:,4] + energy[:,5]
+            ax.plot(energy[:,0], energy[:,4], linewidth=4, color='c', linestyle='dashdot', alpha=0.6, label="$W_{damping}$")
+            ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='g', linestyle='solid', alpha=0.6, label="$W_{active}$")
+            print("damping work:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]))
+            print("active work:", np.mean(energy[:,5]), "+-", np.std(energy[:,5]))
+            label = "$E_{tot}$ $+$ $W_{tot}$"
+            index = 6
+        ax.plot(energy[:,0], energy[:,index], linewidth=4, color='b', linestyle='solid', alpha=0.3)
+        ax.plot(energy[:,0], etot, linewidth=1.5, color='b', linestyle='dotted', label=label)
+        print("\nenergy per particle:", np.mean(energy[:,index]), " +-", np.std(energy[:,index]))
+        print("error over mean:", np.std(energy[:,index])/np.abs(np.mean(energy[:,index])))
+        if which == 'pressure':
+            ax.clear()
+            ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='b', label="$P$")
+            ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='g', linestyle='--', label="$P_{active}$")
+            ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color='k', linestyle='dotted', label="$P_{wall}$")
+            print("\npressure:", np.mean(energy[:,5]), "+-", np.std(energy[:,5]))
+            print("active pressure:", np.mean(energy[:,6]), "+-", np.std(energy[:,6]))
+            print("wall pressure:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_xlabel("$Simulation$ $step$", fontsize=16)
+        ax.legend(fontsize=14, loc='best')
+        #ax.set_ylim(50, 700)
+        if(log == 'log'):
+            ax.set_xscale('log')
+        plt.tight_layout()
+        figureName = "/home/francesco/Pictures/soft/energy-" + figureName
+        fig.savefig(figureName + ".png", transparent=True, format = "png")
+        plt.show()
+    else:
+        print("no energy.dat file was found in", dirName)
 
 ########################## nve and langevin comparison #########################
-def compareEnergy(dirName1, dirName2, figureName, which='all'):
+def compareEnergy(dirName, figureName):
+    dirList = np.array(['langevin0', 'langevin1e-15', 'langevin1e-13', 'langevin1e-11', 'langevin1e-09'])
+    labelList = np.array(['$0$', '$10^{-8}$', '$10^{-7}$', '$10^{-6}$', '$10^{-5}$'])
+    damping = np.sqrt(np.array([0, 1e-15, 1e-13, 1e-11, 1e-09]))
+    colorList = ['k', 'r', 'b', 'g', 'c']
+    lsList = ['dotted', 'solid', 'dashdot', 'dashed', 'solid']
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    # first sample
-    numParticles = int(utils.readFromParams(dirName1, "numParticles"))
-    energy = np.loadtxt(dirName1 + os.sep + "energy.dat")
-    ax.plot(energy[:,0], energy[:,4]-energy[0,4], linewidth=3, color='b', linestyle='solid', label="$E_{tot}$")
-    if which == 'all':
-        ax.plot(energy[:,0], energy[:,2], linewidth=3, color='k', linestyle='solid', label="$E_{pot}$")
-        ax.plot(energy[:,0], energy[:,3], linewidth=3, color='r', linestyle='solid', label="$E_{kin}$")
-    # second sample
-    numParticles = int(utils.readFromParams(dirName2, "numParticles"))
-    energy = np.loadtxt(dirName2 + os.sep + "energy.dat")
-    ax.plot(energy[:,0], energy[:,4]-energy[0,4], linewidth=1.5, color='b', linestyle='dotted', label="$E_{tot}$")
-    if which == 'all':
-        ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', label="$E_{pot}$")
-        ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='--', label="$E_{kin}$")
+    error = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(os.path.exists(dirSample)):
+            dt = float(utils.readFromParams(dirSample, "dt"))
+            epsilon = int(utils.readFromParams(dirSample, "epsilon"))
+            energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+            energy[:,0] *= dt
+            energy[:,1:] /= epsilon
+            error[d] = np.std(energy[:,-1])/np.abs(np.mean(energy[:,-1]))
+            ax.plot(energy[:,0], energy[:,-1]-energy[0,-1], linewidth=1.2, color=colorList[d], linestyle=lsList[d], label="$\\beta=$" + labelList[d])
     ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Simulation$ $step$", fontsize=16)
-    ax.set_ylabel("$Energy$", fontsize=16)
+    ax.set_xlabel("$Time,$ $t$", fontsize=16)
+    ax.set_ylabel("$E(t) - E_0$", fontsize=16)
     ax.legend(fontsize=12, loc='best')
     plt.tight_layout()
     fig.subplots_adjust(wspace=0)
     figureName = "/home/francesco/Pictures/soft/compareEnergy-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    damping = damping[error!=0]
+    error = error[error!=0]
+    plt.semilogx(damping[1:], error[1:], color='k', marker='o', markersize=8, fillstyle='none', lw=0.9)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Damping,$ $\\beta$", fontsize=16)
+    ax.set_ylabel("$\\frac{\\sigma_{E}}{\\langle E \\rangle}$", fontsize=24, rotation='horizontal', labelpad=30)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/compareError-" + figureName
     plt.show()
 
 ########################## check force across wall ##########################
@@ -2628,11 +2658,8 @@ if __name__ == '__main__':
         plotEnergy(dirName, figureName, which, log)
 
     elif(whichPlot == "compare"):
-        dirName1 = dirName + sys.argv[3]
-        dirName2 = dirName + sys.argv[4]
-        figureName = sys.argv[5]
-        which = sys.argv[6]
-        compareEnergy(dirName1, dirName2, figureName, which)
+        figureName = sys.argv[3]
+        compareEnergy(dirName, figureName)
 
     elif(whichPlot == "force"):
         figureName = sys.argv[3]
