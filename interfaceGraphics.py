@@ -1379,16 +1379,16 @@ def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep=5e-0
             mean = np.mean(etot[strain<0.01,0])
             failed = False
             try:
-                popt, pcov = curve_fit(lineFit, height[strain<0.4], etot[strain<0.4,0])
+                popt, pcov = curve_fit(quadraticFit, height[strain<0.4], etot[strain<0.4,0])
             except RuntimeError:
                 print("Error - curve_fit failed")
                 failed = True
             if(failed == False):
-                noise = np.sqrt(np.mean((lineFit(height, *popt) - etot[:,0])**2))
+                noise = np.sqrt(np.mean((quadraticFit(height, *popt) - etot[:,0])**2))
                 offset = mean + noise
                 print("offset:", offset, "curve noise:", noise)
-                ax.plot(height, lineFit(height, *popt)-offset, color='g', lw=3, linestyle='dashdot', label="$ax + b$", alpha=0.4)
-                print("Energy: a, b:", popt, "slope:", popt[0], np.sqrt(np.diag(pcov))[0])
+                ax.plot(height, quadraticFit(height, *popt)-offset, color='g', lw=3, linestyle='dashdot', label="$ax + b$", alpha=0.4)
+                print("Energy: a, b:", popt, "slope:", popt[1], np.sqrt(np.diag(pcov))[1])
             ax.plot(height, etot[:,0]-offset, color='k', fillstyle='none', lw=1)
             ax.set_ylabel("$\\frac{\\Delta E}{2\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
         elif(which=='potential'):
