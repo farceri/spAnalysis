@@ -60,7 +60,7 @@ def plot3DPacking(dirName, figureName):
         y = pos[i,1] + rad[i]*np.outer(np.sin(u), np.sin(v))
         z = pos[i,2] + rad[i]*np.outer(np.ones(np.size(u)), np.cos(v))
         ax.plot_surface(x,y,z, color=colorId[i], rstride=4, cstride=4, alpha=1)
-    plt.savefig("/home/francesco/Pictures/soft/packings/3d-" + figureName + ".png", transparent=True, format = "png")
+    plt.savefig("/home/thorsayshi/Pictures/soft/packings/3d-" + figureName + ".png", transparent=True, format = "png")
     plt.show()
 
 def setAxes2D(ax):
@@ -169,7 +169,7 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
     if fixed:
         pos = np.array(np.loadtxt(dirName + os.sep + "particlePos.dat"))
     elif shear:
-        figureName = "/home/francesco/Pictures/soft/packings/shear-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/shear-" + figureName + ".png"
         pos = utils.getLEPBCPositions(dirName + os.sep + "particlePos.dat", boxSize, strain)
     else:
         pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
@@ -199,13 +199,13 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
         #np.savetxt(dirName + os.sep + "particlePos.dat", pos)
     if dense:
-        figureName = "/home/francesco/Pictures/soft/packings/dense-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/dense-" + figureName + ".png"
         if not(os.path.exists(dirName + os.sep + "particleList.dat")):
             cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
         denseList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,0]
         colorId = getDenseColorList(denseList)
     elif border:
-        figureName = "/home/francesco/Pictures/soft/packings/border-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/border-" + figureName + ".png"
         if not(os.path.exists(dirName + os.sep + "particleList!.dat")):
             cluster.computeDelaunayCluster(dirName, threshold, filter=filter)
         borderList = np.loadtxt(dirName + os.sep + "particleList.dat")[:,1]
@@ -222,7 +222,7 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
     else:
         colorId = getRadColorList(rad)
     if quiver:
-        figureName = "/home/francesco/Pictures/soft/packings/velmap-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/velmap-" + figureName + ".png"
         vel = np.array(np.loadtxt(dirName + os.sep + "particleVel.dat"))
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
@@ -265,8 +265,8 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         ticklabels = [np.format_float_scientific(np.min(ekin), precision=2), np.format_float_scientific(np.max(ekin), precision=2)]
         cb.set_ticklabels(ticklabels)
         cb.set_label(label=label, fontsize=14, labelpad=-20, rotation='horizontal')
-        figureName = "/home/francesco/Pictures/soft/packings/ekmap-" + figureName + ".png"
-    figureName = "/home/francesco/Pictures/soft/packings/" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/ekmap-" + figureName + ".png"
+    figureName = "/home/thorsayshi/Pictures/soft/packings/" + figureName + ".png"
     plt.tight_layout()
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
@@ -298,7 +298,7 @@ def plotSPFixedBoundaryPacking(dirName, figureName, onedim=False, quiver=False, 
         else:
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth='0.3'))
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/packings/fb-" + figureName + ".png"
+    figureName = "/home/thorsayshi/Pictures/soft/packings/fb-" + figureName + ".png"
     plt.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
@@ -380,7 +380,7 @@ def plotSPStressMapPacking(dirName, figureName, which='total', potential='lj', l
     cb.set_ticklabels(tickList)
     cb.set_label(label=label, fontsize=12, labelpad=25, rotation='horizontal')
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/packings/pmap-" + figureName + ".png"
+    figureName = "/home/thorsayshi/Pictures/soft/packings/pmap-" + figureName + ".png"
     plt.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
@@ -416,7 +416,7 @@ def plotSPVoronoiPacking(dirName, figureName, dense=False, threshold=0.84, filte
     plt.plot(pos[cells[0]['faces'][1]['adjacent_cell'],0], pos[cells[0]['faces'][1]['adjacent_cell'],1], marker='*', markersize=20, color='b')
     plt.plot(pos[cells[0]['faces'][2]['adjacent_cell'],0], pos[cells[0]['faces'][2]['adjacent_cell'],1], marker='*', markersize=20, color='g')
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/packings/voronoi-" + figureName + ".png"
+    figureName = "/home/thorsayshi/Pictures/soft/packings/voronoi-" + figureName + ".png"
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
 
@@ -505,11 +505,11 @@ def plotSPDelaunayPacking(dirName, figureName, dense=False, border=False, thresh
         insideIndex = utils.getInsideBoxDelaunaySimplices(simplices, newPos, boxSize)
         plt.triplot(newPos[:,0], newPos[:,1], simplices, lw=0.2, color='k')
     if(dense==True):
-        figureName = "/home/francesco/Pictures/soft/packings/deldense-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/deldense-" + figureName + ".png"
     elif(border==True):
-        figureName = "/home/francesco/Pictures/soft/packings/delborder-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/delborder-" + figureName + ".png"
     else:
-        figureName = "/home/francesco/Pictures/soft/packings/del-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/del-" + figureName + ".png"
     #plt.plot(pos[372,0], pos[372,1], marker='*', markersize=20, color='r')
     #plt.plot(pos[2091,0], pos[2091,1], marker='s', markersize=20, color='b')
     #plt.plot(pos[6036,0], pos[6036,1], marker='o', markersize=20, color='g')
@@ -568,9 +568,9 @@ def plotSPDelaunayLabels(dirName, figureName, dense=False, threshold=0.78, filte
     plt.tripcolor(newPos[:,0], newPos[:,1], simplices[allNeighborList==1], lw=0.3, facecolors=allNeighborList[allNeighborList==1], edgecolors='k', alpha=0.2)
     plt.tight_layout()
     if(filter == 'filter'):
-        figureName = "/home/francesco/Pictures/soft/packings/filter2Labels-" + label + "-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/filter2Labels-" + label + "-" + figureName + ".png"
     else:
-        figureName = "/home/francesco/Pictures/soft/packings/labels-" + label + "-" + figureName + ".png"
+        figureName = "/home/thorsayshi/Pictures/soft/packings/labels-" + label + "-" + figureName + ".png"
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
 
@@ -618,7 +618,7 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.76, filter='
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
             if(labels[particleId]==maxLabel):
                 ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.3))
-    figureName = "/home/francesco/Pictures/soft/packings/clusters-" + figureName + ".png"
+    figureName = "/home/thorsayshi/Pictures/soft/packings/clusters-" + figureName + ".png"
     plt.tight_layout()
     plt.savefig(figureName, transparent=True, format = "png")
     plt.show()
@@ -676,7 +676,7 @@ def plotSPDelaunaySimplexClusters(dirName, figureName, threshold=0.76, filter='f
                 plt.pause(0.5)
     else:
         plt.tripcolor(newPos[:,0], newPos[:,1], simplices[labels!=-1], facecolors=colorId[labels!=-1], lw=0.2, edgecolors='k', alpha=0.9, cmap='tab20c')
-    figureName = "/home/francesco/Pictures/soft/packings/simplexClusters-" + figureName + ".png"
+    figureName = "/home/thorsayshi/Pictures/soft/packings/simplexClusters-" + figureName + ".png"
     plt.tight_layout()
     plt.savefig(figureName, transparent=False, format = "png")
     plt.show()
@@ -858,7 +858,7 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
         dirSample = dirName + os.sep + "t" + str(i)
         makeSoftParticleClusterFrame(dirSample, rad, boxSize, figFrame, frames, denseList)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
-    anim.save("/home/francesco/Pictures/soft/packings/clustermix-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
+    anim.save("/home/thorsayshi/Pictures/soft/packings/clustermix-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
 def makeSoftParticleFrame(ax, dirName, rad, boxSize, quiver=False, dense=False, perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0):
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
@@ -928,8 +928,8 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
 
     # Save the animation
     writer = animation.ImageMagickWriter(fps=30)
-    anim.save(f"/home/francesco/Pictures/soft/packings/{figureName}.gif", writer=writer, dpi=fig.dpi)
-    # anim.save(f"/home/francesco/Pictures/soft/packings/{figureName}.mov", writer='ffmpeg', dpi=fig.dpi)
+    anim.save(f"/home/thorsayshi/Pictures/soft/packings/{figureName}.gif", writer=writer, dpi=fig.dpi)
+    # anim.save(f"/home/thorsayshi/Pictures/soft/packings/{figureName}.mov", writer='ffmpeg', dpi=fig.dpi)
 
 def makeSPShearPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq = 2, lj = False):
     def animate(i):
@@ -965,8 +965,8 @@ def makeSPShearPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq 
     anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
 
     # Save the animation
-    anim.save(f"/home/francesco/Pictures/soft/packings/shear-{figureName}.gif", writer='imagemagick', dpi=fig.dpi)
-    #anim.save(f"/home/francesco/Pictures/soft/packings/shear-{figureName}.mov", writer='ffmpeg', dpi=fig.dpi)
+    anim.save(f"/home/thorsayshi/Pictures/soft/packings/shear-{figureName}.gif", writer='imagemagick', dpi=fig.dpi)
+    #anim.save(f"/home/thorsayshi/Pictures/soft/packings/shear-{figureName}.mov", writer='ffmpeg', dpi=fig.dpi)
 
 def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq = 2, which = 'extend', lj = False, double = False, num1 = 0):
     def animate(i):
@@ -983,7 +983,10 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
         return ax.artists
 
     frameTime = 350
-    dirList, strainList = utils.getOrderedStrainDirectories(dirName)
+    if(which == 'extend' or which == 'compress'):
+        dirList, strainList = utils.getOrderedStrainDirectories(dirName)
+    elif(which == 'ext-rev' or which == 'comp-rev'):
+        dirList, strainList = utils.getFrontBackStrainDirectories(dirName)
     dirList = dirList[strainList < maxStrain]
     strainList = strainList[strainList < maxStrain]
     dirList = dirList[0:-1:strainFreq]
@@ -996,6 +999,12 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
     elif which == 'compress':
         frameSize[1] = np.loadtxt(dirName + dirList[0] + os.sep + "boxSize.dat")[1]
         frameSize[0] = np.loadtxt(dirName + dirList[-1] + os.sep + "boxSize.dat")[0]
+    elif which == 'ext-rev':
+        frameSize[1] = np.loadtxt(dirName + dirList[int(dirList.shape[0] / 2)] + os.sep + "boxSize.dat")[1]
+        frameSize[0] = np.loadtxt(dirName + dirList[0] + os.sep + "boxSize.dat")[0]
+    elif which == 'comp-rev':
+        frameSize[1] = np.loadtxt(dirName + dirList[0] + os.sep + "boxSize.dat")[1]
+        frameSize[0] = np.loadtxt(dirName + dirList[int(dirList.shape[0] / 2)] + os.sep + "boxSize.dat")[0]
     else:
         frameSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
     print("Frame size:", frameSize, "initial boxSize:", np.loadtxt(dirName + dirList[0] + os.sep + "boxSize.dat"))
@@ -1016,8 +1025,8 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
     anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
 
     # Save the animation
-    anim.save(f"/home/francesco/Pictures/soft/packings/{which}-{figureName}.gif", writer='imagemagick', dpi=fig.dpi)
-    #anim.save(f"/home/francesco/Pictures/soft/packings/{which}-{figureName}.mov", writer='ffmpeg', dpi=fig.dpi)
+    anim.save(f"/home/thorsayshi/Pictures/soft/packings/{which}-{figureName}.gif", writer='imagemagick', dpi=fig.dpi)
+    #anim.save(f"/home/thorsayshi/Pictures/soft/packings/{which}-{figureName}.mov", writer='ffmpeg', dpi=fig.dpi)
 
 def plotSoftParticleDroplet(axFrame, pos, rad, labels, maxLabel, alpha = 0.7):
     colorList = getColorListFromLabels(labels)
@@ -1075,7 +1084,7 @@ def makeSPPackingDropletVideo(dirName, figureName, numFrames = 20, firstStep = 0
         maxLabel = utils.findLargestParticleCluster(rad, labels)
         makeSoftParticleDropletFrame(pos, rad, boxSize, figFrame, frames, labels, maxLabel)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
-    anim.save("/home/francesco/Pictures/soft/packings/droplet-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
+    anim.save("/home/thorsayshi/Pictures/soft/packings/droplet-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
 def makeVelFieldFrame(dirName, numBins, bins, boxSize, numParticles, figFrame, frames):
     gcfFrame = plt.gcf()
@@ -1121,7 +1130,7 @@ def makeSPVelFieldVideo(dirName, figureName, numFrames = 20, firstStep = 0, step
         dirSample = dirName + os.sep + "t" + str(i)
         makeVelFieldFrame(dirSample, numBins, bins, boxSize, numParticles, figFrame, frames)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
-    anim.save("/home/francesco/Pictures/soft/packings/velfield-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
+    anim.save("/home/thorsayshi/Pictures/soft/packings/velfield-" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
 def makeInterfaceVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepFreq = 1e04):
     def animate(i):
@@ -1160,7 +1169,7 @@ def makeInterfaceVideo(dirName, figureName, numFrames = 20, firstStep = 0, stepF
         axFrame.remove()
         frames.append(axFrame)
         anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
-    anim.save("/home/francesco/Pictures/soft/mips/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
+    anim.save("/home/thorsayshi/Pictures/soft/mips/" + figureName + ".gif", writer='imagemagick', dpi=plt.gcf().dpi)
 
 
 if __name__ == '__main__':

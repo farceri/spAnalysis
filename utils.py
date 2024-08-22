@@ -1168,6 +1168,31 @@ def getOrderedStrainDirectories(dirName):
     listScalar = np.sort(listScalar)
     return listDir, listScalar
 
+def getFrontBackStrainDirectories(dirName):
+    listDir = []
+    listScalar = []
+    for dir in os.listdir(dirName):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir[:4] != 'back')):
+            listDir.append(dir)
+            listScalar.append(dir.strip('front'))
+    listScalar = np.array(listScalar, dtype=np.float64)
+    listDir = np.array(listDir)
+    frontDir = listDir[np.argsort(listScalar)]
+    frontScalar = np.sort(listScalar)
+    listDir = []
+    listScalar = []
+    for dir in os.listdir(dirName):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir[:5] != 'front')):
+            listDir.append(dir)
+            listScalar.append(dir.strip('back'))
+    listScalar = np.array(listScalar, dtype=np.float64)
+    listDir = np.array(listDir)
+    backDir = listDir[np.flip(np.argsort(listScalar))]
+    backScalar = np.flip(np.sort(listScalar))
+    listDir = np.concatenate((frontDir, backDir))
+    listScalar = np.concatenate((frontScalar, backScalar))
+    return listDir, listScalar
+
 def getShearDirectories(dirName):
     listDir = []
     listScalar = []
