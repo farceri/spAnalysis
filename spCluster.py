@@ -990,30 +990,49 @@ def computeClusterDelaunayArea(dirName, plot=False, dirSpacing=1):
     return area
 
 ######################## Compute delaunay cluster border #######################
-def computeDelaunayBorderLength(dirName, threshold=0.76, filter='filter'):
+def computeDelaunayBorderLength(dirName, threshold=0.62, window=10, plot=False, lj=True):
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
-    numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
-    phi = utils.readFromParams(dirName + sep, "phi")
+    if lj:
+        rad *= 2**(1/6)
+    eps = 1.8*np.max(rad)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     # need to center the cluster for voronoi border detection
-    if not(os.path.exists(dirName + os.sep + "particleList.dat")):
-        computeDelaunayCluster(dirName)
+    labels, maxLabel = getParticleClusterLabels(dirName, boxSize, eps, threshold)
+    pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+    #pos = utils.centerCOM(pos, rad, boxSize)
     particleList = np.loadtxt(dirName + os.sep + "particleList.dat")
     borderList = particleList[:,1]
-    #borderPos = pos[borderList==1]
-    #borderPos = utils.sortBorderPos(borderPos, borderList, boxSize)
-    #np.savetxt(dirName + os.sep + "borderPos.dat", borderPos)
+    borderList[labels != maxLabel] = 0
+    borderPos = pos[borderList==1]
+    center = np.mean(borderPos, axis=0)[0]
+    leftPos = borderPos[borderPos[:,0] < center]
+    rightPos = borderPos[borderPos[:,0] > center]
+    #leftPos = utils.sortBorderPos(leftPos, borderList, boxSize)
+    leftPos = leftPos[np.argsort(leftPos[:,1])]
+    rightPos = rightPos[np.argsort(rightPos[:,1])]
+    # smoothen with moving average
+    leftPos = np.column_stack((utils.computeMovingAverage(leftPos[:,0], window), utils.computeMovingAverage(leftPos[:,1], window)))
+    rightPos = np.column_stack((utils.computeMovingAverage(rightPos[:,0], window), utils.computeMovingAverage(rightPos[:,1], window)))
+    np.savetxt(dirName + os.sep + "borderPos.dat", np.concatenate((leftPos, rightPos)))
     # compute border length by summing over segments on the border
-    #borderLength = 0
-    #for i in range(1,borderPos.shape[0]):
-    #    borderLength += np.linalg.norm(utils.pbcDistance(borderPos[i], borderPos[i-1], boxSize))
-    borderRad = rad[borderList==1]
-    borderLength = np.sum(borderRad)
-    #print("Number of dense particles at the interface: ", borderList[borderList==1].shape[0])
-    #print("Border length from delaunay edges: ", borderLength)
-    return borderLength
+    length = 0
+    for i in range(1,leftPos.shape[0]):
+        length += np.linalg.norm(utils.pbcDistance(leftPos[i], leftPos[i-1], boxSize))
+    for i in range(1,rightPos.shape[0]):
+        length += np.linalg.norm(utils.pbcDistance(rightPos[i], rightPos[i-1], boxSize))
+    if(length != 0):
+        np.savetxt(dirName + os.sep + "delborderLeft" + str(window) + ".dat", leftPos)
+        np.savetxt(dirName + os.sep + "delborderRight" + str(window) + ".dat", rightPos)
+    #borderRad = rad[borderList==1]
+    #radLength = np.sum(borderRad)
+    print("Border length from delaunay edges:", length)
+    if(plot == "plot"):
+        uplot.plotCorrelation(leftPos[:,0], leftPos[:,1], "$y$", xlabel = "$x$", color='b')
+        uplot.plotCorrelation(rightPos[:,0], rightPos[:,1], "$y$", xlabel = "$x$", color='g')
+        plt.pause(0.5)
+    return length
 
 ######################## Compute cluster shape parameter #######################
 def computeClusterDelaunayShape(dirName, plot=False, dirSpacing=1):
@@ -1102,7 +1121,20 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
         plt.pause(0.5)
     return np.column_stack((timeList, clusterVel))
 
-def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.3, compute=False, save='save'):
+def getWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
+    doubleBoxSize = np.array([boxSize[0]*2, boxSize[1]])
+    doubleRad = np.concatenate((rad, rad))
+    doublePos = utils.doublePositions(pos, boxSize)
+    doubleDenseList = np.concatenate((denseList, denseList))
+    labels = utils.getDBClusterLabels(doublePos, doubleBoxSize, eps, min_samples=2, denseList=doubleDenseList)
+    doubleLabels = -1*np.ones(doubleDenseList.shape[0], dtype=np.int64)
+    doubleLabels[doubleDenseList==1] = labels
+    doubleLabels = doubleLabels.astype(np.int64)
+    maxLabel = utils.findLargestParticleCluster(doubleRad, doubleLabels)
+    labels = utils.wrapClusterLabels(doubleLabels, maxLabel, pos.shape[0])
+    return labels, maxLabel
+
+def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=False, save='save'):
     if(compute==True or compute=='cluster'):
         computeDelaunayCluster(dirSample, threshold=threshold, save=save)
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
@@ -1113,11 +1145,10 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.3, compute=Fal
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
-        allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
-        allLabels[denseList==1] = labels
-        allLabels = allLabels.astype(np.int64)
-        np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
+        rad = np.loadtxt(dirSample + "/particleRad.dat")
+        pos = utils.centerCOM(pos, rad, boxSize)
+        labels, maxLabel = getWrappedClusterLabels(pos, rad, boxSize, denseList, eps)
+        np.savetxt(dirSample + os.sep + "clusterLabels.dat", labels)
     else:
         if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
             computeDelaunayCluster(dirSample, threshold=threshold, save=save)
@@ -1126,13 +1157,18 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.3, compute=Fal
         if not(os.path.exists(dirSample + os.sep + "clusterLabels.dat")):
             # compute simplex positions for clustering algorithm
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
-            allLabels = -1*np.ones(denseList.shape[0])
-            allLabels[np.argwhere(denseList==1)[:,0]] = labels
-            allLabels = allLabels.astype(np.int64)
-            np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
-        allLabels = np.loadtxt(dirSample + os.sep + "clusterLabels.dat")
-    return allLabels
+            rad = np.loadtxt(dirSample + "/particleRad.dat")
+            pos = utils.centerCOM(pos, rad, boxSize)
+            labels, maxLabel = getWrappedClusterLabels(pos, rad, boxSize, denseList, eps)
+            #labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
+            #allLabels = -1*np.ones(denseList.shape[0])
+            #allLabels[np.argwhere(denseList==1)[:,0]] = labels
+            #labels = allLabels.astype(np.int64)
+            np.savetxt(dirSample + os.sep + "clusterLabels.dat", labels)
+        labels = np.loadtxt(dirSample + os.sep + "clusterLabels.dat")
+        rad = np.loadtxt(dirSample + "/particleRad.dat")
+        maxLabel = utils.findLargestParticleCluster(rad, labels)
+    return labels, maxLabel
 
 def getParticleDenseLabel(dirSample, threshold=0.3, compute=False, save='save'):
     if(compute==True):
@@ -1202,7 +1238,7 @@ def computeDelaunayClusterDistribution(dirName, threshold=0.76, plot=False, dirS
     clusterArea = np.empty(0)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
-        labels = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
+        labels, _ = getParticleClusterLabels(dirSample, boxSize, eps, threshold)
         uniqueLabels = np.unique(labels).astype(np.int64)
         for label in uniqueLabels:
             if(label!=-1):
@@ -1371,8 +1407,7 @@ def averageClusterPairCorr(dirName, threshold=0.3, lj='lj', dirSpacing=1, plot=F
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    labels = getParticleClusterLabels(dirName, boxSize, eps, threshold)
-    maxLabel = utils.findLargestParticleCluster(rad, labels)
+    labels, maxLabel = getParticleClusterLabels(dirName, boxSize, eps, threshold)
     pcorr = np.zeros((dirList.shape[0], bins.shape[0]-1, 2))
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
@@ -1847,8 +1882,7 @@ def averageLocalDensityAndNumberFluctuations(dirName, plot=False, dirSpacing=100
         plt.pause(0.5)
 
 ############################ Velocity distribution #############################
-def averageClusterVelPDF(dirName, threshold=0.76, plot=False, dirSpacing=1000000):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+def averageClusterVelPDF(dirName, threshold=0.62, plot=False, dirSpacing=1000000):
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1877,6 +1911,7 @@ def averageClusterVelPDF(dirName, threshold=0.76, plot=False, dirSpacing=1000000
     pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity inside the cluster: ", tempIn, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    print("4th moment:", np.sqrt(0.5*np.mean((velInCluster - mean)**4)))
     if(plot == "plot"):
         uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
     np.savetxt(dirName + os.sep + "velPDFInCluster.dat", np.column_stack((edges, pdf)))
@@ -1890,6 +1925,7 @@ def averageClusterVelPDF(dirName, threshold=0.76, plot=False, dirSpacing=1000000
     pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity outside the cluster: ", tempOut, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    print("4th moment:", np.sqrt(0.5*np.mean((velOutCluster - mean)**4)))
     if(plot == "plot"):
         uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
     np.savetxt(dirName + os.sep + "velPDFOutCluster.dat", np.column_stack((edges, pdf)))
@@ -1903,12 +1939,13 @@ def averageClusterVelPDF(dirName, threshold=0.76, plot=False, dirSpacing=1000000
     pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity in the whole system: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
+    print("4th moment:", np.sqrt(0.5*np.mean((velTotal - mean)**4)))
     if(plot == "plot"):
         uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='k')
     np.savetxt(dirName + os.sep + "velPDF.dat", np.column_stack((edges, pdf)))
     if(plot == "plot"):
-        plt.pause(0.5)
-        #plt.show()
+        #plt.pause(0.5)
+        plt.show()
     return temp, tempIn, tempOut
 
 ############################ Cluster residence pdf #############################
@@ -2360,7 +2397,7 @@ def computeClusterISF(dirName, startBlock, maxPower, freqPower, threshold=0.3, p
     particleCorr = particleCorr[np.argsort(stepList)]
     np.savetxt(dirName + os.sep + "clusterLogCorr.dat", np.column_stack((stepList, particleCorr)))
     data = np.column_stack((stepList, particleCorr))
-    tau = utils.computeTau(data)
+    tau = utils.getRelaxationTime(data)
     print("Relaxation time:", tau)
     if(plot=="plot"):
         #uplot.plotCorrelation(stepList, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
@@ -2529,6 +2566,12 @@ if __name__ == '__main__':
     elif(whichCorr == "deldensity"):
         plot = sys.argv[3]
         computeClusterDelaunayDensity(dirName, plot)
+
+    elif(whichCorr == "delborder"):
+        threshold = float(sys.argv[3])
+        window = int(sys.argv[4])
+        plot = sys.argv[5]
+        computeDelaunayBorderLength(dirName, threshold, window, plot)
 
     elif(whichCorr == "delarea"):
         plot = sys.argv[3]

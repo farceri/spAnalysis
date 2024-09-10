@@ -20,15 +20,15 @@ def computePairCorr(dirName, plot="plot"):
     phi = utils.readFromParams(dirName, "phi")
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
     meanRad = np.mean(rad)
-    bins = np.linspace(0.1*meanRad, 10*meanRad, 50)
+    bins = np.linspace(0.1*meanRad, 8*meanRad, 100)
     pos = utils.getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
     distance = utils.computeDistances(pos, boxSize)
     pairCorr, edges = np.histogram(distance, bins=bins, density=True)
     binCenter = 0.5 * (edges[:-1] + edges[1:])
     pairCorr /= (2 * np.pi * binCenter)
-    firstPeak = binCenter[np.argmax(pairCorr)]
-    np.savetxt(dirName + os.sep + "pairCorr.dat", np.column_stack((binCenter, pairCorr)))
-    print("First peak of pair corr is at distance:", firstPeak, "equal to", firstPeak/meanRad, "times the mean radius:", meanRad)
+    pcorr = np.column_stack((binCenter, pairCorr))
+    firstPeak = utils.getPairCorrelationPeak(pcorr)
+    np.savetxt(dirName + os.sep + "pairCorr.dat", pcorr)
     if(plot == "plot"):
         uplot.plotCorrelation(binCenter, pairCorr, "$Pair$ $correlation$ $function,$ $g(r)$")
         plt.show()
@@ -202,7 +202,7 @@ def computeParticleSelfCorr(dirName, plot=False):
         plt.show()
 
 ########## Check Self Correlations by logarithmically spaced blocks ############
-def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot", computeTau="tau"):
+def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot", getRelaxationTime="tau"):
     colorList = cm.get_cmap('viridis', 10)
     boxSize = np.loadtxt(dirName + "boxSize.dat")
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
@@ -239,7 +239,7 @@ def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot
             #uplot.plotCorrelation(stepBlock*timeStep, particleCorr[:,0], "$MSD(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color=colorList(block/10), show=False)
             uplot.plotCorrelation(stepBlock*timeStep, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color=colorList(block/10), show=False)
             plt.pause(0.2)
-        if(computeTau=="tau"):
+        if(getRelaxationTime=="tau"):
             diff.append(np.mean(particleCorr[-20:,0]/(2*stepBlock[-20:]*timeStep)))
             ISF = particleCorr[:,1]
             step = stepBlock
@@ -254,10 +254,10 @@ def checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot="plot
                 tau.append(timeStep*(np.exp(-1) - intercept)/slope)
             else:
                 tau.append(timeStep*step[relStep])
-    if(computeTau=="tau"):
+    if(getRelaxationTime=="tau"):
         print("relaxation time: ", np.mean(tau), " +- ", np.std(tau))
         print("diffusivity: ", np.mean(diff), " +- ", np.std(diff))
-        np.savetxt(dirName + "relaxationData.dat", np.array([[timeStep, phi, T, np.mean(tau), np.std(tau), np.mean(diff), np.std(diff)]]))
+        np.savetxt(dirName + "relaxationData.dat", np.array([[timeStep, phi, np.mean(tau), np.std(tau), np.mean(diff), np.std(diff)]]))
 
 ########### Time-averaged Self Correlations in log-spaced time window ##########
 def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower):
@@ -269,11 +269,11 @@ def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower):
     if not(os.path.exists(dirName + os.sep + "pairCorr.dat")):
         computePairCorr(dirName, plot=False)
     pcorr = np.loadtxt(dirName + os.sep + "pairCorr.dat")
-    uplot.plotCorrelation(pcorr[:,0], pcorr[:,1], "$g(r)$", "$r$", color='k')
-    plt.show()
-    firstPeak = pcorr[np.argmax(pcorr[:,1]),0]
-    pWaveVector = 2 * np.pi / firstPeak
-    print("wave vector: ", pWaveVector, " meanRad: ", pRad)
+    firstPeak = utils.getPairCorrelationPeak(pcorr)
+    #uplot.plotCorrelation(pcorr[:,0], pcorr[:,1], "$g(r)$", "$r$", color='k')
+    #plt.pause(0.5)
+    pWaveVector = 2 * np.pi / (2.12*pRad)
+    print("First peak of pair corr is at distance:", firstPeak, "wave vector:", pWaveVector, " sigma:", 2*pRad)
     particleCorr = []
     stepList = []
     freqDecade = int(10**freqPower)
@@ -303,10 +303,21 @@ def computeParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower):
     particleCorr = np.array(particleCorr).reshape((stepList.shape[0],7))
     particleCorr = particleCorr[np.argsort(stepList)]
     np.savetxt(dirName + os.sep + "logCorr.dat", np.column_stack((stepList, particleCorr)))
+    ISF = particleCorr[:,1]
+    relStep = np.argwhere(ISF>np.exp(-1))[-1,0]
+    if(relStep + 1 < stepList.shape[0]):
+        t1 = stepList[relStep]
+        t2 = stepList[relStep+1]
+        ISF1 = ISF[relStep]
+        ISF2 = ISF[relStep+1]
+        slope = (ISF2 - ISF1)/(t2 - t1)
+        intercept = ISF2 - slope * t2
+        tau = timeStep*(np.exp(-1) - intercept)/slope
+        print("relaxation time: ", tau, "step:", tau/timeStep, "time step:", timeStep)
     #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,0]/(stepList*timeStep), "$MSD(\\Delta t)/\\Delta t$", "$time$ $interval,$ $\\Delta t$", logx = True, logy = True, color = 'k')
     uplot.plotCorrelation(stepList * timeStep, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
     #uplot.plotCorrelation(stepList * timeStep, particleCorr[:,3], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
-    plt.show()
+    plt.pause(1)
     
 ########## Time-averaged Single Correlations in log-spaced time window #########
 def computeSingleParticleLogSelfCorr(dirName, startBlock, maxPower, freqPower, qFrac = 1):
@@ -878,8 +889,8 @@ if __name__ == '__main__':
         numBlocks = int(sys.argv[4])
         maxPower = int(sys.argv[5])
         plot = sys.argv[6]
-        computeTau = sys.argv[7]
-        checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot=plot, computeTau=computeTau)
+        getRelaxationTime = sys.argv[7]
+        checkParticleSelfCorr(dirName, initialBlock, numBlocks, maxPower, plot=plot, getRelaxationTime=getRelaxationTime)
 
     elif(whichCorr == "logcorr"):
         startBlock = int(sys.argv[3])

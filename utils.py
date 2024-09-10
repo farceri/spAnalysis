@@ -14,6 +14,15 @@ import shutil
 import os
 import time
 
+def lineFit(x, a, b):
+    return a + b*x
+
+def quadraticFit(x, a, b, c):
+    return a + b*x + c*x**2
+
+def polyFit(x, a, b, c, d, e):
+    return a*x**4 + b*x**3 + c*x**2 + d*x + e
+
 ############################## general utilities ###############################
 def pbcDistance(r1, r2, boxSize):
     delta = r1 - r2
@@ -80,6 +89,23 @@ def getPairCorr(pos, boxSize, bins, minRad):
     pairCorr, edges = np.histogram(distance, bins=bins)
     binCenter = 0.5 * (edges[:-1] + edges[1:])
     return pairCorr / (2 * np.pi * binCenter)
+
+def getPairCorrelationPeak(pcorr):
+    peakIndex = np.argmax(pcorr[:,1])
+    x = pcorr[peakIndex-5:peakIndex+5,0]
+    y = pcorr[peakIndex-5:peakIndex+5,1]
+    failed = False
+    try:
+        popt, pcov = curve_fit(polyFit, x, y)
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+    if(failed == False):
+        x = np.linspace(x[0], x[-1], 100)
+        y = polyFit(x, *popt)
+        return x[np.argmax(y)]
+    else:
+        return pcorr[np.argmax(pcorr[:,1]),0]
 
 def projectToNormalTangentialComp(vectorXY, unitVector): # only for d = 2
     vectorNT = np.zeros((2,2))
@@ -343,7 +369,7 @@ def computeSusceptibility(pos1, pos2, field, waveVector, scale):
     chiq = np.mean(isf**2) - np.mean(isf)**2
     return chi / scale, np.real(chiq)
 
-def computeTau(data, index=2, threshold=np.exp(-1), normalized=False):
+def getRelaxationTime(data, index=2, threshold=np.exp(-1), normalized=False):
     if(normalized == True):
         data[:,index] /= data[0,index]
     relStep = np.argwhere(data[:,index]>threshold)[-1,0]
@@ -539,6 +565,22 @@ def getTimeFourierVel(dirName, dirList, dirSpacing, numParticles):
     velSquared2 = np.mean(velf,axis=1)*2/numSteps
     freq = np.sort(freq)
     return np.column_stack((freq, velfSquared1, velSquared2))
+
+def wrapClusterLabels(allLabels, maxLabel, numParticles):
+    wrappedLabels = np.zeros(numParticles)
+    wrappedLabels = allLabels[:numParticles]
+    doubledLabels = allLabels[numParticles:]
+    wrappedLabels[np.argwhere(doubledLabels==maxLabel)] = maxLabel
+    return wrappedLabels
+
+def doublePositions(pos, boxSize):
+    # copy positions to the right and store indices corresponding to positions in the main box
+    doublePos = np.zeros((pos.shape[0]*2, pos.shape[1]))
+    doublePos[:pos.shape[0]] = pos
+    doublePos[pos.shape[0]:,0] = pos[:,0] + boxSize[0]
+    for dim in range(1,pos.shape[1]):
+        doublePos[pos.shape[0]:,dim] = pos[:,dim]
+    return doublePos
 
 ############################### Delaunay analysis ##############################
 def augmentPacking(pos, rad, fraction=0.15, lx=1, ly=1):
@@ -1290,7 +1332,7 @@ def readDenseListPair(dirName, index1, index2):
     return denseList1, denseList2
 
 ############################### Packing tools ##################################
-def getPBCPositions(fileName, boxSize):
+def getPBCPositions(fileName, boxSize, center=False):
     pos = np.array(np.loadtxt(fileName), dtype=np.float64)
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
@@ -2095,6 +2137,135 @@ def convertPosToXYZ(dirName, nDim=3):
     pos[:,2] -= np.floor(pos[:,2]/boxSize[2]) * boxSize[2]
     numParticles = str(pos.shape[0])
     np.savetxt(dirName + "/particlePos.xyz", pos, header=numParticles + "\n")
+
+def computeNoEdgeMovingAverage(data, window=10):
+    halfWindow = window // 2
+    movingAvg = np.copy(data)
+    for i in range(halfWindow, len(data) - halfWindow):
+        movingAvg[i] = np.mean(data[i - halfWindow : i + halfWindow + 1])
+    return movingAvg
+
+import numpy as np
+
+def computeMovingAverage(data, window=10):
+    """
+    Compute the moving average of a time series with a specified window size,
+    replacing each element with its moving average.
+
+    Parameters:
+    time_series (array-like): The input time series data.
+    window_size (int): The size of the moving window.
+
+    Returns:
+    numpy.ndarray: The time series with each element replaced by its moving average.
+    """
+    # Ensure the time series is a NumPy array
+    data = np.asarray(data)
+    
+    # Calculate the number of elements to consider on each side of the current element
+    halfWindow = window // 2
+    
+    # Pad the array to handle the edges
+    paddedData = np.pad(data, (halfWindow, halfWindow - 1), mode='edge')
+    
+    # Initialize the array for the moving average result
+    movingAvg = np.zeros_like(data)
+    
+    # Compute the moving average for each element
+    for i in range(len(data)):
+        movingAvg[i] = np.mean(paddedData[i:i + window])
+    
+    return movingAvg
+
+
+def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext', reverse=False, window=10):
+    # read initial energies
+    numParticles = readFromParams(dirName, 'numParticles')
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    data = np.loadtxt(dirName + "/energy.dat")
+    tension = np.zeros(2)
+    if(np.sum(np.isnan(data))!=0):
+        print("There are NaNs in the file")
+    if(reverse == 'reverse'):
+        maxStrain = (int(data.shape[0] / 2) // 20) * strainStep
+        strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+        strain = np.concatenate((strain, np.flip(strain)[1:]))
+    else:
+        maxStrain = (data.shape[0] // 20) * strainStep
+        strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+    etot = data[:,-1]
+    freq = 20
+    every = freq
+    etot = np.zeros((strain.shape[0],2))
+    for i in range(0,strain.shape[0]-every,every):
+        #print(strain[i])
+        stepEtot = []
+        for j in range(every):
+            #print(i+j, strain[i+j])
+            stepEtot.append(np.mean(data[(i+j)*freq:(i+j+1)*freq,-1]))
+        # two interfaces
+        etot[i,0] = np.mean(stepEtot)/4
+        etot[i,1] = np.std(stepEtot)/4
+    strain = strain[etot[:,0]!=0]
+    etot = etot[etot[:,0]!=0]
+    etot = np.column_stack((computeMovingAverage(etot[:,0], window), computeMovingAverage(etot[:,1], window)))
+    strain = computeMovingAverage(strain, window)
+    otherStrain = -strain/(1 + strain)
+    if(compext == 'ext'):
+        height = (1 + strain)*boxSize[1]
+        width = (1 + otherStrain)*boxSize[0]
+    elif(compext == 'comp'):
+        height = (1 + otherStrain)*boxSize[1]
+        width = (1 + strain)*boxSize[0]
+    height -= boxSize[1]
+    etot *= numParticles
+    mean = np.mean(etot[strain<0.01,0])
+    if(reverse == 'reverse'):
+        halfIndex = int(etot.shape[0] / 2)
+        efront = etot[:halfIndex,0]
+        hfront = height[:halfIndex]
+        #mean = np.mean(efront[hfront<0.01,0])
+        failed = False
+        try:
+            popt, pcov = curve_fit(lineFit, hfront, efront)
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if not failed:
+            noise = np.sqrt(np.mean((lineFit(hfront, *popt) - efront)**2))/2
+            tension[1] = noise**2
+            tfront = popt[1]
+            erfront = np.sqrt(np.diag(pcov)[1])
+        eback = etot[halfIndex:,0]
+        hback = height[halfIndex:]
+        #mean = np.mean(eback[hback<0.01,0])
+        failed = False
+        try:
+            popt, pcov = curve_fit(lineFit, hback, eback)
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if not failed:
+            noise = np.sqrt(np.mean((lineFit(hback, *popt) - eback)**2))/2
+            tension[1] += noise**2
+            tension[1] = np.sqrt(tension[1])
+            tback = popt[1]
+            erback = np.sqrt(np.diag(pcov)[1])
+        tension[0] = np.mean([tfront, tback])
+        #tension[1] = np.sqrt(erfront**2 + erback**2)
+    else:
+        failed = False
+        try:
+            popt, pcov = curve_fit(lineFit, height[strain<0.4], etot[strain<0.4,0])
+        except RuntimeError:
+            print("Error - curve_fit failed")
+            failed = True
+        if not failed:
+            noise = np.sqrt(np.mean((lineFit(height[strain<0.4], *popt) - etot[strain<0.4,0])**2))/2
+            offset = mean + noise
+            tension[0] = popt[1]
+            tension[1] = noise
+    return tension
 
 
 if __name__ == '__main__':

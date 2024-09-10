@@ -1055,7 +1055,7 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
                 cluster.computeClusterVelCorr(dirSample, 10, 7)
             data = np.loadtxt(dirSample + "clusterVelCorr.dat")
             #data[:,0] /= sigma
-            tauScale = utils.computeTau(data, index=1)
+            tauScale = utils.getRelaxationTime(data, index=1)
         # get the cluster mixing correlation and extract lifetime
         if not(os.path.exists(dirSample + "clusterMixing.dat")):
             cluster.computeClusterMixing(dirSample, 10, 7)
@@ -1066,7 +1066,7 @@ def plotSPClusterMixingTime(dirName, figureName, fixed=False, which='1e-03'):
         elif(fixed=='Dr'):
             label = "$\\varphi=$" + dirList[d]
         ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', markersize=5, capsize=3, elinewidth=0.8, fillstyle='none', label=label)
-        tau[d] = utils.computeTau(data, index=1, normalized=False)
+        tau[d] = utils.getRelaxationTime(data, index=1, normalized=False)
         if(fixed=="phi"):
             taup[d] /= tauScale
     ax.set_xscale('log')
@@ -1145,7 +1145,7 @@ def plotSPClusterVelTimeCorr(dirName, figureName, fixed=False, which='1e-03'):
         elif(fixed=='Dr'):
             label = "$\\varphi=$" + dirList[d]
         ax.errorbar(data[:,0], data[:,1], data[:,2], color=colorList(d/dirList.shape[0]), lw=1, marker='o', markersize=5, capsize=3, elinewidth=0.8, fillstyle='none', label=label)
-        tau[d] = utils.computeTau(data, index=1)
+        tau[d] = utils.getRelaxationTime(data, index=1)
     ax.set_xscale('log')
     if(fixed=="Dr"):
         #x = phi
@@ -1596,7 +1596,7 @@ def plotSPVelSpaceCorr(dirName, figureName, fixed=False, which='10'):
                 failed = True
             if(failed == False and d < 12):
                 corrlength[d,0] = 1/popt[0]
-                corrlength[d,1] = utils.computeTau(data, index=1, threshold=np.exp(-1)*data[1,1], normalized=False)
+                corrlength[d,1] = utils.getRelaxationTime(data, index=1, threshold=np.exp(-1)*data[1,1], normalized=False)
                 ax.plot(data[1:,0], curveCvv(data[1:,0], *popt), color=colorList((dirList.shape[0]-d)/dirList.shape[0]), lw=0.9, linestyle='--')
             #data = data[data[:,0]<80,:]
             data[:,1] /= data[0,1]

@@ -177,18 +177,19 @@ def plotGPUperformance(dirName, figureName):
 def plotEnergy(dirName, figureName, which='all', log=False):
     if(os.path.exists(dirName + "/energy.dat")):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
-        print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
         print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
+        print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-        ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$E_{pot}$")
-        ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$E_{kin}$")
+        if which != 'simple':
+            ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$E_{pot}$")
+            ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$E_{kin}$")
+        label = "$E_{tot}$"
         etot = energy[:,2] + energy[:,3]
         index = 4
-        if which == 'simple':
-            label = "$E_{tot}$"
         if which == 'damping':
             etot += energy[:,4]
             ax.plot(energy[:,0], energy[:,4], linewidth=4, color='c', linestyle='dashdot', alpha=0.6, label="$W_{damping}$")
+            print("error over mean:", np.std(energy[:,3])/np.abs(np.mean(energy[:,3])))
             print("damping work:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]))
             label = "$E_{tot}$ $+$ $W_{tot}$"
             index = 5
@@ -200,10 +201,10 @@ def plotEnergy(dirName, figureName, which='all', log=False):
             print("active work:", np.mean(energy[:,5]), "+-", np.std(energy[:,5]))
             label = "$E_{tot}$ $+$ $W_{tot}$"
             index = 6
-        ax.plot(energy[:,0], energy[:,index], linewidth=4, color='b', linestyle='solid', alpha=0.3)
+        ax.plot(energy[:,0], etot, linewidth=4, color='b', linestyle='solid', alpha=0.3)
         ax.plot(energy[:,0], etot, linewidth=1.5, color='b', linestyle='dotted', label=label)
-        print("\nenergy per particle:", np.mean(energy[:,index]), " +-", np.std(energy[:,index]))
-        print("error over mean:", np.std(energy[:,index])/np.abs(np.mean(energy[:,index])))
+        print("\nenergy per particle:", np.mean(etot), " +-", np.std(etot))
+        print("error over mean:", np.std(etot)/np.abs(np.mean(etot)))
         if which == 'pressure':
             ax.clear()
             ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='b', label="$P$")
