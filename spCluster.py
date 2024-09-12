@@ -1882,7 +1882,7 @@ def averageLocalDensityAndNumberFluctuations(dirName, plot=False, dirSpacing=100
         plt.pause(0.5)
 
 ############################ Velocity distribution #############################
-def averageClusterVelPDF(dirName, threshold=0.62, plot=False, dirSpacing=1000000):
+def averageClusterVelPDF(dirName, threshold=0.62, plot=False, dirSpacing=100000):
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1901,20 +1901,25 @@ def averageClusterVelPDF(dirName, threshold=0.62, plot=False, dirSpacing=1000000
         velInCluster = np.append(velInCluster, velNorm[denseList==1].flatten())
         velOutCluster = np.append(velOutCluster, velNorm[denseList!=1].flatten())
         velTotal = np.append(velTotal, velNorm.flatten())
+    velInCluster = np.array(velInCluster)
+    velOutCluster = np.array(velOutCluster)
+    velTotal = np.array(velTotal)
     # in cluster
     velInCluster = velInCluster[velInCluster>0]
     mean = np.mean(velInCluster)
     tempIn = np.var(velInCluster)
     skewness = np.mean((velInCluster - mean)**3)/tempIn**(3/2)
     kurtosis = np.mean((velInCluster - mean)**4)/tempIn**2
+    min = np.min(np.array([np.min(velInCluster), np.min(velOutCluster), np.min(velTotal)]))
+    max = np.max(np.array([np.max(velInCluster), np.max(velOutCluster), np.max(velTotal)]))
+    bins = np.linspace(min, max, 100)
     data = velInCluster# / np.sqrt(2*Temp)
-    pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
+    pdfin, edges = np.histogram(data, bins=bins, density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity inside the cluster: ", tempIn, " kurtosis: ", kurtosis, " skewness: ", skewness)
     print("4th moment:", np.sqrt(0.5*np.mean((velInCluster - mean)**4)))
     if(plot == "plot"):
-        uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
-    np.savetxt(dirName + os.sep + "velPDFInCluster.dat", np.column_stack((edges, pdf)))
+        uplot.plotCorrelation(edges, pdfin, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
     # out of cluster
     velOutCluster = velOutCluster[velOutCluster>0]
     mean = np.mean(velOutCluster)
@@ -1922,13 +1927,12 @@ def averageClusterVelPDF(dirName, threshold=0.62, plot=False, dirSpacing=1000000
     skewness = np.mean((velOutCluster - mean)**3)/tempOut**(3/2)
     kurtosis = np.mean((velOutCluster - mean)**4)/tempOut**2
     data = velOutCluster# / np.sqrt(2*Temp)
-    pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
+    pdfout, edges = np.histogram(data, bins=bins, density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity outside the cluster: ", tempOut, " kurtosis: ", kurtosis, " skewness: ", skewness)
     print("4th moment:", np.sqrt(0.5*np.mean((velOutCluster - mean)**4)))
     if(plot == "plot"):
-        uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
-    np.savetxt(dirName + os.sep + "velPDFOutCluster.dat", np.column_stack((edges, pdf)))
+        uplot.plotCorrelation(edges, pdfout, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
     # total
     velTotal = velTotal[velTotal>0]
     mean = np.mean(velTotal)
@@ -1936,16 +1940,16 @@ def averageClusterVelPDF(dirName, threshold=0.62, plot=False, dirSpacing=1000000
     skewness = np.mean((velTotal - mean)**3)/temp**(3/2)
     kurtosis = np.mean((velTotal - mean)**4)/temp**2
     data = velTotal# / np.sqrt(2*Temp)
-    pdf, edges = np.histogram(data, bins=np.linspace(np.min(data), np.max(data), 100), density=True)
+    pdf, edges = np.histogram(data, bins=bins, density=True)
     edges = 0.5 * (edges[:-1] + edges[1:])
     print("Variance of the velocity in the whole system: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
     print("4th moment:", np.sqrt(0.5*np.mean((velTotal - mean)**4)))
     if(plot == "plot"):
         uplot.plotCorrelation(edges, pdf, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='k')
-    np.savetxt(dirName + os.sep + "velPDF.dat", np.column_stack((edges, pdf)))
+    np.savetxt(dirName + os.sep + "velPDF.dat", np.column_stack((edges, pdfin, pdfout, pdf)))
     if(plot == "plot"):
-        #plt.pause(0.5)
-        plt.show()
+        plt.pause(0.5)
+        #plt.show()
     return temp, tempIn, tempOut
 
 ############################ Cluster residence pdf #############################

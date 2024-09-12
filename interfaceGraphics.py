@@ -92,9 +92,9 @@ def plotInterfaceFluctuations(dirName, figureName, which='active', qmax=1):
     ax[0].tick_params(axis='both', labelsize=14)
     ax[1].tick_params(axis='both', labelsize=14)
     ax[1].set_xlabel("$q$", fontsize=16)
-    ax[1].set_ylabel("$\\langle |\delta h(q)|^2 \\rangle L$", fontsize=16)
+    ax[1].set_ylabel("$\\langle |\\delta h(q)|^2 \\rangle L$", fontsize=16)
     ax[0].set_xlabel("$y$", fontsize=16)
-    ax[0].set_ylabel("$\\langle |\delta h(y)|^2 \\rangle$", fontsize=16)
+    ax[0].set_ylabel("$\\langle |\\delta h(y)|^2 \\rangle$", fontsize=16)
     fig.tight_layout()
     figureName = "/home/francesco/Pictures/soft/mips/pHeightFlu-" + figureName + ".png"
     fig.savefig(figureName, transparent=True, format = "png")
@@ -162,7 +162,7 @@ def plotInterfaceVSTemp(dirName, figureName, which='active', qmax=0.4):
         temp[d,1] = np.std(data[:,0])
     ax.legend(fontsize=11, ncol=2, loc='best')
     ax.set_xlabel("$q$", fontsize=16)
-    ax.set_ylabel("$\\langle |\delta h(q)|^2 \\rangle L$", fontsize=16)
+    ax.set_ylabel("$\\langle |\\delta h(q)|^2 \\rangle L$", fontsize=16)
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.tick_params(axis='both', labelsize=14)
@@ -213,8 +213,8 @@ def plotInterfaceCorrelation(dirName, figureName, which='Dr'):
         ax.plot(data[1:,0], data[1:,1]/data[0,1], lw=1, marker=markerList[d], markersize=6, color='k', fillstyle='none', label=which + '$=$' + dirList[d])
     ax.tick_params(axis='both', labelsize=14)
     ax.legend(fontsize=12, loc='best')
-    ax.set_xlabel("$Distance,$ $\Delta x$", fontsize=16)
-    ax.set_ylabel("$g_h(\Delta x)$", fontsize=16)
+    ax.set_xlabel("$Distance,$ $\\Delta x$", fontsize=16)
+    ax.set_ylabel("$g_h(\\Delta x)$", fontsize=16)
     fig.tight_layout()
     figureName = "/home/francesco/Pictures/soft/mips/pHeightCorr-" + figureName + "-vs" + which + ".png"
     fig.savefig(figureName, transparent=True, format = "png")
@@ -241,7 +241,7 @@ def plot2InterfaceFluctuations(dirName, figureName, num1=0, limit=0.7):
         print("Error - curve_fit failed")
         failed = True
     if(failed == False):
-        label = "$Fit,$ $a \, q^b:$ $a=$" + str(np.around(popt[0],3)) + ", $b=$" + str(np.around(popt[1],3)) + "$\, \\pm \,$" + str(np.around(np.sqrt(np.diag(pcov))[1],3))
+        label = "$Fit,$ $a \\, q^b:$ $a=$" + str(np.around(popt[0],3)) + ", $b=$" + str(np.around(popt[1],3)) + "$\\, \\pm \\,$" + str(np.around(np.sqrt(np.diag(pcov))[1],3))
         ax[1].plot(x[x<limit], powerLaw(x[x<limit], *popt), color='b', lw=3, ls='dashed', alpha=0.5, label=label)
         print("fitting parameters - amplitude:", popt[0], "slope:", popt[1], "+-", np.sqrt(np.diag(pcov))[1])
         print("line tension:", 2*temp/(popt[0]), "+-", 2*temp/(np.sqrt(np.diag(pcov))[0]))
@@ -251,9 +251,9 @@ def plot2InterfaceFluctuations(dirName, figureName, num1=0, limit=0.7):
     ax[0].tick_params(axis='both', labelsize=14)
     ax[1].tick_params(axis='both', labelsize=14)
     ax[1].set_xlabel("$q$", fontsize=16)
-    ax[1].set_ylabel("$\\langle |\delta h(q)|^2 \\rangle \\sigma$", fontsize=16)
+    ax[1].set_ylabel("$\\langle |\\delta h(q)|^2 \\rangle \\sigma$", fontsize=16)
     ax[0].set_xlabel("$y$", fontsize=16)
-    ax[0].set_ylabel("$\\langle |\delta h(y)|^2 \\rangle$", fontsize=16)
+    ax[0].set_ylabel("$\\langle |\\delta h(y)|^2 \\rangle$", fontsize=16)
     fig.tight_layout()
     figureName = "/home/francesco/Pictures/soft/mips/interfaceFlu-" + figureName + ".png"
     fig.savefig(figureName, transparent=True, format = "png")
@@ -1055,7 +1055,7 @@ def compare2FluidsISF(dirName, figureName, which='short'):
     ax.legend(fontsize=12, loc='best')
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Temperature,$ $T/\\varepsilon$", fontsize=16)
-    ax.set_ylabel("$Relaxation$ $time,$ $\\tau \; / \\sqrt{\\frac{m}{\\varepsilon}} \\sigma$", fontsize=16)
+    ax.set_ylabel("$Relaxation$ $time,$ $\\tau \\; / \\sqrt{\\frac{m}{\\varepsilon}} \\sigma$", fontsize=16)
     figure2Name = "/home/francesco/Pictures/soft/mips/compareTau-" + figureName
     plt.tight_layout()
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
@@ -1211,7 +1211,7 @@ def plotSPStrainForceVSTime(dirName, figureName, strainStep=5e-06, compext='ext'
             if(failed == False):
                 ax.plot(height, lineFit(height, *popt), color='g', lw=3, linestyle='dashdot', label="$ax + b$", alpha=1)
                 print("Energy: a, b:", popt, "slope:", popt[0])
-            ax.set_ylabel("$\\frac{F_{wall}\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=25)
+            ax.set_ylabel("$\\frac{F_{wall}\\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=25)
         else:
             force[:,0] /= width
             force[:,1] /= width
