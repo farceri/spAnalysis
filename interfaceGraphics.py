@@ -1415,9 +1415,20 @@ def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep=5e-0
     if(np.sum(np.isnan(data))!=0):
         print("There are NaNs in the file")
     if(reverse == 'reverse'):
-        maxStrain = (int(data.shape[0] / 2) // 20) * strainStep
-        strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
-        strain = np.concatenate((strain, np.flip(strain)[1:]))
+        maxStrain = 0.1
+        dataLength = int((data.shape[0] - 20) / 20)
+        maxLength = int(maxStrain / strainStep)
+        if(maxLength < dataLength):
+            diffLength = dataLength - maxLength
+            #print("maxLength:", maxLength, "dataLength:", dataLength, "diffLenth:", diffLength)
+            strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+            strain = np.concatenate((strain, np.flip(strain)[1:diffLength]))
+            #maxStrain = (int(data.shape[0] / 2) // 20) * strainStep
+            #strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+            #strain = np.concatenate((strain, np.flip(strain)[1:]))
+        else:
+            maxStrain = (data.shape[0] // 20) * strainStep
+            strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
     else:
         maxStrain = (data.shape[0] // 20) * strainStep
         strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
@@ -1468,13 +1479,15 @@ def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep=5e-0
             error = 0
             etot *= numParticles
             mean = np.mean(etot[strain<0.001,0])
-            if(reverse == 'reverse'):
+            sigma = np.std(etot[:,0]-mean)
+            print("average energy:", np.mean(etot[:,0]-mean), sigma, "relative error:", sigma/np.mean(etot[:,0]-mean))
+            if(reverse == 'reverse' and maxLength < dataLength):
                 halfIndex = int(etot.shape[0] / 2)
                 efront = etot[:halfIndex]
                 hfront = height[:halfIndex]
                 failed = False
                 try:
-                    popt, pcov = curve_fit(lineFit, hfront, efront[:,0])
+                    popt, pcov = curve_fit(lineFit, hfront, efront[:,0], sigma=np.full_like(hfront, sigma))
                 except RuntimeError:
                     print("Error - curve_fit failed")
                     failed = True
@@ -1492,7 +1505,7 @@ def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep=5e-0
                 hback = height[halfIndex:]
                 failed = False
                 try:
-                    popt, pcov = curve_fit(lineFit, hback, eback[:,0])
+                    popt, pcov = curve_fit(lineFit, hback, eback[:,0], sigma=np.full_like(hback, sigma))
                 except RuntimeError:
                     print("Error - curve_fit failed")
                     failed = True
@@ -1512,12 +1525,14 @@ def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep=5e-0
             else:
                 failed = False
                 try:
-                    popt, pcov = curve_fit(lineFit, height, etot[:,0])
+                    x = height[strain<0.1]
+                    y = etot[strain<0.1,0]
+                    popt, pcov = curve_fit(lineFit, x, y, sigma=np.full_like(x, sigma))
                 except RuntimeError:
                     print("Error - curve_fit failed")
                     failed = True
                 if not failed:
-                    noise = np.sqrt(np.mean((lineFit(height, *popt) - etot[:,0])**2))/2
+                    noise = np.sqrt(np.mean((lineFit(x, *popt) - y)**2))/2
                     offset = mean + noise/2
                     #print("offset:", offset, "curve noise:", noise)
                     ax.plot(height, lineFit(height, *popt)-offset, color='g', lw=3, linestyle='dashdot', label="$ax + b$", alpha=0.4)
@@ -1555,12 +1570,15 @@ def compareEnergyVSTimeStrain(dirName, figureName, type='nh2', dirType='ext', ve
     else:
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(versus == 'strain'):
-        strainList = np.array([1e-05, 2e-05, 5e-05])
-        dirList = np.array([type + '/T0.80/nve-biaxial-' + dirType + '1e-05-tmax1e03/', type + '/T0.80/nve-biaxial-' + dirType + '2e-05-tmax1e03/', 
-                            type + '/T0.80/nve-biaxial-' + dirType + '5e-05-tmax1e03/'])
-        labelList = ['$\\Delta \\gamma = 5 \\times 10^{-6}$', '$\\Delta \\gamma = 10^{-5}$', '$\\Delta \\gamma = 2 \\times 10^{-5}$', '$\\Delta \\gamma = 5\\times 10^{-5}$']
+        strainList = np.array([5e-06, 1e-05, 1.5e-05, 2e-05, 4e-05])
+        dirList = np.array([type + '-biaxial-' + dirType + '5e-06-tmax2e03/', type + '-biaxial-' + dirType + '1e-05-tmax2e03/', 
+                            type + '-biaxial-' + dirType + '1.5e-05-tmax2e03/', type + '-biaxial-' + dirType + '2e-05-tmax2e03/', 
+                            type + '-biaxial-' + dirType + '4e-05-tmax2e03/'])
+        labelList = ['$\\Delta \\gamma = 5 \\times 10^{-6}$', '$\\Delta \\gamma = 10^{-5}$', 
+                     '$\\Delta \\gamma = 1.5 \\times 10^{-5}$', '$\\Delta \\gamma = 2\\times 10^{-5}$', '$\\Delta \\gamma = 4\\times 10^{-5}$']
     elif(versus == 'tmax'):
-        dirList = np.array(['1e03', '2e03', '3e03', '4e03', '5e03', '1e04', '2e04', '3e04'])
+        dirList = np.array(['1e03', '1.2e03', '2e03', '3e03', '5e03', '1e04', '2e04', '3e04'])
+        #dirList = np.array(['1e03', '1.2e03', '2e03', '3e03', '5e03', '7e03', '2e04', '3e04'])
         strainList = np.ones(dirList.shape[0])*5e-06
         twait = dirList.astype(float)*2e-04/np.sqrt(2)
     elif(versus == 'phi'):
@@ -1607,9 +1625,9 @@ def compareEnergyVSTimeStrain(dirName, figureName, type='nh2', dirType='ext', ve
     if(versus == 'temp' or versus == 'active'):
         colorList = cm.get_cmap('viridis', dirList.shape[0])
     else:
-        colorList = ['g', 'b', 'r', 'k', 'c', [1,0.5,0], [0,0.5,1], [0.5,0,1], [1,0.7,0]]
-    markerList = ['o', 's', 'v', 'd', 'x', '+', 'D', '^']
-    lsList = ['solid', 'dotted', 'dashdot', 'dashdot', '-.', ':', '--', 'solid', 'dashed']
+        colorList = ['g', 'b', 'r', 'k', 'c', [1,0.5,0], [0,0.5,1], [0.5,0,1], [1,0.7,0], 'k']
+    markerList = ['o', 's', 'v', 'd', 'x', '+', 'D', '^', 'v']
+    lsList = ['solid', 'dotted', 'dashdot', 'dashdot', '-.', ':', '--', 'solid', 'dashed', 'dashdot']
     e0 = 0
     tension = np.zeros((dirList.shape[0],2))
     temp = np.zeros((dirList.shape[0],2))
@@ -1658,10 +1676,7 @@ def compareEnergyVSTimeStrain(dirName, figureName, type='nh2', dirType='ext', ve
                     mean = np.mean(energy[strain<0.01])
                     energy -= mean
                     height = data[:,-2] - boxSize[1]
-                    height = height[strain<0.4]
-                    energy = energy[strain<0.4]
                     ekin = data[:,5]
-                    ekin = ekin[strain<0.4]
                 temp[d,0] = np.mean(ekin)
                 temp[d,1] = np.std(ekin)
                 if(dirType == 'ext'):
@@ -1811,27 +1826,27 @@ def compareEnergyVSTimeStrain(dirName, figureName, type='nh2', dirType='ext', ve
         ax.set_xticklabels(labelList)
         ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
     elif(versus == 'tmax'):
-        if(type == 'nh2/T1.00/nve'):
-            np.savetxt(dirName + "/nh2/T1.00/energyTension-vstmax.dat", np.column_stack((temp, tension)))
+        if(type == 'nh2/T1.00/nve/nve'):
+            np.savetxt(dirName + "/nh2/T1.00/nve/energyTension-vstmax.dat", np.column_stack((temp, tension)))
         elif(type == 'nh2/T1.00/damping1e-01/nvt'):
             np.savetxt(dirName + "/nh2/T1.00/damping1e-01/energyTension-vstmax.dat", np.column_stack((temp, tension)))
         elif(type == 'nh2/T1.00/damping1e-15/nvt'):
-            np.savetxt(dirName + "/nh2/T1.00/damping1e-01/energyTension-vstmax.dat", np.column_stack((temp, tension)))
-        fig, ax = plt.subplots(figsize=(5.5,5), dpi = 120)
+            np.savetxt(dirName + "/nh2/T1.00/damping1e-15/energyTension-vstmax.dat", np.column_stack((temp, tension)))
+        fig, ax = plt.subplots(figsize=(4,3.5), dpi = 120)
         mean = np.mean(tension[1:,0])
         ax.errorbar(twait[tension[:,0]!=0], tension[tension[:,0]!=0,0], tension[tension[:,0]!=0,1], color='k', marker='o', markersize=10, capsize=3, lw=0.9, fillstyle='none')
         ax.plot(np.linspace(0,10,100), mean*np.ones(100), ls='dashdot', color='k', lw=1)
         ax.plot(np.linspace(0,10,100), np.zeros(100), ls='dashed', color='k', lw=0.5)
         if(compare == 'compare'):
-            data = np.loadtxt(dirName + '../../lj/0.60/nh2/T1.00/energyTension-vstmax.dat')
+            data = np.loadtxt(dirName + '../../lj/0.60/nh2/T1.00/nve/energyTension-vstmax.dat')
             print(data)
             ax.errorbar(twait[data[:,2]!=0], data[data[:,2]!=0,2], data[data[:,2]!=0,3], color='b', marker='s', markersize=10, capsize=3, lw=0.9, fillstyle='none')
         ax.set_xscale('log')
         #ax.set_ylim(-0.15, 0.95)
-        ax.set_xlim(0.082, 5.22)
+        ax.set_xlim(0.082, 5.42)
         ax.tick_params(axis='both', labelsize=14)
         ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
-        ax.set_xlabel("$Waiting$ $time,$ $t_{wait}/\\tau_i$", fontsize=16)
+        ax.set_xlabel("$t_{step}/\\tau_i$", fontsize=16)
     figure2Name = "/home/francesco/Pictures/soft/mips/tension-" + figureName
     fig.tight_layout()
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
@@ -1884,7 +1899,7 @@ def compareTension(dirName, figureName, which='damping'):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotRelaxationVSTemp(dirName, figureName, which='nve', line=5e03):
+def plotRelaxationVSTemp(dirName, figureName, line=5e03):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     dirList = np.array(['nve', 'damping1e-15/dynamics', 'damping1e-01/dynamics'])
     tempList = np.array(['0.80', '0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00', '2.10', '2.20'])
@@ -1898,6 +1913,7 @@ def plotRelaxationVSTemp(dirName, figureName, which='nve', line=5e03):
             dirSample = dirName + "T" + tempList[t] + "/" + dirList[d] + "-log/"
             if(os.path.exists(dirSample + "/energy.dat")):
                 epsilon = utils.readFromParams(dirSample, "epsilon")
+                timeUnit = np.sqrt(epsilon)
                 data = np.loadtxt(dirSample + "/energy.dat")
                 temp[t,0] = np.mean(data[:,3]/epsilon)
                 temp[t,1] = np.std(data[:,3]/epsilon)
@@ -1905,16 +1921,44 @@ def plotRelaxationVSTemp(dirName, figureName, which='nve', line=5e03):
                 if not(os.path.exists(dirSample + "/logCorr.dat")):
                     corr.computeParticleLogSelfCorr(dirSample, 0, 7, 6)
                 data = np.loadtxt(dirSample + "/logCorr.dat")
-                rel[t] = utils.getRelaxationTime(data)*dt/np.sqrt(epsilon)
+                rel[t] = utils.getRelaxationTime(data)*dt/timeUnit
         ax.plot(temp[temp[:,0]!=0,0], rel[temp[:,0]!=0], color=colorList[d], marker=markerList[d], ls=lsList[d], markersize=8, fillstyle='none', lw=1.2)
-    print(dt/np.sqrt(epsilon), epsilon, dt)
     ax.legend(("$NVE$", "$NVT,$ $\\beta/m = 10^{-8}$", "$NVT,$ $\\beta/m = 0.1$"), fontsize=12, loc='best')
-    ax.plot(np.linspace(0.3,1.2,100), np.ones(100)*line*dt/np.sqrt(epsilon), ls='dashed', color='k', lw=0.9)
+    ax.plot(np.linspace(0.3,1.2,100), np.ones(100)*line*dt/timeUnit, ls='dashed', color='k', lw=0.9)
     ax.set_xlim(0.37,1.13)
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Temperature,$ $T/ \\epsilon$", fontsize=16)
     ax.set_ylabel("$Relaxation$ $time,$ $\\tau_{rel}/ \\tau_i$", fontsize=16)
     figureName = "/home/francesco/Pictures/soft/mips/relVSTemp-" + figureName
+    plt.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotRelaxationVSDamping(dirName, figureName, line=5e03):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    dirList = np.array(['nve', 'damping1e-15', 'damping1e-01', 'damping1e01', 'damping1e03', 'damping1e05'])
+    damping = np.zeros(dirList.shape[0])
+    rel = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + "T1.00/" + dirList[d] + "/dynamics-log/"
+        if(os.path.exists(dirSample + "/energy.dat")):
+            epsilon = utils.readFromParams(dirSample, "epsilon")
+            timeUnit = np.sqrt(epsilon)
+            data = np.loadtxt(dirSample + "/energy.dat")
+            dt = utils.readFromParams(dirSample, "dt")
+            damping[d] = utils.readFromDynParams(dirSample, "damping")*timeUnit
+            print("damping:", damping[d], "T:", np.mean(data[:,3]/epsilon), np.std(data[:,3]/epsilon))
+            if not(os.path.exists(dirSample + "/logCorr.dat")):
+                corr.computeParticleLogSelfCorr(dirSample, 0, 7, 6)
+            data = np.loadtxt(dirSample + "/logCorr.dat")
+            rel[d] = utils.getRelaxationTime(data)*dt/timeUnit
+    ax.loglog(damping[damping!=0], rel[damping!=0], color='k', marker='o', markersize=8, fillstyle='none', lw=1.2)
+    ax.plot(np.linspace(0.1,1000,100), np.ones(100)*line*dt/timeUnit, ls='dashed', color='k', lw=0.9)
+    ax.set_xlim(0.42,824)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Damping,$ $\\beta \\tau_i$", fontsize=16)
+    ax.set_ylabel("$Relaxation$ $time,$ $\\tau_{rel}/ \\tau_i$", fontsize=16)
+    figureName = "/home/francesco/Pictures/soft/mips/relVSDamping-" + figureName
     plt.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -2925,11 +2969,15 @@ if __name__ == '__main__':
         which = sys.argv[4]
         compareTension(dirName, figureName, which)
 
-    elif(whichPlot == "relaxation"):
+    elif(whichPlot == "reltemp"):
         figureName = sys.argv[3]
-        which = sys.argv[4]
-        line = float(sys.argv[5])
-        plotRelaxationVSTemp(dirName, figureName, which, line)
+        line = float(sys.argv[4])
+        plotRelaxationVSTemp(dirName, figureName, line)
+
+    elif(whichPlot == "reldamping"):
+        figureName = sys.argv[3]
+        line = float(sys.argv[4])
+        plotRelaxationVSDamping(dirName, figureName, line)
 
     elif(whichPlot == "2energy"):
         figureName = sys.argv[3]

@@ -2187,9 +2187,20 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
     if(np.sum(np.isnan(data))!=0):
         print("There are NaNs in the file")
     if(reverse == 'reverse'):
-        maxStrain = (int(data.shape[0] / 2) // 20) * strainStep
-        strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
-        strain = np.concatenate((strain, np.flip(strain)[1:]))
+        maxStrain = 0.1
+        dataLength = int((data.shape[0] - 20) / 20)
+        maxLength = int(maxStrain / strainStep)
+        if(maxLength < dataLength):
+            diffLength = dataLength - maxLength
+            #print("maxLength:", maxLength, "dataLength:", dataLength, "diffLenth:", diffLength)
+            strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+            strain = np.concatenate((strain, np.flip(strain)[1:diffLength]))
+            #maxStrain = (int(data.shape[0] / 2) // 20) * strainStep
+            #strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
+            #strain = np.concatenate((strain, np.flip(strain)[1:]))
+        else:
+            maxStrain = (data.shape[0] // 20) * strainStep
+            strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
     else:
         maxStrain = (data.shape[0] // 20) * strainStep
         strain = np.arange(strainStep, maxStrain + strainStep, strainStep)
@@ -2220,7 +2231,7 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
     height -= boxSize[1]
     etot *= numParticles
     mean = np.mean(etot[strain<0.01,0])
-    if(reverse == 'reverse'):
+    if(reverse == 'reverse' and maxLength < dataLength):
         halfIndex = int(etot.shape[0] / 2)
         efront = etot[:halfIndex,0]
         hfront = height[:halfIndex]
@@ -2256,12 +2267,12 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
     else:
         failed = False
         try:
-            popt, pcov = curve_fit(lineFit, height[strain<0.4], etot[strain<0.4,0])
+            popt, pcov = curve_fit(lineFit, height[strain<0.1], etot[strain<0.1,0])
         except RuntimeError:
             print("Error - curve_fit failed")
             failed = True
         if not failed:
-            noise = np.sqrt(np.mean((lineFit(height[strain<0.4], *popt) - etot[strain<0.4,0])**2))/2
+            noise = np.sqrt(np.mean((lineFit(height[strain<0.1], *popt) - etot[strain<0.1,0])**2))/2
             offset = mean + noise
             tension[0] = popt[1]
             tension[1] = noise
