@@ -2178,12 +2178,18 @@ def computeMovingAverage(data, window=10):
     return movingAvg
 
 
-def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext', reverse=False, window=10):
-    # read initial energies
+def getTensionFromEnergyTime(dirName, which='total', strainStep=5e-06, compext='ext', reverse=False, window=10):
+    # read energy at initial unstrained configuration
     numParticles = readFromParams(dirName, 'numParticles')
+    epsilon = readFromParams(dirName, "epsilon")
+    data = np.loadtxt(dirName + "../energy.dat")
+    etot0 = np.mean(data[:,-1]/(2*epsilon))*numParticles # two interfaces in periodic boundaries
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
-    data = np.loadtxt(dirName + "/energy.dat")
     tension = np.zeros(2)
+    # read energy during deformation
+    data = np.loadtxt(dirName + "/energy.dat")
+    data[:,2:] /= epsilon
+    data[:,-1] /= 2 # two interfaces in periodic boundaries
     if(np.sum(np.isnan(data))!=0):
         print("There are NaNs in the file")
     if(reverse == 'reverse'):
@@ -2215,8 +2221,8 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
             #print(i+j, strain[i+j])
             stepEtot.append(np.mean(data[(i+j)*freq:(i+j+1)*freq,-1]))
         # two interfaces
-        etot[i,0] = np.mean(stepEtot)/4
-        etot[i,1] = np.std(stepEtot)/4
+        etot[i,0] = np.mean(stepEtot)
+        etot[i,1] = np.std(stepEtot)
     strain = strain[etot[:,0]!=0]
     etot = etot[etot[:,0]!=0]
     etot = np.column_stack((computeMovingAverage(etot[:,0], window), computeMovingAverage(etot[:,1], window)))
@@ -2230,12 +2236,10 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
         width = (1 + strain)*boxSize[0]
     height -= boxSize[1]
     etot *= numParticles
-    mean = np.mean(etot[strain<0.01,0])
     if(reverse == 'reverse' and maxLength < dataLength):
         halfIndex = int(etot.shape[0] / 2)
         efront = etot[:halfIndex,0]
         hfront = height[:halfIndex]
-        #mean = np.mean(efront[hfront<0.01,0])
         failed = False
         try:
             popt, pcov = curve_fit(lineFit, hfront, efront)
@@ -2249,7 +2253,6 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
             erfront = np.sqrt(np.diag(pcov)[1])
         eback = etot[halfIndex:,0]
         hback = height[halfIndex:]
-        #mean = np.mean(eback[hback<0.01,0])
         failed = False
         try:
             popt, pcov = curve_fit(lineFit, hback, eback)
@@ -2273,10 +2276,70 @@ def getTensionFromEnergy(dirName, which='total', strainStep=5e-06, compext='ext'
             failed = True
         if not failed:
             noise = np.sqrt(np.mean((lineFit(height[strain<0.1], *popt) - etot[strain<0.1,0])**2))/2
-            offset = mean + noise
             tension[0] = popt[1]
             tension[1] = noise
     return tension
+
+def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='dynamics', window=3, upto=0):
+    # read energy at initial unstrained configuration
+    numParticles = readFromParams(dirName, 'numParticles')
+    epsilon = readFromParams(dirName, "epsilon")
+    data = np.loadtxt(dirName + "../energy.dat")
+    etot0 = np.mean(data[:,-1]/(2*epsilon))*numParticles # two interfaces in periodic boundaries
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    tension = np.zeros(2)
+    temp = np.zeros(2)
+    if(np.sum(np.isnan(data))!=0):
+        print("There are NaNs in the file")
+    # read energy for strained configurations
+    dirList, strain = getOrderedStrainDirectories(dirName)
+    etot = np.zeros((strain.shape[0],2))
+    ekin = np.empty(0)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d] + os.sep + dirType
+        if(os.path.exists(dirSample)):
+            epsilon = readFromParams(dirSample, "epsilon")
+            data = np.loadtxt(dirSample + "/energy.dat")
+            if(upto != 0):
+                data = data[:upto:,:]
+            data[:,2:] /= epsilon
+            data[:,-1] /= 2 # two interfaces in periodic boundaries
+            etot[d,0] = np.mean(data[:,-1])
+            etot[d,1] = np.std(data[:,-1])
+            ekin = np.concatenate((ekin, data[:,3]))
+    strain = strain[etot[:,0]!=0]
+    etot = etot[etot[:,0]!=0]
+    etot = np.column_stack((computeMovingAverage(etot[:,0], window), computeMovingAverage(etot[:,1], window)))
+    temp[0] = np.mean(ekin)
+    temp[1] = np.std(ekin)
+    otherStrain = -strain/(1 + strain)
+    if(compext == 'ext'):
+        height = (1 + strain)*boxSize[1]
+        width = (1 + otherStrain)*boxSize[0]
+    elif(compext == 'comp'):
+        height = (1 + otherStrain)*boxSize[1]
+        width = (1 + strain)*boxSize[0]
+    height -= boxSize[1]
+    etot *= numParticles
+    #sigma = np.std(etot[:,0]-etot0) # this is for unary systems where the energy does not depend on box ratio
+    failed = False
+    try:
+        x = height[strain>0.04]
+        y = etot[strain>0.04,0]
+        strain = strain[strain>0.04]
+        x = x[strain<0.26]
+        y = y[strain<0.26]
+        popt, pcov = curve_fit(lineFit, x, y)
+        #popt, pcov = curve_fit(lineFit, x, y, sigma=np.full_like(x, sigma))
+    except RuntimeError:
+        print("Error - curve_fit failed")
+        failed = True
+    if not failed:
+        noise = np.sqrt(np.mean((lineFit(x, *popt) - y)**2))/2
+        tension[0] = popt[1]
+        tension[1] = noise
+    return tension, temp
+    
 
 
 if __name__ == '__main__':
