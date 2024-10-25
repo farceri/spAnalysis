@@ -431,7 +431,6 @@ def getHeightCorr(height, maxCorrIndex):
                 counts[j] += 1
     return np.divide(corr, counts)
 
-
 ############################## Fourier Analysis ################################
 def getStructureFactor(pos, q, numParticles):
     sfList = np.zeros(q.shape[0])
@@ -1204,6 +1203,19 @@ def getOrderedStrainDirectories(dirName):
         if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('strain'))
+    listScalar = np.array(listScalar, dtype=np.float64)
+    listDir = np.array(listDir)
+    listDir = listDir[np.argsort(listScalar)]
+    listScalar = np.sort(listScalar)
+    return listDir, listScalar
+
+def getOrderedPhiDirectories(dirName):
+    listDir = []
+    listScalar = []
+    for dir in os.listdir(dirName):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "initial")):
+            listDir.append(dir)
+            listScalar.append(float(dir))
     listScalar = np.array(listScalar, dtype=np.float64)
     listDir = np.array(listDir)
     listDir = listDir[np.argsort(listScalar)]
@@ -2228,10 +2240,10 @@ def getTensionFromEnergyTime(dirName, which='total', strainStep=5e-06, compext='
     etot = np.column_stack((computeMovingAverage(etot[:,0], window), computeMovingAverage(etot[:,1], window)))
     strain = computeMovingAverage(strain, window)
     otherStrain = -strain/(1 + strain)
-    if(compext == 'ext'):
+    if(compext == 'ext' or compext == 'ext-rev'):
         height = (1 + strain)*boxSize[1]
         width = (1 + otherStrain)*boxSize[0]
-    elif(compext == 'comp'):
+    elif(compext == 'comp' or compext == 'comp-rev'):
         height = (1 + otherStrain)*boxSize[1]
         width = (1 + strain)*boxSize[0]
     height -= boxSize[1]
@@ -2270,17 +2282,17 @@ def getTensionFromEnergyTime(dirName, which='total', strainStep=5e-06, compext='
     else:
         failed = False
         try:
-            popt, pcov = curve_fit(lineFit, height[strain<0.1], etot[strain<0.1,0])
+            popt, pcov = curve_fit(lineFit, height[strain<0.2], etot[strain<0.2,0])
         except RuntimeError:
             print("Error - curve_fit failed")
             failed = True
         if not failed:
-            noise = np.sqrt(np.mean((lineFit(height[strain<0.1], *popt) - etot[strain<0.1,0])**2))/2
+            noise = np.sqrt(np.mean((lineFit(height[strain<0.2], *popt) - etot[strain<0.2,0])**2))/2
             tension[0] = popt[1]
             tension[1] = noise
     return tension
 
-def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='dynamics', window=3, upto=0):
+def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='dynamics', window=3, upto=10):
     # read energy at initial unstrained configuration
     numParticles = readFromParams(dirName, 'numParticles')
     epsilon = readFromParams(dirName, "epsilon")
@@ -2301,7 +2313,7 @@ def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='d
             epsilon = readFromParams(dirSample, "epsilon")
             data = np.loadtxt(dirSample + "/energy.dat")
             if(upto != 0):
-                data = data[:upto:,:]
+                data = data[::upto,:]
             data[:,2:] /= epsilon
             data[:,-1] /= 2 # two interfaces in periodic boundaries
             etot[d,0] = np.mean(data[:,-1])
@@ -2313,10 +2325,10 @@ def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='d
     temp[0] = np.mean(ekin)
     temp[1] = np.std(ekin)
     otherStrain = -strain/(1 + strain)
-    if(compext == 'ext'):
+    if(compext == 'ext' or compext == 'ext-rev'):
         height = (1 + strain)*boxSize[1]
         width = (1 + otherStrain)*boxSize[0]
-    elif(compext == 'comp'):
+    elif(compext == 'comp' or compext == 'comp-ext'):
         height = (1 + otherStrain)*boxSize[1]
         width = (1 + strain)*boxSize[0]
     height -= boxSize[1]
@@ -2324,9 +2336,9 @@ def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='d
     #sigma = np.std(etot[:,0]-etot0) # this is for unary systems where the energy does not depend on box ratio
     failed = False
     try:
-        x = height[strain>0.04]
-        y = etot[strain>0.04,0]
-        strain = strain[strain>0.04]
+        x = height[strain>0.02]
+        y = etot[strain>0.02,0]
+        strain = strain[strain>0.02]
         x = x[strain<0.26]
         y = y[strain<0.26]
         popt, pcov = curve_fit(lineFit, x, y)
@@ -2339,8 +2351,32 @@ def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='d
         tension[0] = popt[1]
         tension[1] = noise
     return tension, temp
-    
 
+########################### Circular packing tools #############################
+def cartesianToPolar(pos):
+    polarPos = np.zeros((pos.shape[0],2))
+    polarPos[:,0] = np.sqrt(pos[:,0] * pos[:,0] + pos[:,1] * pos[:,1])
+    polarPos[:,1] = np.arctan2(pos[:,1], pos[:,0])
+    return polarPos
+
+def calcTangentialVelocity(pos, vel):
+    # compute tangential components of velocity for positions in a circle with center in the origin
+    angle = np.arctan2(pos[:,1], pos[:,0])
+    vDotn = vel[:,0] * np.cos(angle) + vel[:,1] * np.sin(angle)
+    velnorm = np.column_stack([vDotn * np.cos(angle), vDotn * np.sin(angle)])
+    veltang = vel - velnorm
+    return veltang, angle
+
+def checkParticlesInCircle(pos, boxSize):
+    # check that particles are inside the circle
+    polarPos = cartesianToPolar(pos)
+    outSide = polarPos[polarPos[:,0]>boxSize].shape[0]
+    if(outSide > 0):
+        for i in range(polarPos.shape[0]):
+            if(polarPos[i,0] > boxSize):
+                print("Particle", i, "is outside of the circle with radius", boxSize[0], "radial distance", polarPos[i,0], polarPos[i,0] - boxSize[0])
+    return np.argwhere(polarPos[:,0]>boxSize)[:,0]
+    
 
 if __name__ == '__main__':
     print("library for correlation function utilities")

@@ -1968,8 +1968,9 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
 ####################### Average cluster height interface #######################
 def getInterfaceLength(dirName, threshold=0.62, spacing=2, window=3, plot=False, lj=True):
     spacingName = str(spacing)
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     if lj:
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
@@ -2030,8 +2031,10 @@ def getInterfaceLength(dirName, threshold=0.62, spacing=2, window=3, plot=False,
 ####################### Average cluster height interface #######################
 def getInterfaceLengthFromBorder(dirName, threshold=0.62, spacing=2, window=3, plot=False, lj=True):
     spacingName = str(spacing)
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    print(spacingName)
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
     if lj:
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
@@ -2039,7 +2042,6 @@ def getInterfaceLengthFromBorder(dirName, threshold=0.62, spacing=2, window=3, p
     spacing *= sigma
     thickness = 3
     bins = np.arange(0, boxSize[1], spacing)
-    edges = (bins[1:] + bins[:-1]) * 0.5
     rightInterface = np.zeros(bins.shape[0]-1)
     leftInterface = np.zeros(bins.shape[0]-1)
     rightError = np.zeros(bins.shape[0]-1)
@@ -2048,7 +2050,7 @@ def getInterfaceLengthFromBorder(dirName, threshold=0.62, spacing=2, window=3, p
     pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
     # load simplices
     labels, maxLabel = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold)
-    pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+    #pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
     #pos = utils.centerCOM(pos, rad, boxSize)
     particleList = np.loadtxt(dirName + os.sep + "particleList.dat")
     borderList = particleList[:,1]
@@ -2113,6 +2115,9 @@ def getInterfaceLengthFromBorder(dirName, threshold=0.62, spacing=2, window=3, p
     if(plot == "plot"):
         uplot.plotCorrelation(leftPos[:,0], leftPos[:,1], "$y$", xlabel = "$x$", color='b')
         uplot.plotCorrelation(rightPos[:,0], rightPos[:,1], "$y$", xlabel = "$x$", color='g')
+        plt.gcf().set_size_inches(7.7, 3)
+        plt.xlim(-10, boxSize[0]+10)
+        plt.tight_layout()
         plt.pause(0.5)
         #plt.show()
 

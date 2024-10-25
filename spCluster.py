@@ -907,7 +907,8 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=Fa
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        rad = np.loadtxt(dirSample + "/particleRad.dat")
+        sep = utils.getDirSep(dirSample, "particleRad")
+        rad = np.loadtxt(dirSample + sep + "particleRad.dat")
         pos = utils.centerCOM(pos, rad, boxSize)
         labels, maxLabel = getWrappedClusterLabels(pos, rad, boxSize, denseList, eps)
         np.savetxt(dirSample + os.sep + "clusterLabels.dat", labels)
@@ -919,7 +920,8 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=Fa
         if not(os.path.exists(dirSample + os.sep + "clusterLabels.dat")):
             # compute simplex positions for clustering algorithm
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-            rad = np.loadtxt(dirSample + "/particleRad.dat")
+            sep = utils.getDirSep(dirSample, "particleRad")
+            rad = np.loadtxt(dirSample + sep + "particleRad.dat")
             pos = utils.centerCOM(pos, rad, boxSize)
             labels, maxLabel = getWrappedClusterLabels(pos, rad, boxSize, denseList, eps)
             #labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
@@ -928,7 +930,8 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=Fa
             #labels = allLabels.astype(np.int64)
             np.savetxt(dirSample + os.sep + "clusterLabels.dat", labels)
         labels = np.loadtxt(dirSample + os.sep + "clusterLabels.dat")
-        rad = np.loadtxt(dirSample + "/particleRad.dat")
+        sep = utils.getDirSep(dirSample, "particleRad")
+        rad = np.loadtxt(dirSample + sep + "particleRad.dat")
         maxLabel = utils.findLargestParticleCluster(rad, labels)
     return labels, maxLabel
 
