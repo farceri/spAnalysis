@@ -1390,7 +1390,6 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
         height -= boxSize[1]
         etot *= numParticles
         if(which=='eab'):
-            eAB *= numParticles
             offset = eAB[0,0]
         else:
             offset = etot[0,0]
