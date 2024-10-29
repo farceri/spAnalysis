@@ -2292,12 +2292,11 @@ def getTensionFromEnergyTime(dirName, which='total', strainStep=5e-06, compext='
             tension[1] = noise
     return tension
 
-def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='dynamics', window=3, upto=10):
+def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='dynamics', window=3, every=0):
     # read energy at initial unstrained configuration
     numParticles = readFromParams(dirName, 'numParticles')
     epsilon = readFromParams(dirName, "epsilon")
     data = np.loadtxt(dirName + "../energy.dat")
-    etot0 = np.mean(data[:,-1]/(2*epsilon))*numParticles # two interfaces in periodic boundaries
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     tension = np.zeros(2)
     temp = np.zeros(2)
@@ -2312,8 +2311,8 @@ def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='d
         if(os.path.exists(dirSample)):
             epsilon = readFromParams(dirSample, "epsilon")
             data = np.loadtxt(dirSample + "/energy.dat")
-            if(upto != 0):
-                data = data[::upto,:]
+            if(every != 0):
+                data = data[::every,:]
             data[:,2:] /= epsilon
             data[:,-1] /= 2 # two interfaces in periodic boundaries
             etot[d,0] = np.mean(data[:,-1])
@@ -2327,10 +2326,8 @@ def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='d
     otherStrain = -strain/(1 + strain)
     if(compext == 'ext' or compext == 'ext-rev'):
         height = (1 + strain)*boxSize[1]
-        width = (1 + otherStrain)*boxSize[0]
     elif(compext == 'comp' or compext == 'comp-ext'):
         height = (1 + otherStrain)*boxSize[1]
-        width = (1 + strain)*boxSize[0]
     height -= boxSize[1]
     etot *= numParticles
     #sigma = np.std(etot[:,0]-etot0) # this is for unary systems where the energy does not depend on box ratio

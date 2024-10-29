@@ -1336,7 +1336,7 @@ def plotSPEnergyVSLength(dirName, figureName, which=2.0, freq=10, window=3, plot
         #plt.pause(1)
         plt.show()
 
-def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='dynamics', window=3, upto=10, plot=True):
+def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='dynamics', window=3, every=0, plot=True):
     # read energy at initial unstrained configuration
     numParticles = utils.readFromParams(dirName, 'numParticles')
     epsilon = utils.readFromParams(dirName, "epsilon")
@@ -1354,8 +1354,8 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
         if(os.path.exists(dirSample)):
             epsilon = utils.readFromParams(dirSample, "epsilon")
             data = np.loadtxt(dirSample + "/energy.dat")
-            if(upto != 0):
-                data = data[::upto,:]
+            if(every != 0):
+                data = data[::every,:]
             data[:,2:] /= epsilon
             data[:,-1] /= 2 # two interfaces in periodic boundaries
             etot[d,0] = np.mean(data[:,-1])
@@ -1364,8 +1364,9 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
             epot[d,1] = np.std(data[:,2])/np.sqrt(data.shape[0])
             ekin[d,0] = np.mean(data[:,3])
             ekin[d,1] = np.std(data[:,3])/np.sqrt(data.shape[0])
-            eAB[d,0] = np.mean(data[:,-2] + data[:,-3])
-            eAB[d,1] = np.std(data[:,-2] + data[:,-3])/np.sqrt(data.shape[0])
+            eab = (data[:,-3] + data[:,-2])/2 # two interfaces in periodic boundaries
+            eAB[d,0] = np.mean(eab)
+            eAB[d,1] = np.std(eab)/np.sqrt(data.shape[0])
     strain = strain[etot[:,0]!=0]
     epot = epot[etot[:,0]!=0]
     ekin = ekin[etot[:,0]!=0]
@@ -1383,7 +1384,7 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
     elif(compext == 'comp'):
         height = (1 + otherStrain)*boxSize[1]
         width = (1 + strain)*boxSize[0]
-    np.savetxt(dirName + "/energyStrain-active.dat", np.column_stack((strain, etot, epot, ekin, height, width)))
+    np.savetxt(dirName + "/energyStrain-" + dirType + ".dat", np.column_stack((strain, etot, epot, ekin, height, width)))
     if(plot == True):
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
         height -= boxSize[1]
@@ -1607,14 +1608,14 @@ def plotSPStrainEnergyVSTime(dirName, figureName, which='total', strainStep=5e-0
         plt.show()
         #plt.pause(1)
 
-def compareEnergyVSTimeStrain(dirName, figureName, dirType='nve', compext='ext', versus='temp', which='time', window=10, compare=False):
+def compareEnergyVSTimeStrain(dirName, figureName, dirType='nve', compext='ext', versus='temp', which='time', window=10, every=10, compare=False):
     if(versus == 'temp'):
         fig, ax = plt.subplots(figsize=(8,5), dpi = 120)
         bigFig, bigAx = plt.subplots(2, 1, figsize=(9,12), dpi = 120)
     elif(versus == 'monodia'):
         fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
     elif(versus == 'damping'):
-        fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+        fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
     else:
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(versus == 'strain'):
@@ -1629,12 +1630,12 @@ def compareEnergyVSTimeStrain(dirName, figureName, dirType='nve', compext='ext',
         strainList = np.ones(dirList.shape[0])*5e-06
         twait = dirList.astype(float)*2e-04/np.sqrt(2)
     elif(versus == 'damping'):
-        #dirList = np.array(['damping1e-15', 'damping1e-12', 'damping1e-10', 'damping1e-08', 'damping1e-05', 'damping1e-03', 'damping1e-01', 'damping1e01'])
-        #labelList = np.array(['1e-08', '1e-06', '1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1e01'])
-        #damping = np.array([1e-15, 1e-12, 1e-10, 1e-08, 1e-05, 1e-03, 1e-01, 1e01])
-        dirList = np.array(['damping1e-12', 'damping1e-08', 'damping1e-03', 'damping1e01'])
-        labelList = np.array(['1e-06', '1e-04', '1e-02', '1e01'])
-        damping = np.array([1e-12, 1e-08, 1e-03, 1e01])
+        dirList = np.array(['damping1e-15', 'damping1e-12', 'damping1e-10', 'damping1e-08', 'damping1e-05', 'damping1e-03', 'damping1e-01', 'damping1e01'])
+        labelList = np.array(['1e-08', '1e-06', '1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1e01'])
+        damping = np.array([1e-15, 1e-12, 1e-10, 1e-08, 1e-05, 1e-03, 1e-01, 1e01])
+        #dirList = np.array(['damping1e-12', 'damping1e-08', 'damping1e-03', 'damping1e01'])
+        #labelList = np.array(['1e-06', '1e-04', '1e-02', '1e01'])
+        #damping = np.array([1e-12, 1e-08, 1e-03, 1e01])
         strainList = np.ones(dirList.shape[0])*5e-06
     elif(versus == 'phi'):
         dirList = np.array(['0.56', '0.57', '0.58', '0.59', '0.60', '0.61', '0.62', '0.63', '0.64'])
@@ -1747,20 +1748,20 @@ def compareEnergyVSTimeStrain(dirName, figureName, dirType='nve', compext='ext',
             else:
                 if(versus == 'temp'):
                     if not(os.path.exists(dirSample + "/energyStrain-" + dirType + ".dat")):
-                        plotSPEnergyVSStrain(dirSample, 'test', 'total', compext, dirType, window, 0, plot=False)
+                        plotSPEnergyVSStrain(dirSample, 'test', 'total', compext, dirType, window, every, plot=False)
                     data = np.loadtxt(dirSample + "/energyStrain-" + dirType + ".dat")
                     energy = data[:,1:3]*numParticles
                     ax.errorbar(data[:,-2]-boxSize[1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
                     bigAx[0].errorbar(data[:,-2]-boxSize[1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
-                    tension[d], temp[d] = utils.getTensionFromEnergyStrain(dirSample, 'total', compext, dirType, window)
+                    tension[d], temp[d] = utils.getTensionFromEnergyStrain(dirSample, 'total', compext, dirType, window, every)
                     print("tension from fit:", tension[d], "temp:", 2*temp[d])
                 elif(versus == 'damping'):
                     if not(os.path.exists(dirSample + "/energyStrain-" + dirList[d] + ".dat")):
-                        plotSPEnergyVSStrain(dirSample, 'test', 'total', compext, dirList[d], window, 0, plot=False)
+                        plotSPEnergyVSStrain(dirSample, 'test', 'total', compext, dirList[d], window, every, plot=False)
                     data = np.loadtxt(dirSample + "/energyStrain-" + dirList[d] + ".dat")
                     energy = data[:,1:3]*numParticles
                     ax.errorbar(data[:,-2]-boxSize[1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$\\beta=$" + labelList[d])
-                    tension[d], temp[d] = utils.getTensionFromEnergyStrain(dirSample, 'total', compext, dirList[d], window)
+                    tension[d], temp[d] = utils.getTensionFromEnergyStrain(dirSample, 'total', compext, dirList[d], window, every)
                     print("tension from fit:", tension[d], "temp:", 2*temp[d])
     if(versus == 'temp'):
         colorBar = cm.ScalarMappable(cmap=colorList)
@@ -1828,7 +1829,7 @@ def compareEnergyVSTimeStrain(dirName, figureName, dirType='nve', compext='ext',
         ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
     elif(versus == 'damping'):
         print("average tension over damping:", np.mean(tension[:,0]), "+-", np.sqrt(np.sum(tension[:,1]**2)))
-        fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+        fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
         damping = damping[tension[:,0]!=0]
         tension = tension[tension[:,0]!=0]
         ax.errorbar(np.sqrt(damping), tension[:,0], tension[:,1], color='k', marker='o', lw=0.9, markersize=8, capsize=3, fillstyle='none')
@@ -3064,7 +3065,7 @@ if __name__ == '__main__':
         compare = sys.argv[7]
         compareForceVSTimeStrain(dirName, figureName, compext, which, method, compare)
 
-    elif(whichPlot == "energytime"):
+    elif(whichPlot == "energy"):
         figureName = sys.argv[3]
         freq = int(sys.argv[4])
         window = int(sys.argv[5])
@@ -3083,8 +3084,8 @@ if __name__ == '__main__':
         compext = sys.argv[5]
         dirType = sys.argv[6]
         window = int(sys.argv[7])
-        upto = int(sys.argv[8])
-        plotSPEnergyVSStrain(dirName, figureName, which, compext, dirType, window, upto, plot=True)
+        every = int(sys.argv[8])
+        plotSPEnergyVSStrain(dirName, figureName, which, compext, dirType, window, every, plot=True)
 
     elif(whichPlot == "energytime"):
         figureName = sys.argv[3]
@@ -3102,8 +3103,9 @@ if __name__ == '__main__':
         versus = sys.argv[6]
         which = sys.argv[7]
         window = int(sys.argv[8])
-        compare = sys.argv[9]
-        compareEnergyVSTimeStrain(dirName, figureName, type, dirType, versus, which, window, compare)
+        every = int(sys.argv[9])
+        compare = sys.argv[10]
+        compareEnergyVSTimeStrain(dirName, figureName, type, dirType, versus, which, window, every, compare)
 
     elif(whichPlot == "tensioncompare"):
         figureName = sys.argv[3]
