@@ -5,7 +5,6 @@ Created by Francesco
 #functions and script to compute cluster correlations
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.fftpack import irfft, rfft, rfftfreq, fft, fftfreq
 import sys
 import os
 import time
@@ -1897,7 +1896,7 @@ def average2FluidsVelPDF(dirName, num1=0, plot=False, dirSpacing=1000000):
         #plt.pause(0.5)
         plt.show()
 
-####################### Average cluster height interface #######################
+####################### Average interface fluctuations in binary mixture #######################
 def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirSpacing=1):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
@@ -1906,11 +1905,10 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     sigma = 2 * np.mean(rad)
-    spacing = 2 * sigma
+    spacing = 3 * sigma
     bins = np.arange(0, boxSize[1], spacing)
-    centers = (bins[1:] + bins[:-1])/2
-    #freq = rfftfreq(bins.shape[0]-1, spacing)
-    freq = np.arange(1,centers.shape[0]+1,1)/(centers.shape[0] / spacing)
+    centers = (bins[1:] + bins[:-1]) * 0.5
+    freq = np.fft.rfftfreq(bins.shape[0]-1, spacing)
     leftDeltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
     leftFourierDeltaHeight = np.zeros((dirList.shape[0], freq.shape[0]))
     rightDeltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
@@ -1922,7 +1920,7 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
         pos = utils.centerCOM1(pos, rad, boxSize, num1)
         leftHeight = np.zeros(bins.shape[0]-1)
         rightHeight = np.zeros(bins.shape[0]-1)
-        clusterPos = pos[:num1]
+        clusterPos = pos[:num1] #select particles of type A
         for j in range(bins.shape[0]-1): # find particle positions in a bin
             downMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
             binPos = clusterPos[downMask]
@@ -1940,14 +1938,12 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
         if(leftHeight[leftHeight!=0].shape[0] == leftHeight.shape[0]):
             leftHeight -= np.mean(leftHeight)
             leftDeltaHeight[d] = np.abs(leftHeight)**2
-            leftFourierDeltaHeight[d] = np.abs(rfft(leftHeight))**2
+            leftFourierDeltaHeight[d] = np.abs(np.fft.rfft(leftHeight))**2
         if(rightHeight[rightHeight!=0].shape[0] == rightHeight.shape[0]):
             rightHeight -= np.mean(rightHeight)
             rightDeltaHeight[d] = np.abs(rightHeight)**2
-            rightFourierDeltaHeight[d] = np.abs(rfft(rightHeight))**2
-    print(leftDeltaHeight.shape, leftDeltaHeight[leftDeltaHeight[:,0]!=0].shape)
-    print(rightDeltaHeight.shape, rightDeltaHeight[rightDeltaHeight[:,0]!=0].shape)
-    
+            rightFourierDeltaHeight[d] = np.abs(np.fft.rfft(rightHeight))**2
+
     leftDeltaHeight = np.column_stack((np.mean(leftDeltaHeight, axis=0), np.std(leftDeltaHeight, axis=0)))
     rightDeltaHeight = np.column_stack((np.mean(rightDeltaHeight, axis=0), np.std(rightDeltaHeight, axis=0)))
     leftFourierDeltaHeight = np.column_stack((np.mean(leftFourierDeltaHeight, axis=0), np.std(leftFourierDeltaHeight, axis=0)))
@@ -1955,11 +1951,11 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
     fourierDeltaHeight = np.zeros(leftFourierDeltaHeight.shape)
     fourierDeltaHeight[:,0] = np.mean(np.column_stack((leftFourierDeltaHeight[:,0],rightFourierDeltaHeight[:,0])), axis=1)
     fourierDeltaHeight[:,1] = np.sqrt(np.mean(np.column_stack((leftFourierDeltaHeight[:,1]**2,rightFourierDeltaHeight[:,1]**2)), axis=1))
-    np.savetxt(dirName + os.sep + "heightFluctuations.dat", np.column_stack((centers, leftDeltaHeight, rightDeltaHeight, freq, fourierDeltaHeight)))
+    
+    np.savetxt(dirName + os.sep + "fourierFluctuations.dat", np.column_stack((freq, fourierDeltaHeight)))
+    np.savetxt(dirName + os.sep + "interfaceFluctuations.dat", np.column_stack((centers, leftDeltaHeight, rightDeltaHeight)))
     if(plot=='plot'):
-        uplot.plotCorrWithError(freq[2:], fourierDeltaHeight[2:,0], fourierDeltaHeight[2:,1], "$Height$ $fluctuation$", xlabel = "$Wave$ $vector$ $magnitude,$ $q$", color='k', logx=True, logy=True)
-        #uplot.plotCorrWithError(freq[2:], leftFourierDeltaHeight[2:,0], leftFourierDeltaHeight[2:,1], "$Height$ $fluctuation$", xlabel = "$Wave$ $vector$ $magnitude,$ $q$", color='b', logx=True, logy=True)
-        #uplot.plotCorrWithError(freq[2:], rightFourierDeltaHeight[2:,0], rightFourierDeltaHeight[2:,1], "$Height$ $fluctuation$", xlabel = "$Wave$ $vector$ $magnitude,$ $q$", color='g', logx=True, logy=True)
+        uplot.plotCorrWithError(freq[1:], fourierDeltaHeight[1:,0], fourierDeltaHeight[1:,1], "$Height$ $fluctuation$", xlabel = "$Wave$ $vector$ $magnitude,$ $q$", color='k', logx=True, logy=True)
         #uplot.plotCorrWithError(centers, leftDeltaHeight[:,0], leftDeltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
         #uplot.plotCorrWithError(centers, rightDeltaHeight[:,0], rightDeltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='g')
         #plt.pause(0.5)

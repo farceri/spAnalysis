@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import axes3d, Axes3D
 from matplotlib import animation
 from matplotlib import cm
+import matplotlib.colors as mcolors
 from sklearn.cluster import KMeans
 from sklearn.cluster import DBSCAN
 from scipy.spatial import Voronoi, voronoi_plot_2d, Delaunay
@@ -123,6 +124,15 @@ def setBigBoxAxes(boxSize, ax, delta=1.1):
     setAxes2D(ax)
 
 def getRadColorList(rad):
+    colorList = cm.get_cmap('viridis', rad.shape[0])
+    colorId = np.zeros((rad.shape[0], 4))
+    count = 0
+    for particleId in np.argsort(rad):
+        colorId[particleId] = colorList(count/rad.shape[0])
+        count += 1
+    return colorId
+
+def getAngleColorList(rad):
     colorList = cm.get_cmap('viridis', rad.shape[0])
     colorId = np.zeros((rad.shape[0], 4))
     count = 0
@@ -667,7 +677,21 @@ def plotSoftParticles(ax, pos, rad, colorMap = True, alpha = 0.6, lw = 0.3):
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
 
-def plotSoftParticlesSubSet(ax, pos, rad, maxIndex, alpha = 0.6, lw = 0.3):
+def plotSoftParticlesWithAngles(axFrame, pos, vel, rad, colorMap, alpha = 0.6, lw = 0.3):
+    angle = utils.getVelocityAngles(vel)
+    angle = (angle + np.pi) % (2*np.pi)
+    # Create color array based on normalized angles
+    colorId = colorMap(angle / (2*np.pi))
+    for particleId in range(pos.shape[0]):
+        x = pos[particleId,0]
+        y = pos[particleId,1]
+        r = rad[particleId]
+        vx = vel[particleId,0]
+        vy = vel[particleId,1]
+        axFrame.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=120, headlength=5, headaxislength=5, headwidth=5, alpha=0.4)#width=0.003, scale=1, headwidth=5)
+        axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
+
+def plotSoftParticlesSubSet(axFrame, pos, rad, maxIndex, alpha = 0.6, lw = 0.3):
     colorId = np.zeros((rad.shape[0], 4))
     colorList = cm.get_cmap('viridis', rad.shape[0])
     count = 0
@@ -678,9 +702,9 @@ def plotSoftParticlesSubSet(ax, pos, rad, maxIndex, alpha = 0.6, lw = 0.3):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
+        axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
         if(particleId < maxIndex):
-            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=lw))
+            axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=lw))
 
 def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList = np.array([]), alpha = 0.6, lw = 0.3):
     colorId = np.zeros((rad.shape[0], 4))
@@ -710,7 +734,7 @@ def plotSoftParticleQuiverVel(axFrame, pos, vel, rad, tagList = np.array([]), al
             vx = vel[particleId,0]
             vy = vel[particleId,1]
             axFrame.add_artist(plt.Circle([x, y], r, edgecolor=colorId[particleId], facecolor='none', alpha=alpha, linewidth=lw))
-            axFrame.quiver(x, y, vx, vy, facecolor=[0.2,0.4,1], edgecolor='k', linewidth=0.2, width=0.0012, scale=80, headlength=5, headaxislength=5, headwidth=5, alpha=0.6)#width=0.003, scale=1, headwidth=5)
+            axFrame.quiver(x, y, vx, vy, facecolor=[0.2,0.4,1], edgecolor='k', linewidth=0.1, width=0.001, scale=80, headlength=4, headaxislength=4, headwidth=4, alpha=0.6)#width=0.003, scale=1, headwidth=5)
 
 def plotSoftParticleCircleTangentVel(axFrame, pos, vel, rad, tagList = np.array([]), alpha = 0.6, lw = 0.3):
     colorId = np.zeros((rad.shape[0], 4))
@@ -874,7 +898,8 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
         anim = animation.FuncAnimation(fig, animate, frames=numFrames+1, interval=frameTime, blit=False)
     anim.save('/home/francesco/Pictures/soft/packings/clustermix-' + figureName + '.gif', writer='imagemagick', dpi=plt.gcf().dpi)
 
-def makeSoftParticleFrame(ax, dirName, rad, boxSize, quiver=False, veltang=False, dense=False, perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0):
+def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, quiver=False, veltang=False, dense=False, 
+                          perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0, colorMap=None):
     if boxSize.shape[0] == 1:
         pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
     else:
@@ -884,6 +909,10 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, quiver=False, veltang=False
         plotSoftParticleDouble(ax, pos, rad, num1, tag=False)
     else:
         plotSoftParticles(ax, pos, rad)
+
+    if angle:
+        vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
+        plotSoftParticlesWithAngles(ax, pos, vel, rad, colorMap)
 
     if quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
@@ -913,8 +942,31 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, quiver=False, veltang=False
         stress = np.loadtxt(dirName + os.sep + 'particleStress.dat')
         plotSoftParticleShearStressMap(ax, pos, stress, rad, potential)
 
-def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=1e04, logSpaced=False, fixed=False, quiver=False, 
-                       veltang=False, dense=False, perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0, lj=False):
+def makeCircularColorBar(ax_cb, color_map):
+    # Create an array of angles (theta) and radial distances (r) for the circular colorbar
+    theta = np.linspace(0, 2*np.pi, 100)
+
+    # Create a meshgrid for colors, where the color values are determined by theta
+    theta_grid, r_grid = np.meshgrid(theta, [0,1])
+
+    # Plot the circular colorbar using grid
+    ax_cb.grid(False)
+    c = ax_cb.pcolormesh(theta_grid, r_grid, theta_grid, cmap=color_map, shading='auto')
+
+    # Remove radial ticks and labels
+    ax_cb.set_yticklabels([])
+
+    # Set the angular ticks and labels
+    ax_cb.set_xticks([0, np.pi])
+    ax_cb.set_xticklabels(['0', r'$\pi$'], fontsize=9)
+
+    # Set aspect ratio to be equal for a circular look
+    ax_cb.set_aspect(1)
+    # Return the colorbar object if you want to modify or access it later
+    return c
+
+def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=1e04, logSpaced=False, fixed=False, angle=False, quiver=False,
+                       veltang=False, dense=False, perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0, lj=False, colorMap=None):
     def animate(i):
         ax.clear()  # Clear the previous frame
         if boxSize.shape[0] == 1:
@@ -926,11 +978,11 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
         else:
             setPackingAxes(boxSize, ax)
         dirSample = dirName + os.sep + 't' + str(stepList[i])
-        makeSoftParticleFrame(ax, dirSample, rad, boxSize, quiver, veltang, dense, perturb, pmap, potential, lcut, double, num1)
+        makeSoftParticleFrame(ax, dirSample, rad, boxSize, angle, quiver, veltang, dense, perturb, pmap, potential, lcut, double, num1, colorMap)
         plt.tight_layout()
         return ax.artists
     
-    frameTime = 350
+    frameTime = 120
     if(logSpaced == False):
         stepList = utils.getStepList(numFrames, firstStep, stepFreq)
     else:
@@ -948,10 +1000,16 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
 
     # Initialize figure and axis
     fig, ax = plt.subplots(dpi=200)
-    if fixed != 'fixed':
-        fig.patch.set_facecolor('white')
-        for spine in ax.spines.values():
-            spine.set_visible(False)
+    # Set background to transparent
+    fig.patch.set_facecolor('white')
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Create a polar axis for the circular colorbar
+    if angle:
+        ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.6], polar=True)  # Position for the colorbar
+        colorMap = cm.get_cmap('hsv')  # Set the color map
+        makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
     
     # Create animation
     numFrames = len(stepList) # One extra frame for the repeated first image
@@ -1000,12 +1058,15 @@ def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=
 
     # Initialize figure and axis
     fig, ax = plt.subplots(dpi=200)
+    fig.patch.set_facecolor('white')
+    for spine in ax.spines.values():
+        spine.set_visible(False)
     
     # Create animation
     anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
 
     # Save the animation
-    anim.save(f'/home/francesco/Pictures/soft/packings/comp-{figureName}.gif', writer='imagemagick', dpi=fig.dpi)
+    anim.save(f'/home/francesco/Pictures/soft/packings/comp-{figureName}.gif', writer='pillow', dpi=fig.dpi)
     #anim.save(f'/home/francesco/Pictures/soft/packings/comp-{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
 
 def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq = 2, which = 'extend', centered = 'centered', dynamics = 'nve', lj = False, double = False, num1 = 0):
@@ -1434,6 +1495,13 @@ if __name__ == '__main__':
         fixed = sys.argv[7]
         veltang = sys.argv[8]
         makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, fixed=fixed, quiver=True, veltang=veltang, lj=True)
+
+    elif(whichPlot == 'ljanglevideo'):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        fixed = sys.argv[7]
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, fixed=fixed, angle=True, lj=True)
 
     elif(whichPlot == '2ljvideo'):
         numFrames = int(sys.argv[4])

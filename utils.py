@@ -1359,6 +1359,9 @@ def getLEPBCPositions(fileName, boxSize, strain):
     pos[:,1] -= shifty
     return pos
 
+def getVelocityAngles(vel):
+    return np.arctan2(vel[:,1], vel[:,0])
+
 def isOutsideWhichWall(pos, boxSize):
     isOutsideWhichWall = np.zeros((2,2))
     if(pos[0] < 0):
@@ -2291,63 +2294,6 @@ def getTensionFromEnergyTime(dirName, which='total', strainStep=5e-06, compext='
             tension[0] = popt[1]
             tension[1] = noise
     return tension
-
-def getTensionFromEnergyStrain(dirName, which='total', compext='ext', dirType='dynamics', window=3, every=0):
-    # read energy at initial unstrained configuration
-    numParticles = readFromParams(dirName, 'numParticles')
-    epsilon = readFromParams(dirName, "epsilon")
-    data = np.loadtxt(dirName + "../energy.dat")
-    boxSize = np.loadtxt(dirName + '/boxSize.dat')
-    tension = np.zeros(2)
-    temp = np.zeros(2)
-    if(np.sum(np.isnan(data))!=0):
-        print("There are NaNs in the file")
-    # read energy for strained configurations
-    dirList, strain = getOrderedStrainDirectories(dirName)
-    etot = np.zeros((strain.shape[0],2))
-    ekin = np.empty(0)
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + dirList[d] + os.sep + dirType
-        if(os.path.exists(dirSample)):
-            epsilon = readFromParams(dirSample, "epsilon")
-            data = np.loadtxt(dirSample + "/energy.dat")
-            if(every != 0):
-                data = data[::every,:]
-            data[:,2:] /= epsilon
-            data[:,-1] /= 2 # two interfaces in periodic boundaries
-            etot[d,0] = np.mean(data[:,-1])
-            etot[d,1] = np.std(data[:,-1])
-            ekin = np.concatenate((ekin, data[:,3]))
-    strain = strain[etot[:,0]!=0]
-    etot = etot[etot[:,0]!=0]
-    etot = np.column_stack((computeMovingAverage(etot[:,0], window), computeMovingAverage(etot[:,1], window)))
-    temp[0] = np.mean(ekin)
-    temp[1] = np.std(ekin)
-    otherStrain = -strain/(1 + strain)
-    if(compext == 'ext' or compext == 'ext-rev'):
-        height = (1 + strain)*boxSize[1]
-    elif(compext == 'comp' or compext == 'comp-ext'):
-        height = (1 + otherStrain)*boxSize[1]
-    height -= boxSize[1]
-    etot *= numParticles
-    #sigma = np.std(etot[:,0]-etot0) # this is for unary systems where the energy does not depend on box ratio
-    failed = False
-    try:
-        x = height[strain>0.02]
-        y = etot[strain>0.02,0]
-        strain = strain[strain>0.02]
-        x = x[strain<0.26]
-        y = y[strain<0.26]
-        popt, pcov = curve_fit(lineFit, x, y)
-        #popt, pcov = curve_fit(lineFit, x, y, sigma=np.full_like(x, sigma))
-    except RuntimeError:
-        print("Error - curve_fit failed")
-        failed = True
-    if not failed:
-        noise = np.sqrt(np.mean((lineFit(x, *popt) - y)**2))/2
-        tension[0] = popt[1]
-        tension[1] = noise
-    return tension, temp
 
 ########################### Circular packing tools #############################
 def cartesianToPolar(pos):
