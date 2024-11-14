@@ -44,7 +44,10 @@ def plotAlignmentVSNoise(dirName, figureName, which, jvic="1", dynamics="/"):
         index = -2
         ylabel = "$Vortex$ $parameter,$ $\\phi$"
     for d in range(dirList.shape[0]):
-        dirSample = dirName + "j" + jvic + "-tp" + dirList[d] + dynamics
+        if(jvic == "active"):
+            dirSample = dirName + "tp" + dirList[d] + dynamics
+        else:
+            dirSample = dirName + "j" + jvic + "-tp" + dirList[d] + dynamics
         if(os.path.exists(dirSample)):
             data = np.loadtxt(dirSample + "energy.dat")
             align[d,0] = np.mean(data[:,index])
@@ -57,7 +60,10 @@ def plotAlignmentVSNoise(dirName, figureName, which, jvic="1", dynamics="/"):
     ax.set_xlabel("$Noise$ $magnitude,$ $\\sigma$", fontsize=16)
     ax.set_ylabel(ylabel, fontsize=16)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/alignVSnoise-j" + jvic + "-" + figureName
+    if(jvic == "active"):
+        figureName = "/home/francesco/Pictures/soft/alignVSnoise-" + figureName
+    else:
+        figureName = "/home/francesco/Pictures/soft/alignVSnoise-j" + jvic + "-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
