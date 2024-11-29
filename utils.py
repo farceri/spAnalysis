@@ -1301,6 +1301,13 @@ def readFromDynParams(dirName, paramName):
             name, scalarString = line.strip().split("\t")
             if(name == paramName):
                 return float(scalarString)
+            
+def readFromWallParams(dirName, paramName):
+    with open(dirName + os.sep + "wallParams.dat") as file:
+        for line in file:
+            name, scalarString = line.strip().split("\t")
+            if(name == paramName):
+                return float(scalarString)
 
 def checkPair(dirName, index1, index2):
     if(os.path.exists(dirName + os.sep + "t" + str(index1))):
@@ -1344,7 +1351,7 @@ def readDenseListPair(dirName, index1, index2):
     return denseList1, denseList2
 
 ############################### Packing tools ##################################
-def getPBCPositions(fileName, boxSize, center=False):
+def getPBCPositions(fileName, boxSize):
     pos = np.array(np.loadtxt(fileName), dtype=np.float64)
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
