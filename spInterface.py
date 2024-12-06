@@ -1962,6 +1962,90 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
         plt.show()
 
 ####################### Average cluster height interface #######################
+def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=True):
+    spacingName = str(spacing)
+    sep = utils.getDirSep(dirName, "boxSize")
+    boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    if lj:
+        rad *= 2**(1/6)
+    sigma = 2*np.mean(rad)
+    meanArea = np.pi*(sigma/2)**2
+    eps = 1.8*np.max(rad)
+    spacing *= sigma
+    thickness = 3
+    bins = np.arange(0, boxSize[1], spacing)
+    rightInterface = np.zeros(bins.shape[0]-1)
+    leftInterface = np.zeros(bins.shape[0]-1)
+    # load particle variables
+    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
+    labels = np.zeros(numParticles)
+    labels[:num1] = 1
+    #typePos = pos[labels==1]
+    pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
+    clusterLabels, maxLabel = cluster.getWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+    #print(maxLabel, clusterLabels[clusterLabels==maxLabel].shape[0])
+    typePos = pos[clusterLabels==maxLabel]
+    uniqueLabels = np.unique(clusterLabels)[1:]
+    mixedNum = 0
+    mixedLength = 0
+    for c in range(1,uniqueLabels.shape[0]):
+        numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+        mixedNum += numCluster
+        mixedLength += 2*np.sqrt(np.pi*mixedNum*meanArea)
+        #print(c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
+    #mixedLength = 2*np.sqrt(np.pi*mixedNum*meanArea)
+    leftPos = np.zeros((bins.shape[0]-1,2))
+    rightPos = np.zeros((bins.shape[0]-1,2))
+    for j in range(bins.shape[0]-1): # find particle positions in a vertical bin
+        topMask = np.argwhere(typePos[:,1] > bins[j])[:,0]
+        binPos = typePos[topMask]
+        bottomMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
+        binPos = binPos[bottomMask]
+        if(binPos.shape[0] > 0):
+            binDistance = binPos[:,0]
+            #left interface
+            leftMask = np.argsort(binDistance)[:thickness]
+            leftInterface[j] = np.mean(binDistance[leftMask])
+            leftPos[j,0] = leftInterface[j]
+            leftPos[j,1] = np.mean(binPos[leftMask,1])
+            # right interface
+            rightMask = np.argsort(binDistance)[-thickness:]
+            rightInterface[j] = np.mean(binDistance[rightMask])
+            rightPos[j,0] = rightInterface[j]
+            rightPos[j,1] = np.mean(binPos[rightMask,1])
+    if(window > 1):
+        leftPos = np.column_stack((utils.computeMovingAverage(leftPos[:,0], window), utils.computeMovingAverage(leftPos[:,1], window)))
+        rightPos = np.column_stack((utils.computeMovingAverage(rightPos[:,0], window), utils.computeMovingAverage(rightPos[:,1], window)))
+    length = mixedLength
+    if(rightInterface[rightInterface!=0].shape[0] == rightInterface.shape[0]):
+        prevPos = rightPos[0]
+        for j in range(1,bins.shape[0]-1):
+            length += np.linalg.norm(rightPos[j] - prevPos)
+            prevPos = rightPos[j]
+    if(leftInterface[leftInterface!=0].shape[0] == leftInterface.shape[0]):
+        prevPos = leftPos[0]
+        for j in range(1,bins.shape[0]-1):
+            length += np.linalg.norm(leftPos[j] - prevPos)
+            prevPos = leftPos[j]
+    if(plot == "plot"):
+        print("Number of mixed particles:", mixedNum, "length:", mixedLength)
+        print("Interface length:", length, "proxy:", 2*boxSize[1])
+        fig, ax = plt.subplots(figsize=(3,3*boxSize[1]/boxSize[0]), dpi = 120)
+        ax.set_xlim(-0.2*boxSize[0],1.2*boxSize[0])
+        ax.set_ylim(0,boxSize[1])
+        ax.plot(leftPos[:,0], leftPos[:,1], color='b', marker='o', markersize=4, fillstyle='none', lw=1)
+        ax.plot(rightPos[:,0], rightPos[:,1], color='g', marker='o', markersize=4, fillstyle='none', lw=1)
+        ax.tick_params(axis='both', labelsize=12)
+        ax.set_xlabel("x", fontsize=14)
+        ax.set_ylabel("y", fontsize=14)
+        fig.tight_layout()
+        #plt.pause(0.5)
+        plt.show()
+    return length
+
+####################### Average cluster height interface #######################
 def getInterfaceLength(dirName, threshold=0.62, spacing=2, window=3, plot=False, lj=True):
     spacingName = str(spacing)
     sep = utils.getDirSep(dirName, "boxSize")
@@ -2870,7 +2954,14 @@ if __name__ == '__main__':
         frac = float(sys.argv[6])
         computeLJWallForce(dirName, LJcutoff, rangeForce, size, frac)
 
-    elif(whichCorr == "interfacelength"):
+    elif(whichCorr == "2interlength"):
+        num1 = int(sys.argv[3])
+        spacing = float(sys.argv[4])
+        window = int(sys.argv[5])
+        plot = sys.argv[6]
+        get2InterfaceLength(dirName, num1, spacing, window, plot)
+
+    elif(whichCorr == "interlength"):
         threshold = float(sys.argv[3])
         spacing = float(sys.argv[4])
         window = int(sys.argv[5])

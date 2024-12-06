@@ -1146,7 +1146,7 @@ def getDBClusterLabels(pos, boxSize, eps, min_samples = 2, denseList = np.empty(
         #db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(pos[denseList==1])
         end = time.time()
-        print("elapsed time:", end - start)
+        #print("elapsed time:", end - start)
         labels = db.labels_
         return labels
     else:
@@ -2319,12 +2319,16 @@ def calcTangentialVelocity(pos, vel):
 
 def checkParticlesInCircle(pos, boxSize):
     # check that particles are inside the circle
+    numOut = 0
     polarPos = cartesianToPolar(pos)
     outSide = polarPos[polarPos[:,0]>boxSize].shape[0]
     if(outSide > 0):
         for i in range(polarPos.shape[0]):
             if(polarPos[i,0] > boxSize):
-                print("Particle", i, "is outside of the circle with radius", boxSize[0], "radial distance", polarPos[i,0], polarPos[i,0] - boxSize[0])
+                numOut += 1
+                #print("Particle", i, "is outside of the circle with radius", boxSize[0], "radial distance", polarPos[i,0], polarPos[i,0] - boxSize[0])
+    if(numOut > 0):
+        print(numOut, "particles are outside of boundary")
     return np.argwhere(polarPos[:,0]>boxSize)[:,0]
     
 

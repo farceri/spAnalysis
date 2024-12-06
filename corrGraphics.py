@@ -177,46 +177,38 @@ def plotGPUperformance(dirName, figureName):
 def plotEnergy(dirName, figureName, which='all', log=False):
     if(os.path.exists(dirName + "/energy.dat")):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
-        print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
-        print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
+        print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]), "  std/mean:", np.std(energy[:,2])/np.abs(np.mean(energy[:,2])))
+        print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]), "  std/mean:", np.std(energy[:,3])/np.abs(np.mean(energy[:,3])))
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
         if which != 'simple':
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
                 ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$E_{pot}$")
                 ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$E_{kin}$")
         if which == 'thermostat':
-            ax.plot(energy[:,0], energy[:,4], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
-            ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
-            print("thermostat work:", np.mean(energy[:,4] + energy[:,5]), "+-", np.std(energy[:,4] + energy[:,5]))
+            ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
+            ax.plot(energy[:,0], energy[:,6], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
+            heat = energy[:,5] + energy[:,6]
+            print("heat:", np.mean(heat), "+-", np.std(heat), "  std/mean:", np.std(heat)/np.abs(np.mean(heat)))
             label = "$E_{tot}$ $+$ $W_{th}$"
         if which == 'active':
-            ax.plot(energy[:,0], energy[:,4], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
-            ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
-            ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='g', linestyle='solid', alpha=0.6, label="$W_{active}$")
-            print("thermostat work:", np.mean(energy[:,4] + energy[:,5]), "+-", np.std(energy[:,4] + energy[:,5]))
-            print("active work:", np.mean(energy[:,6]), "+-", np.std(energy[:,6]))
+            ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
+            ax.plot(energy[:,0], energy[:,6], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
+            ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color='g', linestyle='solid', alpha=0.6, label="$W_{active}$")
+            heat = energy[:,5] + energy[:,6] + energy[:,7]
+            print("heat:", np.mean(heat), "+-", np.std(heat), "  std/mean:", np.std(heat)/np.abs(np.mean(heat)))
+            print("active work:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
             label = "$E_{tot}$ $+$ $W_{th}$ $+$ $W_{active}$"
         if which == 'eab':
             label = "$E_{AB}$"
-            ax.plot(energy[:,0], energy[:,-2], linewidth=4, color='b', linestyle='solid', alpha=0.3)
-            ax.plot(energy[:,0], energy[:,-2], linewidth=1.5, color='b', linestyle='dotted', label=label)
-            print("\ntotal energy AB per particle:", np.mean(energy[:,-2]), " +-", np.std(energy[:,-2]))
-            print("error over mean:", np.std(energy[:,-2])/np.abs(np.mean(energy[:,-2])))
+            ax.plot(energy[:,0], energy[:,-4] + energy[:,-3], linewidth=4, color='b', linestyle='solid', alpha=0.3)
+            ax.plot(energy[:,0], energy[:,-4] + energy[:,-3], linewidth=1.5, color='b', linestyle='dotted', label=label)
+            print("\ntotal energy AB per particle:", np.mean(energy[:,-2]), "+-", np.std(energy[:,-2]), "  std/mean:", np.std(energy[:,-2])/np.abs(np.mean(energy[:,-2])))
         else:
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
                 label = "$E_{tot}$ $+$ $W_{tot}$"
-                ax.plot(energy[:,0], energy[:,-1], linewidth=4, color='b', linestyle='solid', alpha=0.3)
-                ax.plot(energy[:,0], energy[:,-1], linewidth=1.5, color='b', linestyle='dotted', label=label)
-            print("\ntotal energy per particle:", np.mean(energy[:,-1]), " +-", np.std(energy[:,-1]))
-            print("error over mean:", np.std(energy[:,-1])/np.abs(np.mean(energy[:,-1])))
-        if which == 'pressure':
-            ax.clear()
-            ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='b', label="$P$")
-            ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='g', linestyle='--', label="$P_{active}$")
-            ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color='k', linestyle='dotted', label="$P_{wall}$")
-            print("\npressure:", np.mean(energy[:,5]), "+-", np.std(energy[:,5]))
-            print("active pressure:", np.mean(energy[:,6]), "+-", np.std(energy[:,6]))
-            print("wall pressure:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
+                ax.plot(energy[:,0], energy[:,4], linewidth=4, color='b', linestyle='solid', alpha=0.3)
+                ax.plot(energy[:,0], energy[:,4], linewidth=1.5, color='b', linestyle='dotted', label=label)
+            print("\ntotal energy per particle:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]), "  std/mean:", np.std(energy[:,4])/np.abs(np.mean(energy[:,4])))
         ax.tick_params(axis='both', labelsize=14)
         ax.set_xlabel("$Simulation$ $step$", fontsize=16)
         ax.legend(fontsize=14, loc='best')
