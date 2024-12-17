@@ -441,7 +441,7 @@ def averageRadialPressureProfile(dirName, dirSpacing=1, nDim=2):
     driving = float(utils.readFromDynParams(dirName, "f0"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -528,7 +528,7 @@ def averageLinearPressureProfile(dirName, shiftx=0, dirSpacing=1, nDim=2):
     driving = float(utils.readFromDynParams(dirName, "f0"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -888,7 +888,7 @@ def averageRadialLJPressureProfile(dirName, LJcutoff=2.5, dirSpacing=1, nDim=2):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
     sigma = np.mean(rad)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -949,7 +949,7 @@ def averageKBLJTension(dirName, LJcutoff=5.5, dirSpacing=1, plot=False, nDim=2):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    #eps = 1.8*np.max(rad)
+    #eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -987,7 +987,7 @@ def averageHLJPressureProfile(dirName, LJcutoff=5.5, dirSpacing=1, nDim=2, plot=
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    #eps = 1.8*np.max(rad)
+    #eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1094,8 +1094,7 @@ def averageIKLJPressureProfile(dirName, LJcutoff=4, nDim=2, plot=False, dirSpaci
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    #eps = 1.8*np.max(rad)
+    #eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1226,8 +1225,7 @@ def averageCGIKLJPressureProfile(dirName, LJcutoff=4, plot=False, dirSpacing=1, 
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.mean(rad)
-    #eps = 1.8*np.max(rad)
+    #eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1466,7 +1464,8 @@ def computeLinearDensityProfile(dirName, threshold=0.3, size=2, correction=True,
     if cluster:
         if lj:
             rad *= 2**(1/6)
-        eps = 1.8*np.max(rad)
+        sigma = np.mean(rad)
+        eps = 1.4 * sigma
         labels, maxLabel = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold)
         #print(maxLabel, labels[labels==maxLabel].shape[0])
         pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
@@ -1515,10 +1514,11 @@ def averageLinearDensityProfile(dirName, threshold=0.3, size=2, correction=False
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
     if cluster:
         if lj:
             rad *= 2**(1/6)
-        eps = 1.8*np.max(rad)
+        eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1972,9 +1972,10 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
     meanArea = np.pi*(sigma/2)**2
-    eps = 1.8*np.max(rad)
-    spacing *= sigma
-    thickness = 3
+    eps = 1.4 * sigma
+    spacing *= sigma # vertical
+    #spacing = utils.getPairCorrelationPeakLocation(dirName)
+    thickness = 3 # horizontal
     bins = np.arange(0, boxSize[1], spacing)
     rightInterface = np.zeros(bins.shape[0]-1)
     leftInterface = np.zeros(bins.shape[0]-1)
@@ -1984,18 +1985,9 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
     labels[:num1] = 1
     #typePos = pos[labels==1]
     pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
-    clusterLabels, maxLabel = cluster.getWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+    clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
     #print(maxLabel, clusterLabels[clusterLabels==maxLabel].shape[0])
     typePos = pos[clusterLabels==maxLabel]
-    uniqueLabels = np.unique(clusterLabels)[1:]
-    mixedNum = 0
-    mixedLength = 0
-    for c in range(1,uniqueLabels.shape[0]):
-        numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
-        mixedNum += numCluster
-        mixedLength += 2*np.sqrt(np.pi*mixedNum*meanArea)
-        #print(c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
-    #mixedLength = 2*np.sqrt(np.pi*mixedNum*meanArea)
     leftPos = np.zeros((bins.shape[0]-1,2))
     rightPos = np.zeros((bins.shape[0]-1,2))
     for j in range(bins.shape[0]-1): # find particle positions in a vertical bin
@@ -2018,7 +2010,7 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
     if(window > 1):
         leftPos = np.column_stack((utils.computeMovingAverage(leftPos[:,0], window), utils.computeMovingAverage(leftPos[:,1], window)))
         rightPos = np.column_stack((utils.computeMovingAverage(rightPos[:,0], window), utils.computeMovingAverage(rightPos[:,1], window)))
-    length = mixedLength
+    length = 0
     if(rightInterface[rightInterface!=0].shape[0] == rightInterface.shape[0]):
         prevPos = rightPos[0]
         for j in range(1,bins.shape[0]-1):
@@ -2029,6 +2021,29 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
         for j in range(1,bins.shape[0]-1):
             length += np.linalg.norm(leftPos[j] - prevPos)
             prevPos = leftPos[j]
+    uniqueLabels = np.unique(clusterLabels)
+    uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
+    mixedNum = 0
+    mixedLength = 0
+    for c in range(1,uniqueLabels.shape[0]):
+        numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+        mixedNum += numCluster
+        #mixedLength += mixedNum * np.pi * sigma
+        mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
+        #print("type1 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
+    # clusters of second particle type
+    labels = np.zeros(numParticles)
+    labels[num1:] = 1
+    clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+    uniqueLabels = np.unique(clusterLabels)
+    uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
+    for c in range(1,uniqueLabels.shape[0]):
+        numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+        mixedNum += numCluster
+        #mixedLength += mixedNum * np.pi * sigma
+        mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
+        #print("type2 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
+    length += mixedLength
     if(plot == "plot"):
         print("Number of mixed particles:", mixedNum, "length:", mixedLength)
         print("Interface length:", length, "proxy:", 2*boxSize[1])
@@ -2054,7 +2069,7 @@ def getInterfaceLength(dirName, threshold=0.62, spacing=2, window=3, plot=False,
     if lj:
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     spacing *= sigma
     thickness = 3
     bins = np.arange(0, boxSize[1], spacing)
@@ -2118,7 +2133,7 @@ def getInterfaceLengthFromBorder(dirName, threshold=0.62, spacing=2, window=3, p
     if lj:
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     spacing *= sigma
     thickness = 3
     bins = np.arange(0, boxSize[1], spacing)
@@ -2206,7 +2221,7 @@ def averageInterfaceVSTime(dirName, threshold=0.78, plot=False, dirSpacing=1):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
     sigma = np.mean(rad)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -2252,8 +2267,8 @@ def averageInterfaceVSTime(dirName, threshold=0.78, plot=False, dirSpacing=1):
 def averageInterfaceFluctuations(dirName, threshold=0.3, thickness=3, plot=False, dirSpacing=50000):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.max(rad)
-    eps = 1.8*np.max(rad)
+    sigma = np.mean(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -2380,8 +2395,8 @@ def sampleInterfaceFluctuations(dirPath, threshold=0.3, numSamples=30, temp="0.3
 def averageInterfaceCorrelation(dirName, threshold=0.3, thickness=3, plot=False, dirSpacing=1):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    sigma = np.max(rad)
-    eps = 1.8*np.max(rad)
+    sigma = np.mean(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -2493,7 +2508,7 @@ def computeWallForceVSTime(dirName, threshold=0.78, which='lj', nDim=2, dirSpaci
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
     sigma = np.mean(rad)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     if(which=='harmonic'):
         ec = 240
         cutDistance = 2.5*sigma
@@ -2634,9 +2649,10 @@ def computeExchangeTimes(dirName, threshold=0.3, lj='lj', plot=False, dirSpacing
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
     if(lj=='lj'):
         rad *= 2**(1/6)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]*timeStep
@@ -2686,9 +2702,10 @@ def computeExchangeRates(dirName, threshold=0.3, lj='lj', plot=False, dirSpacing
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
     if(lj=='lj'):
         rad *= 2**(1/6)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
     timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]*timeStep

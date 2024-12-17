@@ -106,6 +106,20 @@ def getPairCorrelationPeak(pcorr):
         return x[np.argmax(y)]
     else:
         return pcorr[np.argmax(pcorr[:,1]),0]
+    
+def getPairCorrelationPeakLocation(dirName):
+    boxSize = np.loadtxt(dirName + os.sep + "boxSize.dat")
+    rad = np.loadtxt(dirName + os.sep + "particleRad.dat")
+    sigma = 2 * np.mean(rad)
+    bins = np.linspace(0.05*sigma, 4*sigma, 100)
+    pos = getPBCPositions(dirName + os.sep + "particlePos.dat", boxSize)
+    distance = computeDistances(pos, boxSize)
+    pairCorr, edges = np.histogram(distance, bins=bins, density=True)
+    binCenter = 0.5 * (edges[:-1] + edges[1:])
+    pairCorr /= (2 * np.pi * binCenter)
+    pcorr = np.column_stack((binCenter, pairCorr))
+    firstPeakLocation = getPairCorrelationPeak(pcorr)
+    return firstPeakLocation
 
 def projectToNormalTangentialComp(vectorXY, unitVector): # only for d = 2
     vectorNT = np.zeros((2,2))
@@ -431,6 +445,12 @@ def getHeightCorr(height, maxCorrIndex):
                 counts[j] += 1
     return np.divide(corr, counts)
 
+def getClusterLength(numCluster, sigma, area):
+    if(numCluster < 2):
+        return 2 * np.sqrt(numCluster * np.pi * area)
+    else:
+        return numCluster * np.pi * sigma
+
 ############################## Fourier Analysis ################################
 def getStructureFactor(pos, q, numParticles):
     sfList = np.zeros(q.shape[0])
@@ -565,11 +585,32 @@ def getTimeFourierVel(dirName, dirList, dirSpacing, numParticles):
     freq = np.sort(freq)
     return np.column_stack((freq, velfSquared1, velSquared2))
 
-def wrapClusterLabels(allLabels, maxLabel, numParticles):
+def wrapTripleClusterLabels(allLabels, maxLabel, numParticles):
+    wrappedLabels = np.zeros(numParticles)
+    leftLabels = allLabels[:numParticles]
+    wrappedLabels = allLabels[numParticles:2*numParticles]
+    rightLabels = allLabels[2*numParticles:]
+    wrappedLabels[np.argwhere(leftLabels==maxLabel)] = maxLabel
+    wrappedLabels[np.argwhere(rightLabels==maxLabel)] = maxLabel
+    return wrappedLabels
+
+def triplePositions(pos, boxSize):
+    # copy positions to the right and store indices corresponding to positions in the main box
+    triplePos = np.zeros((pos.shape[0]*3, pos.shape[1]))
+    triplePos[:pos.shape[0],0] = pos[:,0] - boxSize[0]
+    for dim in range(1,pos.shape[1]):
+        triplePos[:pos.shape[0],dim] = pos[:,dim]
+    triplePos[pos.shape[0]:2*pos.shape[0]] = pos
+    triplePos[2*pos.shape[0]:,0] = pos[:,0] + boxSize[0]
+    for dim in range(1,pos.shape[1]):
+        triplePos[2*pos.shape[0]:,dim] = pos[:,dim]
+    return triplePos
+
+def wrapDoubleClusterLabels(allLabels, maxLabel, numParticles):
     wrappedLabels = np.zeros(numParticles)
     wrappedLabels = allLabels[:numParticles]
-    doubledLabels = allLabels[numParticles:]
-    wrappedLabels[np.argwhere(doubledLabels==maxLabel)] = maxLabel
+    rightLabels = allLabels[numParticles:]
+    wrappedLabels[np.argwhere(rightLabels==maxLabel)] = maxLabel
     return wrappedLabels
 
 def doublePositions(pos, boxSize):
@@ -1882,7 +1923,7 @@ def removeSmallClusters(dirName, dirSave, threshold=0.76):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * np.mean(rad)
     pos = np.loadtxt(dirName + '/particlePos.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
     copyAngle = False
@@ -1930,7 +1971,7 @@ def perturbInterface(dirName, dirSave, threshold=0.3, fraction=0.1):
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * np.mean(rad)
     spacing = 50*np.mean(rad)
     pos = np.loadtxt(dirName + '/particlePos.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
@@ -1981,7 +2022,7 @@ def reshufflePacking(dirName, threshold=0.3, multiple=50, width=0.3, offset=0.2)
     # load all the packing files
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     rad = np.loadtxt(dirName + '/particleRad.dat')
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * np.mean(rad)
     spacing = multiple*np.mean(rad)
     pos = np.loadtxt(dirName + '/particlePos.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')

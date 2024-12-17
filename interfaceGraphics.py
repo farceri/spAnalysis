@@ -220,16 +220,16 @@ def plotInterfaceCorrelation(dirName, figureName, which='Dr'):
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def plot2InterfaceFluctuations(dirName, figureName, num1=0, thickness=3):
+def plot2InterfaceFluctuations(dirName, figureName, which='lang2con', num1=0, thickness=3):
     #boxHeight = np.loadtxt(dirName + "boxSize.dat")[1]
     dirList = np.array(["1e-15", "1e-12", "1e-10", "1e-08", "1e-05", "1e-03", "1e-01", "1e01"])
-    dirList = np.array(["1e-15", "1e-10", "1e-05", "1e-03", "1e01"])
+    #dirList = np.array(["1e-15", "1e-10", "1e-05", "1e-03", "1e01"])
     beta = np.sqrt(dirList.astype(np.float64))
     colorList = cm.get_cmap('viridis', dirList.shape[0]+1)
     fluq0 = np.zeros((dirList.shape[0],2))
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     for d in range(dirList.shape[0]):
-        dirSample = dirName + "damping" + dirList[d] + "/dynamics/"
+        dirSample = dirName + "damping" + dirList[d] + os.sep + which + os.sep
         if not(os.path.exists(dirSample + os.sep + "fourierFluctuations.dat")):
             interface.average2InterfaceFluctuations(dirSample, num1, thickness)
         #data = np.loadtxt(dirSample + os.sep + "interfaceFluctuations.dat")
@@ -1691,7 +1691,7 @@ def protocolCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', active=0, window=3, every=0, plot=True):
+def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', active=0, ilength=0, window=3, every=0, plot=True):
     # read energy at initial unstrained configuration
     numParticles = int(utils.readFromParams(dirName, 'numParticles'))
     num1 = int(utils.readFromParams(dirName, 'num1'))
@@ -1712,8 +1712,8 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
             if(every != 0):
                 data = data[::every,:]
             data[:,2:] /= epsilon# two interfaces in periodic boundaries
-            work[d,0] = np.mean((data[:,4]))
-            work[d,1] = np.std((data[:,4]))
+            work[d,0] = np.mean((data[:,2] + data[:,3]))
+            work[d,1] = np.std((data[:,2] + data[:,3]))
             if(active == 'active'):
                 heat[d,0] = np.mean((data[:,5] + data[:,6] + data[:,7]))
                 heat[d,1] = np.std((data[:,5] + data[:,6] + data[:,7]))
@@ -1724,7 +1724,7 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
             epot[d,1] = np.std(data[:,2])/np.sqrt(data.shape[0])
             ekin[d,0] = np.mean(data[:,3])
             ekin[d,1] = np.std(data[:,3])/np.sqrt(data.shape[0])
-            length[d] = interface.get2InterfaceLength(dirSample, num1, 1, 1)
+            length[d] = interface.get2InterfaceLength(dirSample, num1, 1.2, 2)
     strain = strain[work[:,0]!=0]
     length = length[work[:,0]!=0]
     epot = epot[work[:,0]!=0]
@@ -1770,12 +1770,15 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
     if fit:
         failed = False
         try:
-            fitdata = fitdata[np.argsort(length)]
-            length = np.sort(length)
+            if(ilength == 'length'):
+                fitdata = fitdata[np.argsort(length)]
+                length = np.sort(length)
+            else:
+                length = height
             fitdata[:,0] -= fitdata[0,0]
+            y = fitdata[:,0]
             length -= length[0]
             x = length
-            y = fitdata[:,0]
             popt, pcov = curve_fit(lineFit, x, y)
             #sigma = np.std(fitdata[:,0]-offset)
             #popt, pcov = curve_fit(lineFit, x, y, sigma=np.full_like(x, sigma))
@@ -1787,6 +1790,7 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
             #print("offset:", offset, "curve noise:", noise)
             print("HEAT:", np.mean(heat[:,0]), np.std(heat[:,0]))
             print("TENSION:", popt[1], noise, "fit error:", np.sqrt(np.diag(pcov))[1])
+            print("TEMPERATURE", np.mean(2*ekin[:,0]), np.std(2*ekin[:,0]))
             tension[0] = popt[1]
             tension[1] = np.sqrt(np.diag(pcov))[1]
             if plot:
@@ -1877,19 +1881,19 @@ def noiseCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext', 
                     ax.plot(height, energy, color=colorList(d/dirList.shape[0]), ls='solid', label="$\\beta=$" + dirList[d])
             else:
                 if(versus == 'temp'):
-                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirType, dynamics, 0, window, every, plot=False)
+                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirType, dynamics, 0, 0, window, every, plot=False)
                     data = np.loadtxt(dirSample + "/energyStrain-" + dirType + ".dat")
                     energy = data[:,1:3]*numParticles
                     ax.errorbar(data[:,-1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
                     bigAx[0].errorbar(data[:,-1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
                 elif(versus == 'damping'):
-                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirList[d], dynamics, 0, window, every, plot=False)
+                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirList[d], dynamics, 0, 0, window, every, plot=False)
                     data = np.loadtxt(dirSample + "/energyStrain-" + dirList[d] + ".dat")
                     energy = data[:,1:3]*numParticles
                     ax.errorbar(data[:,-1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, capsize=3, label="$\\beta^2=$" + labelList[d])
                 elif(versus == 'active'):
                     dirActive = 'damping1e01/tp1e-05-f0' + dirList[d]
-                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirActive, dynamics, 'active', window, every, plot=False)
+                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirActive, dynamics, 'active', 'length', window, every, plot=False)
                     data = np.loadtxt(dirSample + "/energyStrain-active.dat")
                     work = data[:,1:3]*numParticles
                     length = data[:,-1]
@@ -3072,9 +3076,10 @@ if __name__ == '__main__':
 
     elif(whichPlot == "2interface"):
         figureName = sys.argv[3]
-        num1 = int(sys.argv[4])
-        thickness = int(sys.argv[5])
-        plot2InterfaceFluctuations(dirName, figureName, num1, thickness)
+        which = sys.argv[4]
+        num1 = int(sys.argv[5])
+        thickness = int(sys.argv[6])
+        plot2InterfaceFluctuations(dirName, figureName, which, num1, thickness)
 
     elif(whichPlot == "interfacetemp"):
         figureName = sys.argv[3]
@@ -3177,9 +3182,10 @@ if __name__ == '__main__':
         dirType = sys.argv[6]
         dynamics = sys.argv[7]
         active = sys.argv[8]
-        window = int(sys.argv[9])
-        every = int(sys.argv[10])
-        plotSPEnergyVSStrain(dirName, figureName, which, compext, dirType, dynamics, active, window, every, plot=True)
+        ilength = sys.argv[9]
+        window = int(sys.argv[10])
+        every = int(sys.argv[11])
+        plotSPEnergyVSStrain(dirName, figureName, which, compext, dirType, dynamics, active, ilength, window, every, plot=True)
 
     elif(whichPlot == "energytime"):
         figureName = sys.argv[3]

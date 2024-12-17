@@ -194,6 +194,21 @@ def getDoubleColorList(rad, num1=0, tag=False):
         colorId[tagList] = [1,1,1,1]
     return colorId
 
+def getClusterColorList(labels, maxLabel):
+    uniqueLabels = np.unique(labels)
+    colorList = cm.get_cmap('hsv', uniqueLabels.shape[0])
+    colorId = np.zeros((labels.shape[0], 4))
+    count = 0
+    for labelId in uniqueLabels:
+        if(labelId == -1):
+            colorId[labels==labelId] = [1,1,1,1]
+        elif(labelId == maxLabel):
+            colorId[labels==maxLabel] = [0,0,0,0]
+        else:
+            colorId[labels==labelId] = colorList(count/uniqueLabels.shape[0])
+        count += 1
+    return colorId
+
 def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap=False, forcemap=False, quiver=False, dense=False, border=False, 
                   threshold=0.62, filter='filter', strain=0, shiftx=0, shifty=0, center=False, double=False, num1=0, alpha=0.6):
     sep = utils.getDirSep(dirName, 'boxSize')
@@ -223,8 +238,15 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         if(center == 'center'):
             pos = utils.centerCOM(pos, rad, boxSize)
         elif(center == 'centercluster'):
-            eps = 1.8*np.max(rad)
+            eps = 1.4 * np.mean(rad)
             labels, maxLabel = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold)
+            pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
+            print('maxLabel:', maxLabel, 'number of particles in biggest cluster:', labels[labels==maxLabel].shape[0])
+        elif(center == 'typecluster'):
+            typeLabels = np.zeros(rad.shape[0])
+            typeLabels[:num1] = 1
+            eps = 1.2*np.max(rad)
+            labels, maxLabel = cluster.getDoubleWrappedClusterLabels(pos, rad, boxSize, typeLabels, eps)
             pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
             print('maxLabel:', maxLabel, 'number of particles in biggest cluster:', labels[labels==maxLabel].shape[0])
     print('Center of mass:', np.mean(pos, axis=0))
@@ -261,11 +283,13 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         force = np.array(np.loadtxt(dirName + os.sep + 'particleForces.dat'))
         colorId = getForceColorList(force)
     elif double:
-        colorId = getDoubleColorList(rad, num1)
-        labels = np.zeros(rad.shape[0])
-        labels[:num1] = 1
-        typePos = pos[labels==1]
-        pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
+        if center == 'typecluster':
+            colorId = getClusterColorList(labels, maxLabel)
+        else:
+            colorId = getDoubleColorList(rad, num1)
+            labels = np.zeros(rad.shape[0])
+            labels[:num1] = 1
+            pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
     else:
         colorId = getRadColorList(rad)
     if quiver:
@@ -586,7 +610,7 @@ def plotSPDelaunayParticleClusters(dirName, figureName, threshold=0.62, compute=
     rad = np.array(np.loadtxt(dirName + sep + 'particleRad.dat'))
     if lj:
         rad *= 2**(1/6)
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * np.mean(rad)
     pos = utils.getPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize)
     labels, maxLabel = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold=threshold, compute=compute)
     colorId = getColorListFromLabels(labels)
@@ -1050,21 +1074,34 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
     anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
     #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
 
-def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, boxSize, annotate=False, angle=False, quiver=False, scale=100, colorMap=None):
+def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, annotate=False, angle=False, quiver=False, scale=100, colorMap=None):
     if boxSize.shape[0] == 1:
         pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
         #utils.checkParticlesInCircle(pos, boxSize)
     else:
         pos = utils.getPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize)
     
+    wallQuiver = False
+    if(wallDyn.shape[0] != 0):
+        wallVel = np.zeros((wallPos.shape[0], 2))
+        wallVel = np.column_stack((-wallPos[:,1], wallPos[:,0]))
+        wallVel *= wallDyn[1]*np.sqrt(wallPos[0,0]**2 + wallPos[1,1]**2)
+        wallQuiver = True
     # plot wall monomers
+    r = wallRad
     for wallId in range(wallPos.shape[0]):
         x = wallPos[wallId,0]
         y = wallPos[wallId,1]
-        r = wallRad
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[0.9,0.9,0.9], alpha=0.6, linewidth=0.3))
         if annotate:
             ax.annotate(str(wallId), xy=(x, y), fontsize=3, verticalalignment='center', horizontalalignment='center')
+    if wallQuiver:
+        for wallId in range(0,wallPos.shape[0],20):
+            x = wallPos[wallId,0]
+            y = wallPos[wallId,1]
+            vx = wallVel[wallId,0]
+            vy = wallVel[wallId,1]
+            ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=100, headlength=10, headaxislength=10, headwidth=10, alpha=1)
 
     if angle or quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
@@ -1091,7 +1128,7 @@ def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFre
         ax.clear()  # Clear the previous frame
         if boxSize.shape[0] == 1:
             if mobile:
-                setBigBoxAxes(boxSize, ax, 1.2)
+                setBigBoxAxes(boxSize, ax, 1.4)
             else:
                 setBigBoxAxes(boxSize, ax, 1.05)
             fig.patch.set_facecolor('white')
@@ -1100,16 +1137,20 @@ def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFre
         else:
             setPackingAxes(boxSize, ax)
         dirSample = dirName + os.sep + 't' + str(stepList[i])
-        if mobile:
-            wallPos = np.loadtxt(dirSample + os.sep + 'wallPos.dat')
+        wallPos = np.loadtxt(dirSample + os.sep + 'wallPos.dat')
+        if(os.path.exists(dirSample + os.sep + 'wallDynamics.dat')):
+            wallDyn = np.loadtxt(dirSample + os.sep + 'wallDynamics.dat')
         else:
-            wallPos = np.loadtxt(dirName + os.sep + 'wallPos.dat')
-        makeWallParticleFrame(ax, dirSample, rad, wallRad, wallPos, boxSize, annotate, angle, quiver, scale, colorMap)
+            wallDyn = np.empty(0)
+        makeWallParticleFrame(ax, dirSample, rad, wallRad, wallPos, wallDyn, boxSize, annotate, angle, quiver, scale, colorMap)
         plt.tight_layout()
         return ax.artists
     
     frameTime = 120
     stepList = utils.getStepList(numFrames, firstStep, stepFreq)
+    # repeat first frame
+    stepList = np.insert(stepList, 0, stepList[0])
+    stepList = np.insert(stepList, 0, stepList[0])
     print('Time list:', stepList)
 
     boxSize = np.atleast_1d(np.loadtxt(dirName + os.sep + 'boxSize.dat'))
@@ -1336,7 +1377,7 @@ def makeSPPackingDropletVideo(dirName, figureName, numFrames = 20, firstStep = 0
     boxSize = np.loadtxt(dirName + os.sep + 'boxSize.dat')
     setPackingAxes(boxSize, ax)
     rad = np.array(np.loadtxt(dirName + os.sep + 'particleRad.dat'))
-    eps = 1.8*np.max(rad)
+    eps = 1.4 * np.mean(rad)
     if lj:
         rad *= 2**(1/6)
     pos = utils.getPBCPositions(dirName + os.sep + 't' + str(stepList[0]) + '/particlePos.dat', boxSize)
@@ -1617,13 +1658,15 @@ if __name__ == '__main__':
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeWallPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, annotate=False, angle=True, lj=True)
+        scale = int(sys.argv[7])
+        makeWallPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, annotate=False, quiver=True, angle=True, scale=scale, lj=True)
 
     elif(whichPlot == 'mobilevideo'):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        makeWallPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, mobile=True, annotate=False, angle=True, lj=True)
+        scale = int(sys.argv[7])
+        makeWallPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, mobile=True, annotate=False, angle=True, scale=scale, lj=True)
 
     elif(whichPlot == '2ljvideo'):
         numFrames = int(sys.argv[4])

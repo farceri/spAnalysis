@@ -883,7 +883,20 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
         plt.pause(0.5)
     return np.column_stack((timeList, clusterVel))
 
-def getWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
+def getTripleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
+    tripleBoxSize = np.array([boxSize[0]*3, boxSize[1]])
+    tripleRad = np.concatenate((rad, rad, rad))
+    triplePos = utils.triplePositions(pos, boxSize)
+    tripleDenseList = np.concatenate((denseList, denseList, denseList))
+    labels = utils.getDBClusterLabels(triplePos, tripleBoxSize, eps, min_samples=2, denseList=tripleDenseList)
+    tripleLabels = -1*np.ones(tripleDenseList.shape[0], dtype=np.int64)
+    tripleLabels[tripleDenseList==1] = labels
+    tripleLabels = tripleLabels.astype(np.int64)
+    maxLabel = utils.findLargestParticleCluster(tripleRad, tripleLabels)
+    labels = utils.wrapTripleClusterLabels(tripleLabels, maxLabel, pos.shape[0])
+    return labels, maxLabel
+
+def getDoubleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
     doubleBoxSize = np.array([boxSize[0]*2, boxSize[1]])
     doubleRad = np.concatenate((rad, rad))
     doublePos = utils.doublePositions(pos, boxSize)
@@ -893,7 +906,7 @@ def getWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
     doubleLabels[doubleDenseList==1] = labels
     doubleLabels = doubleLabels.astype(np.int64)
     maxLabel = utils.findLargestParticleCluster(doubleRad, doubleLabels)
-    labels = utils.wrapClusterLabels(doubleLabels, maxLabel, pos.shape[0])
+    labels = utils.wrapDoubleClusterLabels(doubleLabels, maxLabel, pos.shape[0])
     return labels, maxLabel
 
 def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=False, save='save'):

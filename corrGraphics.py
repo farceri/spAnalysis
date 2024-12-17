@@ -179,11 +179,11 @@ def plotEnergy(dirName, figureName, which='all', log=False):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
         print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]), "  std/mean:", np.std(energy[:,2])/np.abs(np.mean(energy[:,2])))
         print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]), "  std/mean:", np.std(energy[:,3])/np.abs(np.mean(energy[:,3])))
-        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
         if which != 'simple':
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
-                ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$E_{pot}$")
-                ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$E_{kin}$")
+                ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$U$")
+                ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$K$")
         if which == 'thermostat':
             ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
             ax.plot(energy[:,0], energy[:,6], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
@@ -205,13 +205,13 @@ def plotEnergy(dirName, figureName, which='all', log=False):
             print("\ntotal energy AB per particle:", np.mean(energy[:,-2]), "+-", np.std(energy[:,-2]), "  std/mean:", np.std(energy[:,-2])/np.abs(np.mean(energy[:,-2])))
         else:
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
-                label = "$E_{tot}$ $+$ $W_{tot}$"
+                label = "$U+K$"
                 ax.plot(energy[:,0], energy[:,4], linewidth=4, color='b', linestyle='solid', alpha=0.3)
                 ax.plot(energy[:,0], energy[:,4], linewidth=1.5, color='b', linestyle='dotted', label=label)
             print("\ntotal energy per particle:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]), "  std/mean:", np.std(energy[:,4])/np.abs(np.mean(energy[:,4])))
         ax.tick_params(axis='both', labelsize=14)
         ax.set_xlabel("$Simulation$ $step$", fontsize=16)
-        ax.legend(fontsize=14, loc='best')
+        ax.legend(fontsize=12, loc='upper left')
         #ax.set_ylim(50, 700)
         if(log == 'log'):
             ax.set_xscale('log')
