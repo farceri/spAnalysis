@@ -209,7 +209,17 @@ def getClusterColorList(labels, maxLabel):
         count += 1
     return colorId
 
-def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap=False, forcemap=False, quiver=False, dense=False, border=False, 
+def getGroupColorList(labels):
+    uniqueLabels = np.unique(labels)
+    colorList = cm.get_cmap('prism', uniqueLabels.shape[0])
+    colorId = np.zeros((labels.shape[0], 4))
+    count = 0
+    for labelId in uniqueLabels:
+        colorId[labels==labelId] = colorList(count/uniqueLabels.shape[0])
+        count += 1
+    return colorId
+
+def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap=False, forcemap=False, quiver=False, group=False, eps=1.4, dense=False, border=False, 
                   threshold=0.62, filter='filter', strain=0, shiftx=0, shifty=0, center=False, double=False, num1=0, alpha=0.6):
     sep = utils.getDirSep(dirName, 'boxSize')
     boxSize = np.atleast_1d(np.loadtxt(dirName + sep + 'boxSize.dat'))
@@ -238,7 +248,7 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         if(center == 'center'):
             pos = utils.centerCOM(pos, rad, boxSize)
         elif(center == 'centercluster'):
-            eps = 1.4 * np.mean(rad)
+            eps = 1.4 * 2*np.mean(rad)
             labels, maxLabel = cluster.getParticleClusterLabels(dirName, boxSize, eps, threshold)
             pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
             print('maxLabel:', maxLabel, 'number of particles in biggest cluster:', labels[labels==maxLabel].shape[0])
@@ -290,6 +300,23 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
             labels = np.zeros(rad.shape[0])
             labels[:num1] = 1
             pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
+    elif group:
+        eps *= 2*np.mean(rad)
+        labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
+        uniqueLabels = np.unique(labels)
+        angle = np.arctan2(pos[:,1], pos[:,0])
+        angle = np.where(angle < 0, angle + 2 * np.pi, angle)
+        spread = np.empty(0)
+        weight = np.empty(0)
+        if(uniqueLabels.shape[0] > 1):
+            for label in uniqueLabels:
+                thisangle = angle[labels==label]
+                numLabel = labels[labels==label].shape[0]
+                weight = np.append(weight, numLabel / labels.shape[0])
+                spread = np.append(spread, np.std(thisangle)/(np.pi/np.sqrt(3)))
+                print("label", label, "num particles in cluster", numLabel, "spread", spread[-1])
+        print("number of clusters:", np.unique(labels).shape[0], "average spread", np.mean(weight*spread)/np.mean(weight))
+        colorId = getGroupColorList(labels)
     else:
         colorId = getRadColorList(rad)
     if quiver:
@@ -1101,7 +1128,7 @@ def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, 
             y = wallPos[wallId,1]
             vx = wallVel[wallId,0]
             vy = wallVel[wallId,1]
-            ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=100, headlength=10, headaxislength=10, headwidth=10, alpha=1)
+            ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=10, headlength=10, headaxislength=10, headwidth=10, alpha=1)
 
     if angle or quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
@@ -1489,6 +1516,9 @@ if __name__ == '__main__':
 
     elif(whichPlot == 'lj'):
         plotSPPacking(dirName, figureName, lj=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), center=sys.argv[6])
+
+    elif(whichPlot == 'ljcluster'):
+        plotSPPacking(dirName, figureName, lj=True, group=True, eps=float(sys.argv[4]))
 
     elif(whichPlot == 'ljvel'):
         plotSPPacking(dirName, figureName, lj=True, quiver=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), center=sys.argv[6])

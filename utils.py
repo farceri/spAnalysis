@@ -7,7 +7,7 @@ import numpy as np
 from scipy.fft import fft, fftfreq, fft2
 from scipy.optimize import curve_fit
 from scipy.spatial import Delaunay
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import DBSCAN, HDBSCAN
 import spCluster as cluster
 import random
 import shutil
@@ -1180,15 +1180,18 @@ def computeLocalTempGrid(pos, vel, xbin, ybin, localTemp): #this works only for 
     localTemp[localTemp>0] /= counts[localTemp>0]*2
 
 ################################ DB clustering #################################
-def getDBClusterLabels(pos, boxSize, eps, min_samples = 2, denseList = np.empty(0)):
-    if(denseList.shape[0] > 0):
-        start = time.time()
-        #distance = computeDistances(pos[denseList==1], boxSize)
-        #db = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed').fit(distance)
+def getDBClusterLabels(pos, eps, min_samples = 5, denseList = np.empty(0)):
+    if(denseList.shape[0] != 0):
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(pos[denseList==1])
-        end = time.time()
-        #print("elapsed time:", end - start)
         labels = db.labels_
+        return labels
+    else:
+        return np.zeros(pos.shape[0])
+    
+def getHDBClusterLabels(pos, min_samples = 5, denseList = np.empty(0)):
+    if(denseList.shape[0] != 0):
+        hdb = HDBSCAN(min_samples=min_samples).fit(pos[denseList==1])
+        labels = hdb.labels_
         return labels
     else:
         return np.zeros(pos.shape[0])
@@ -1220,7 +1223,7 @@ def getLogSpacedStepList(minDecade=5, maxDecade=9):
 def getDirectories(dirName):
     listDir = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
     return listDir
 
@@ -1228,7 +1231,7 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)
@@ -1241,7 +1244,7 @@ def getOrderedStrainDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('strain'))
     listScalar = np.array(listScalar, dtype=np.float64)
@@ -2371,7 +2374,68 @@ def checkParticlesInCircle(pos, boxSize):
     if(numOut > 0):
         print(numOut, "particles are outside of boundary")
     return np.argwhere(polarPos[:,0]>boxSize)[:,0]
+
+def computeRingness(dirSample, every=1e05):
+    dirList, timeList = getOrderedDirectories(dirSample)
+    variance = np.empty(0)
+    for i in range(timeList.shape[0]):
+        if(timeList[i] % every == 0):
+            pos = np.loadtxt(dirSample + os.sep + dirList[i] + os.sep + "particlePos.dat")
+            angle = np.arctan2(pos[:,1], pos[:,0])
+            angle = np.where(angle < 0, angle + 2 * np.pi, angle)
+            variance = np.append(variance, np.std(angle) / (np.pi / np.sqrt(3)))
+    return np.array([np.mean(variance), np.std(variance)])
+
+def computeClusterRingness(dirSample, eps=2, every=1e05):
+    dirList, timeList = getOrderedDirectories(dirSample)
+    spread = np.empty(0)
+    eps *= float(readFromParams(dirSample, "sigma"))
+    for i in range(timeList.shape[0]):
+        if(timeList[i] % every == 0):
+            pos = np.loadtxt(dirSample + os.sep + dirList[i] + os.sep + "particlePos.dat")
+            angle = np.arctan2(pos[:,1], pos[:,0])
+            angle = np.where(angle < 0, angle + 2 * np.pi, angle)
+            labels = getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
+            uniqueLabels = np.unique(labels)
+            angledev = np.empty(0)
+            weight = np.empty(0)
+            if(uniqueLabels.shape[0] > 1):
+                for label in uniqueLabels:
+                    thisangle = angle[labels==label]
+                    numLabel = labels[labels==label].shape[0]
+                    weight = np.append(weight, numLabel / labels.shape[0])
+                    angledev = np.append(angledev, np.std(thisangle)/(np.pi/np.sqrt(3)))
+                spread = np.append(spread, np.mean(weight*angledev) / np.mean(weight))
+            else:
+                spread = np.append(spread, np.std(angle)/(np.pi/np.sqrt(3)))
+    return np.array([np.mean(spread), np.std(spread)])
     
+def computeSpreadness(dirSample, numBins=100, thickness=2, every=1e05):
+    dirList, timeList = getOrderedDirectories(dirSample)
+    spread = np.empty(0)
+    angbins = np.linspace(0, 2*np.pi, numBins)
+    sigma = float(readFromParams(dirSample, "sigma"))
+    boxRadius = np.loadtxt(dirSample + os.sep + "boxSize.dat")
+    for i in range(timeList.shape[0]):
+        if(timeList[i] % every == 0):
+            pos = np.loadtxt(dirSample + os.sep + dirList[i] + os.sep + "particlePos.dat")
+            angle = np.arctan2(pos[:,1], pos[:,0])
+            angle = np.where(angle < 0, angle + 2 * np.pi, angle)
+            radius = np.sqrt(pos[:,0]*pos[:,0] + pos[:,1]*pos[:,1])
+            # check only particles near the boundary
+            angle = angle[radius > (boxRadius - thickness * sigma)]
+            border = radius[radius > (boxRadius - thickness * sigma)]
+            occupied = np.zeros(angbins.shape[0])
+            for i in range(border.shape[0]):
+                for a in range(1, angbins.shape[0]):
+                    if(angle[i] > angbins[a-1] and angle[i] < angbins[a]):
+                        occupied[a] += 1
+            fraction = 0
+            for i in range(occupied.shape[0]):
+                if(occupied[i] > 4):
+                    fraction += 2*np.pi/numBins
+            spread = np.append(spread, fraction / (2*np.pi))
+    return np.array([np.mean(spread), np.std(spread)])
 
 if __name__ == '__main__':
     print("library for correlation function utilities")

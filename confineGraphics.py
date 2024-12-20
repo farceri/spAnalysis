@@ -114,46 +114,6 @@ def plotAlignmentVSDamping(dirName, figureName, which, dynamics="/"):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def compareAlignmentVSTemperature(dirName, figureName, which, dynamics="/"):
-    typeList = np.array(["reflect/langevin1e-01/", "reflect/langevin1/", "reflect/langevin2/", "reflect/langevin1e01/"])
-    beta = ['1e-01', '1', '2', '1e01']
-    dirList = np.array(["4e-04", "1e-03", "2e-03", "4e-03", "1e-02", "2e-02", "4e-02", "1e-01", "2e-01", "4e-01", "1"])
-    markerList = ['o', 's', 'v', '^']
-    colorList = ['k', 'r', 'g', 'b']
-    fillList = ['none', 'none', 'none', 'none']
-    fig, ax = plt.subplots(figsize=(6.5,5), dpi = 120)
-    index, ylabel = getIndexYlabel(which)
-    for t in range(typeList.shape[0]):
-        noise = np.zeros(dirList.shape[0])
-        align = np.zeros((dirList.shape[0], 2))
-        for d in range(dirList.shape[0]):
-            dirSample = dirName + typeList[t] + "T" + dirList[d] + dynamics
-            if(os.path.exists(dirSample)):
-                data = np.loadtxt(dirSample + "energy.dat")
-                if(index == 4):
-                    align[d,0] = np.mean(np.abs(data[:,index]))
-                    align[d,1] = np.std(np.abs(data[:,index]))
-                elif(index == -1 or index == -2):
-                    align[d,0] = np.mean(867*data[:,index])
-                    align[d,1] = np.std(867*data[:,index])/np.sqrt(data.shape[0])
-                else:
-                    align[d,0] = np.mean(data[:,index])
-                    align[d,1] = np.std(data[:,index])
-                noise[d] = np.sqrt(2 * utils.readFromDynParams(dirSample, "damping") * float(dirList[d]))
-        ax.errorbar(noise[noise!=0], align[noise!=0,0], align[noise!=0,1], color=colorList[t], marker=markerList[t], markersize=8, capsize=3, fillstyle=fillList[t], lw=1, label="$\\beta =$" + beta[t])
-    ax.legend(fontsize=12, loc='best')
-    ax.set_xscale('log')
-    #if(which == 'corr'):
-        #ax.set_xlim(0.008,)
-        #ax.set_ylim(-0.02,1.08)
-    ax.tick_params(axis='both', labelsize=14)
-    ax.set_xlabel("$Noise$ $magnitude,$ $\\sqrt{2 m \\beta k_B T}$", fontsize=16)
-    ax.set_ylabel(ylabel, fontsize=16)
-    plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/" + which + "VSTemp-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
-    plt.show()
-
 def plotAlignmentVSNoise(dirName, figureName, which, jvic="1e02", dynamics="/"):
     dirList = np.array(["1e-04", "2e-04", "3e-04", "5e-04", "1e-03", "2e-03", "3e-03", "5e-03", "1e-02", "1.5e-02", "2e-02", "2.5e-02", "3e-02", "4e-02",
                         "5e-02", "7e-02", "1e-01", "1.5e-01", "2e-01", "3e-01", "5e-01", "1", "2", "3", "5", "1e01", "2e01", "3e01", "5e01", "1e02",
@@ -235,6 +195,97 @@ def compareAlignmentVSNoise(dirName, figureName, which, dynamics="/"):
     ax.set_xlabel("$Noise$ $magnitude,$ $\\sqrt{2\\Delta t/\\tau_p}$", fontsize=16)
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/compare-" + which + "VSnoise-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def compareAlignmentVSTemperature(dirName, figureName, which, dynamics="/", scale=0):
+    typeList = np.array(["langevin1e-01/", "langevin3e-01/", "langevin1/", "langevin2/", "langevin1e01/", "langevin3e01/", "langevin1e02/"])
+    beta = ['1e-01', '3e-01', '1', '2', '1e01', '3e01', '1e02']
+    dirList = np.array(["4e-04", "1e-03", "2e-03", "4e-03", "1e-02", "2e-02", "4e-02", "1e-01", "2e-01", "4e-01", "1"])
+    markerList = ['o', 's', 'v', '^', 'd', 'D', '*']
+    colorList = ['k', 'r', 'g', 'b', 'c', [1,0.5,0], [0.5,0,1]]
+    fig, ax = plt.subplots(figsize=(6.5,5), dpi = 120)
+    index, ylabel = getIndexYlabel(which)
+    for t in range(typeList.shape[0]):
+        noise = np.zeros(dirList.shape[0])
+        align = np.zeros((dirList.shape[0], 2))
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + typeList[t] + "T" + dirList[d] + dynamics
+            if(os.path.exists(dirSample)):
+                data = np.loadtxt(dirSample + "energy.dat")
+                if(index == 4):
+                    align[d,0] = np.mean(np.abs(data[:,index]))
+                    align[d,1] = np.std(np.abs(data[:,index]))
+                elif(index == -1 or index == -2):
+                    align[d,0] = np.mean(data[:,index])
+                    align[d,1] = np.std(data[:,index])/np.sqrt(data.shape[0])
+                else:
+                    align[d,0] = np.mean(data[:,index])
+                    align[d,1] = np.std(data[:,index])
+                if(scale == 'scale'):
+                    noise[d] = np.sqrt(2 * float(dirList[d]) / utils.readFromDynParams(dirSample, "damping"))
+                else:
+                    if(which == 'ekin' or which == 'epot'):
+                        noise[d] = float(dirList[d])
+                    else:
+                        noise[d] = np.sqrt(2 * float(dirList[d]) * utils.readFromDynParams(dirSample, "damping"))
+        ax.errorbar(noise[noise!=0], align[noise!=0,0], align[noise!=0,1], color=colorList[t], marker=markerList[t], markersize=8, capsize=3, fillstyle='none', lw=1, label="$\\gamma =$" + beta[t])
+    ax.legend(fontsize=11, loc='best')
+    ax.set_xscale('log')
+    #if(which == 'corr'):
+        #ax.set_xlim(0.008,)
+        #ax.set_ylim(-0.02,1.08)
+    ax.tick_params(axis='both', labelsize=14)
+    if(scale == 'scale'):
+        ax.set_xlabel("$Noise$ $over$ $friction,$ $\\sqrt{2 \\gamma k_B T} / \\gamma \\sigma$", fontsize=16)
+    else:
+        if(which == 'ekin' or which == 'epot'):
+            ax.set_xlabel("$Bath$ $temperature,$ $T$", fontsize=16)
+        else:
+            ax.set_xlabel("$Noise,$ $\\sqrt{2 \\gamma k_B T}$", fontsize=16)
+    ax.set_ylabel(ylabel, fontsize=16)
+    plt.tight_layout()
+    if(scale == 'scale'):
+        figureName = "/home/francesco/Pictures/soft/scaled-" + which + "VSTemp-" + figureName
+    else:
+        figureName = "/home/francesco/Pictures/soft/" + which + "VSTemp-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def compareRingnessVSTemperature(dirName, figureName, which, dynamics="/dynamics-log/"):
+    typeList = np.array(["langevin1e-01/", "langevin3e-01/", "langevin1/", "langevin2/", "langevin1e01/", "langevin3e01/", "langevin1e02/"])
+    beta = ['1e-01', '3e-01', '1', '2', '1e01', '3e01', '1e02']
+    dirList = np.array(["4e-04", "1e-03", "2e-03", "4e-03", "1e-02", "2e-02", "4e-02", "1e-01", "2e-01", "4e-01", "1"])
+    markerList = ['o', 's', 'v', '^', 'd', 'D', '*']
+    colorList = ['k', 'r', 'g', 'b', 'c', [1,0.5,0], [0.5,0,1]]
+    fig, ax = plt.subplots(figsize=(7,6), dpi = 120)
+    for t in range(typeList.shape[0]):
+        noise = np.zeros(dirList.shape[0])
+        ring = np.zeros((dirList.shape[0], 2))
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + typeList[t] + "T" + dirList[d] + dynamics
+            if(os.path.exists(dirSample)):
+                if which == 'ring':
+                    ring[d] = utils.computeRingness(dirSample)
+                elif which == 'spread':
+                    ring[d] = utils.computeSpreadness(dirSample, 50, 5)
+                else:
+                    ring[d] = utils.computeClusterRingness(dirSample, 10)
+                noise[d] = np.sqrt(2 * utils.readFromDynParams(dirSample, "damping") * float(dirList[d]))
+        ax.errorbar(noise[noise!=0], ring[noise!=0,0], ring[noise!=0,1], color=colorList[t], marker=markerList[t], markersize=8, capsize=3, fillstyle='none', lw=1, label="$\\gamma =$" + beta[t])
+    ax.legend(fontsize=10, loc='upper right')
+    ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Noise$ $magnitude,$ $\\sqrt{2 \\gamma k_B T}$", fontsize=16)
+    if which == 'ring':
+        ax.plot(np.linspace(np.min(noise), np.max(noise), 100), np.ones(100), ls='--', lw=0.5, color='k')
+        ax.set_ylabel("$Uniformity,$ $\\sigma_\\theta \\sqrt{3}/\\pi$", fontsize=16)
+    elif which == 'spread':
+        ax.set_ylabel("$Occupied$ $boundary$ $fraction$", fontsize=16)
+    else:
+        ax.set_ylabel("$\\frac{\\langle \\sigma_\\theta^C \\rangle}{\\pi / \\sqrt{3}}$", rotation='horizontal', fontsize=24, labelpad=15)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/ringVSTemp-" + which + "-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -321,36 +372,61 @@ def plotVelTimeCorrVSNoise(dirName, figureName, which="vicsek"):
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def plotWallAngleDynamics(dirName, figureName, which='angle'):
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    # get wall dynamics from directories in dirName
-    boxRadius = np.loadtxt(dirName + os.sep + "boxSize.dat")
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    angleDyn = np.zeros((dirList.shape[0], 4))
-    for i in range(dirList.shape[0]):
-        angleDyn[i,:3] = np.loadtxt(dirName + os.sep + dirList[i] + os.sep + "wallDynamics.dat").astype(np.float64)
-        angleDyn[i,3] = 0.5 * angleDyn[i,1]**2 * boxRadius**2
-    print("average omega: ", np.mean(angleDyn[:,1]), np.std(angleDyn[:,1]))
-    print("average alpha: ", np.mean(angleDyn[:,2]), np.std(angleDyn[:,2]))
-    if which == 'ekin':
-        index = 3
-        ylabel = '$Kinetic$ $energy,$ $\\omega^2 R^2 / 2$'
-    elif which == 'alpha':
-        index = 2
-        ylabel = '$Angular$ $acceleration,$ $\\alpha$'
-    elif which == 'omega':
-        index = 1
-        ylabel = '$Angular$ $velocity,$ $\\omega$'
-    else:
-        index = 0
-        ylabel = '$Angle,$ $\\theta$'
-    ax.plot(timeList, angleDyn[:,index], lw=1, color='k')
+def plotWallAngleDynamics(dirName, figureName, which='omega'):
+    typeList = np.array(["langevin1e-02/", "langevin1e-01/", "langevin1/", "langevin1e01/", "langevin1e02/"])
+    damping = np.array(['1e-02', '1e-01', '1', '1e01', '1e02'])
+    colorList = cm.get_cmap('plasma', typeList.shape[0]+1)
+    fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
+    omega = np.zeros((typeList.shape[0],2))
+    alpha = np.zeros((typeList.shape[0],2))
+    ekin = np.zeros((typeList.shape[0],2))
+    noise = np.zeros(typeList.shape[0])
+    for t in range(typeList.shape[0]):
+        dirSample = dirName + os.sep + typeList[t] + os.sep + "tp1e02"
+        # get wall dynamics from directories in dirName
+        boxRadius = np.loadtxt(dirSample + os.sep + "boxSize.dat")
+        dirList, timeList = utils.getOrderedDirectories(dirSample)
+        angleDyn = np.zeros((dirList.shape[0], 3))
+        for i in range(dirList.shape[0]):
+            angleDyn[i] = np.loadtxt(dirSample + os.sep + dirList[i] + os.sep + "wallDynamics.dat").astype(np.float64)
+        omega[t,0] = np.mean(np.abs(angleDyn[:,1]))
+        omega[t,1] = np.std(np.abs(angleDyn[:,1]))
+        alpha[t,0] = np.mean(np.abs(angleDyn[:,2]))
+        alpha[t,1] = np.std(np.abs(angleDyn[:,2]))
+        ekin[t,0] = np.mean(0.5*angleDyn[:,1]**2*boxRadius**2*utils.readFromWallParams(dirSample, "numWall"))
+        ekin[t,1] = np.std(0.5*angleDyn[:,1]**2*boxRadius**2*utils.readFromWallParams(dirSample, "numWall"))
+        noise[t] = utils.readFromDynParams(dirSample, "damping")
+        ax.plot(timeList, angleDyn[:,0], lw=1, color=colorList((typeList.shape[0]-t-1)/typeList.shape[0]), label="$\\gamma=$" + damping[t])
+    ax.legend(fontsize=12, loc='best')
     ax.tick_params(axis='both', labelsize=12)
-    ax.set_ylabel(ylabel, fontsize=16)
+    ax.set_ylabel('$Angle,$ $\\theta$', fontsize=16)
     ax.set_xlabel("$Time,$ $t$", fontsize=16)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/wallDyn-" + which + "-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    figure1Name = "/home/francesco/Pictures/soft/wall-angle-" + figureName
+    # second plot
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
+    if which == 'ekin':
+        mean = ekin[:,0]
+        error = ekin[:,1]
+        ylabel = '$Kinetic$ $energy,$ $N_w \\omega^2 R^2 / 2$'
+    elif which == 'alpha':
+        mean = alpha[:,0]
+        error = alpha[:,1]
+        ylabel = '$|\\alpha|$'
+    else:
+        mean = omega[:,0]
+        error = omega[:,1]
+        ylabel = '$|\\omega|$'
+    ax.errorbar(noise, mean, error, lw=1, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel(ylabel, fontsize=16)
+    ax.set_xlabel("$Friction,$ $\\gamma$", fontsize=16)
+    plt.tight_layout()
+    figure2Name = "/home/francesco/Pictures/soft/wall-" + which + "-" + figureName
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
 if __name__ == '__main__':
@@ -373,12 +449,6 @@ if __name__ == '__main__':
         dynamics = sys.argv[5]
         plotAlignmentVSDamping(dirName, figureName, which, dynamics)
 
-    elif(whichPlot == "comparetemp"):
-        figureName = sys.argv[3]
-        which = sys.argv[4]
-        dynamics = sys.argv[5]
-        compareAlignmentVSTemperature(dirName, figureName, which, dynamics)
-
     elif(whichPlot == "alignnoise"):
         figureName = sys.argv[3]
         which = sys.argv[4]
@@ -391,6 +461,19 @@ if __name__ == '__main__':
         which = sys.argv[4]
         dynamics = sys.argv[5]
         compareAlignmentVSNoise(dirName, figureName, which, dynamics)
+
+    elif(whichPlot == "comparetemp"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        dynamics = sys.argv[5]
+        scale = sys.argv[6]
+        compareAlignmentVSTemperature(dirName, figureName, which, dynamics, scale)
+
+    elif(whichPlot == "comparering"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        dynamics = sys.argv[5]
+        compareRingnessVSTemperature(dirName, figureName, which, dynamics)
 
     elif(whichPlot == "logvcorr"):
         startBlock = int(sys.argv[3])

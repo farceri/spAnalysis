@@ -825,7 +825,6 @@ def computeClusterDelaunayShape(dirName, plot=False, dirSpacing=1):
         if not(os.path.exists(dirSample + os.sep + "simplexLabels.dat")):
             simplexPos = utils.computeSimplexPos(simplices, pos)
             labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
-            numLabels = np.unique(labels).shape[0]-1
             allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
             allLabels[denseSimplexList==1] = labels
             np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
@@ -884,11 +883,10 @@ def computeDelaunayClusterVel(dirName, plot=False, dirSpacing=1):
     return np.column_stack((timeList, clusterVel))
 
 def getTripleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
-    tripleBoxSize = np.array([boxSize[0]*3, boxSize[1]])
     tripleRad = np.concatenate((rad, rad, rad))
     triplePos = utils.triplePositions(pos, boxSize)
     tripleDenseList = np.concatenate((denseList, denseList, denseList))
-    labels = utils.getDBClusterLabels(triplePos, tripleBoxSize, eps, min_samples=2, denseList=tripleDenseList)
+    labels = utils.getDBClusterLabels(triplePos, eps, min_samples=2, denseList=tripleDenseList)
     tripleLabels = -1*np.ones(tripleDenseList.shape[0], dtype=np.int64)
     tripleLabels[tripleDenseList==1] = labels
     tripleLabels = tripleLabels.astype(np.int64)
@@ -897,11 +895,10 @@ def getTripleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
     return labels, maxLabel
 
 def getDoubleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
-    doubleBoxSize = np.array([boxSize[0]*2, boxSize[1]])
     doubleRad = np.concatenate((rad, rad))
     doublePos = utils.doublePositions(pos, boxSize)
     doubleDenseList = np.concatenate((denseList, denseList))
-    labels = utils.getDBClusterLabels(doublePos, doubleBoxSize, eps, min_samples=2, denseList=doubleDenseList)
+    labels = utils.getDBClusterLabels(doublePos, eps, min_samples=2, denseList=doubleDenseList)
     doubleLabels = -1*np.ones(doubleDenseList.shape[0], dtype=np.int64)
     doubleLabels[doubleDenseList==1] = labels
     doubleLabels = doubleLabels.astype(np.int64)
@@ -923,7 +920,7 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=Fa
         sep = utils.getDirSep(dirSample, "particleRad")
         rad = np.loadtxt(dirSample + sep + "particleRad.dat")
         pos = utils.centerCOM(pos, rad, boxSize)
-        labels, maxLabel = getWrappedClusterLabels(pos, rad, boxSize, denseList, eps)
+        labels, maxLabel = getTripleWrappedClusterLabels(pos, rad, denseList, eps)
         np.savetxt(dirSample + os.sep + "clusterLabels.dat", labels)
     else:
         if not(os.path.exists(dirSample + os.sep + "particleList.dat")):
@@ -936,7 +933,7 @@ def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=Fa
             sep = utils.getDirSep(dirSample, "particleRad")
             rad = np.loadtxt(dirSample + sep + "particleRad.dat")
             pos = utils.centerCOM(pos, rad, boxSize)
-            labels, maxLabel = getWrappedClusterLabels(pos, rad, boxSize, denseList, eps)
+            labels, maxLabel = getTripleWrappedClusterLabels(pos, rad, denseList, eps)
             #labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
             #allLabels = -1*np.ones(denseList.shape[0])
             #allLabels[np.argwhere(denseList==1)[:,0]] = labels
@@ -968,7 +965,7 @@ def getLEParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=
         particleList = np.loadtxt(dirSample + os.sep + "particleList.dat")
         denseList = particleList[:,0]
         pos = utils.getLEPBCPositions(dirSample + "/particlePos.dat", boxSize, strain)
-        labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
+        labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=denseList)
         allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
         allLabels[denseList==1] = labels
         np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
@@ -980,7 +977,7 @@ def getLEParticleClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=
         if not(os.path.exists(dirSample + os.sep + "clusterLabels.dat")):
             # compute simplex positions for clustering algorithm
             pos = utils.getLEPBCPositions(dirSample + "/particlePos.dat", boxSize, strain)
-            labels = utils.getDBClusterLabels(pos, boxSize, eps, min_samples=2, denseList=denseList)
+            labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=denseList)
             allLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
             allLabels[denseList==1] = labels
             np.savetxt(dirSample + os.sep + "clusterLabels.dat", allLabels)
@@ -1047,7 +1044,7 @@ def getSimplexClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=Fal
         simplexArea = simplexList[:,2]
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
         simplexPos = utils.computeSimplexPos(simplices, pos)
-        labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
+        labels = utils.getDBClusterLabels(simplexPos, eps, min_samples=1, denseList=denseSimplexList)
         allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
         allLabels[denseSimplexList==1] = labels
         np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)
@@ -1062,7 +1059,7 @@ def getSimplexClusterLabels(dirSample, boxSize, eps, threshold=0.76, compute=Fal
             # compute simplex positions for clustering algorithm
             pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
             simplexPos = utils.computeSimplexPos(simplices, pos)
-            labels = utils.getDBClusterLabels(simplexPos, boxSize, eps, min_samples=1, denseList=denseSimplexList)
+            labels = utils.getDBClusterLabels(simplexPos, eps, min_samples=1, denseList=denseSimplexList)
             allLabels = -1*np.ones(denseSimplexList.shape[0], dtype=np.int64)
             allLabels[denseSimplexList==1] = labels
             np.savetxt(dirSample + os.sep + "simplexLabels.dat", allLabels)

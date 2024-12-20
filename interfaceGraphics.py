@@ -1691,11 +1691,42 @@ def protocolCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
+def plotSPEnergyStrainVSTime(dirName, dirType='damping1e01', dynamics='/'):
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    num1 = int(utils.readFromParams(dirName, 'num1'))
+    # read energy for strained configurations
+    dirList, strain = utils.getOrderedStrainDirectories(dirName)
+    colorMap = cm.get_cmap('plasma')  # Set the color map
+    colorId = colorMap(strain/np.max(strain))
+    energy = np.zeros((strain.shape[0],2))
+    length = np.zeros(strain.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d] + os.sep + dirType + dynamics
+        if(os.path.exists(dirSample)):
+            if(d==0): print(dirSample)
+            data = np.loadtxt(dirSample + "/energy.dat")
+            ax.plot(data[:,1], data[:,2] + data[:,3], color=colorId[d])
+            energy[d,0] = np.mean(data[:,2] + data[:,3])
+            energy[d,1] = np.std(data[:,2] + data[:,3])
+            length[d] = interface.get2InterfaceLength(dirSample, num1, 1.4, 2)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_ylabel("$Energy,$ $E$", fontsize=16)
+    ax.set_xlabel("$Time,$ $t$", fontsize=16)
+    fig.tight_layout()
+    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    #ax.errorbar(strain[energy[:,0]!=0], energy[energy[:,0]!=0,0], energy[energy[:,0]!=0,1], color='k', marker='o', markersize=8, capsize=3, fillstyle='none')
+    ax.errorbar(length[energy[:,0]!=0], energy[energy[:,0]!=0,0], energy[energy[:,0]!=0,1], color='k', marker='o', markersize=8, capsize=3, fillstyle='none')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_ylabel("$Energy,$ $E$", fontsize=16)
+    #ax.set_xlabel("$Strain,$ $\\epsilon$", fontsize=16)
+    ax.set_xlabel("$Length,$ $L$", fontsize=16)
+    fig.tight_layout()
+    plt.show()
+
 def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', active=0, ilength=0, window=3, every=0, plot=True):
     # read energy at initial unstrained configuration
     numParticles = int(utils.readFromParams(dirName, 'numParticles'))
     num1 = int(utils.readFromParams(dirName, 'num1'))
-    epsilon = utils.readFromParams(dirName, "epsilon")
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     # read energy for strained configurations
     dirList, strain = utils.getOrderedStrainDirectories(dirName)
@@ -1711,20 +1742,21 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
             data = np.loadtxt(dirSample + "/energy.dat")
             if(every != 0):
                 data = data[::every,:]
-            data[:,2:] /= epsilon# two interfaces in periodic boundaries
+            data[:,2:] /= epsilon
             work[d,0] = np.mean((data[:,2] + data[:,3]))
             work[d,1] = np.std((data[:,2] + data[:,3]))
-            if(active == 'active'):
-                heat[d,0] = np.mean((data[:,5] + data[:,6] + data[:,7]))
-                heat[d,1] = np.std((data[:,5] + data[:,6] + data[:,7]))
-            else:
-                heat[d,0] = np.mean((data[:,5] + data[:,6]))
-                heat[d,1] = np.std((data[:,5] + data[:,6]))
+            if(dirType != 'dynamics'): # nve directory - no heat
+                if(active == 'active'):
+                    heat[d,0] = np.mean((data[:,5] + data[:,6] + data[:,7]))
+                    heat[d,1] = np.std((data[:,5] + data[:,6] + data[:,7]))
+                else:
+                    heat[d,0] = np.mean((data[:,5] + data[:,6]))
+                    heat[d,1] = np.std((data[:,5] + data[:,6]))
             epot[d,0] = np.mean(data[:,2])
             epot[d,1] = np.std(data[:,2])/np.sqrt(data.shape[0])
             ekin[d,0] = np.mean(data[:,3])
             ekin[d,1] = np.std(data[:,3])/np.sqrt(data.shape[0])
-            length[d] = interface.get2InterfaceLength(dirSample, num1, 1.2, 2)
+            length[d] = interface.get2InterfaceLength(dirSample, num1, 1.4, 2)
     strain = strain[work[:,0]!=0]
     length = length[work[:,0]!=0]
     epot = epot[work[:,0]!=0]
@@ -1829,10 +1861,10 @@ def noiseCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext', 
     else:
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(versus == 'damping'):
-        dirList = np.array(['damping1e-15', 'damping1e-12', 'damping1e-05', 'damping1e-03', 'damping1e-01', 'damping1e01'])
-        damping = np.array([1e-15, 1e-08, 1e-05, 1e-03, 1e-01, 1e01])
-        labelList = np.array(['1e-15', '1e-12', '1e-05', '1e-03', '1e-01', '1e01'])
-        markerList = ['o', 'v', 'D', 's', '^', '*', '.', 'd']
+        dirList = np.array(['damping1e-05', 'damping1e-03', 'damping1e-01', 'damping1e01'])
+        damping = np.array([1e-05, 1e-03, 1e-01, 1e01])
+        labelList = np.array(['1e-05', '1e-03', '1e-01', '1e01'])
+        markerList = ['o', 'v', 'D', 's', '^', 'd']
     elif(versus == 'temp'):
         dirList = np.array(['0.80', '0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00', '2.10', '2.20'])
     elif(versus == "active"):
@@ -3174,6 +3206,11 @@ if __name__ == '__main__':
         freq = int(sys.argv[5])
         window = int(sys.argv[6])
         plotSPEnergyVSLength(dirName, figureName, which, freq, window, plot=True)
+
+    elif(whichPlot == "energytimestrain"):
+        dirType = sys.argv[3]
+        dynamics = sys.argv[4]
+        plotSPEnergyStrainVSTime(dirName, dirType, dynamics)
 
     elif(whichPlot == "energystrain"):
         figureName = sys.argv[3]
