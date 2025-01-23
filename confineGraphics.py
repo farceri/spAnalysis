@@ -168,7 +168,7 @@ def compareAlignmentVSNoise(dirName, figureName, which, dynamics="/"):
             if(typeList[t] == "active/fixed"):
                 dirSample = dirName + typeList[t] + "/tp" + dirList[d] + dynamics
             else:
-                dirSample = dirName + typeList[t] + "/j1e03-tp" + dirList[d] + dynamics
+                dirSample = dirName + typeList[t] + "/damping1e02/j1e03-tp" + dirList[d] + dynamics
             if(os.path.exists(dirSample)):
                 data = np.loadtxt(dirSample + "energy.dat")
                 if(index == 4):
@@ -194,6 +194,8 @@ def compareAlignmentVSNoise(dirName, figureName, which, dynamics="/"):
     ax.tick_params(axis='both', labelsize=14)
     ax.set_xlabel("$Noise$ $magnitude,$ $\\sqrt{2\\Delta t/\\tau_p}$", fontsize=16)
     plt.tight_layout()
+    if(which == '0'):
+        which = 'mom'
     figureName = "/home/francesco/Pictures/soft/compare-" + which + "VSnoise-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()

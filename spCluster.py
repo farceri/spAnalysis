@@ -888,7 +888,7 @@ def getTripleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
     tripleDenseList = np.concatenate((denseList, denseList, denseList))
     labels = utils.getDBClusterLabels(triplePos, eps, min_samples=2, denseList=tripleDenseList)
     tripleLabels = -1*np.ones(tripleDenseList.shape[0], dtype=np.int64)
-    tripleLabels[tripleDenseList==1] = labels
+    tripleLabels[tripleDenseList==1] = labels + 1
     tripleLabels = tripleLabels.astype(np.int64)
     maxLabel = utils.findLargestParticleCluster(tripleRad, tripleLabels)
     labels = utils.wrapTripleClusterLabels(tripleLabels, maxLabel, pos.shape[0])
@@ -900,7 +900,7 @@ def getDoubleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
     doubleDenseList = np.concatenate((denseList, denseList))
     labels = utils.getDBClusterLabels(doublePos, eps, min_samples=2, denseList=doubleDenseList)
     doubleLabels = -1*np.ones(doubleDenseList.shape[0], dtype=np.int64)
-    doubleLabels[doubleDenseList==1] = labels
+    doubleLabels[doubleDenseList==1] = labels + 1
     doubleLabels = doubleLabels.astype(np.int64)
     maxLabel = utils.findLargestParticleCluster(doubleRad, doubleLabels)
     labels = utils.wrapDoubleClusterLabels(doubleLabels, maxLabel, pos.shape[0])

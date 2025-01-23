@@ -179,22 +179,24 @@ def plotEnergy(dirName, figureName, which='all', log=False):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
         print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]), "  std/mean:", np.std(energy[:,2])/np.abs(np.mean(energy[:,2])))
         print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]), "  std/mean:", np.std(energy[:,3])/np.abs(np.mean(energy[:,3])))
-        fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
+        fig, ax = plt.subplots(figsize=(6,4.5), dpi = 120)
         if which != 'simple':
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
                 ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$U$")
                 ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$K$")
         if which == 'thermostat':
-            ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
-            ax.plot(energy[:,0], energy[:,6], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
-            heat = energy[:,5] + energy[:,6]
+            ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='g', linestyle='dashdot', alpha=0.8, label="$Damping$")
+            ax.plot(energy[:,0], 0.5*energy[:,6], linewidth=1.5, color='c', linestyle='dotted', alpha=0.8, label="$White$ $noise$")
+            heat = energy[:,5] + 0.5*energy[:,6]
+            ax.plot(energy[:,0], heat, linewidth=1, color='k', linestyle='solid', alpha=0.8, label="$Heat$")
             print("heat:", np.mean(heat), "+-", np.std(heat), "  std/mean:", np.std(heat)/np.abs(np.mean(heat)))
             label = "$E_{tot}$ $+$ $W_{th}$"
         if which == 'active':
-            ax.plot(energy[:,0], energy[:,5], linewidth=2, color='c', linestyle='dashdot', alpha=0.8, label="$W_{damping}$")
-            ax.plot(energy[:,0], energy[:,6], linewidth=2, color='c', linestyle='dotted', alpha=0.8, label="$W_{noise}$")
-            ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color='g', linestyle='solid', alpha=0.6, label="$W_{active}$")
-            heat = energy[:,5] + energy[:,6] + energy[:,7]
+            ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='g', linestyle='dashdot', alpha=0.8, label="$Damping$")
+            ax.plot(energy[:,0], 0.5*energy[:,6], linewidth=1.5, color='c', linestyle='dotted', alpha=0.8, label="$White$ $noise$")
+            ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color=[1,0.5,0], linestyle='solid', alpha=0.6, label="$Active$ $noise$")
+            heat = energy[:,5] + 0.5*energy[:,6] + energy[:,7]
+            ax.plot(energy[:,0], heat, linewidth=1, color='k', linestyle='solid', alpha=0.8, label="$Heat$")
             print("heat:", np.mean(heat), "+-", np.std(heat), "  std/mean:", np.std(heat)/np.abs(np.mean(heat)))
             print("active work:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
             label = "$E_{tot}$ $+$ $W_{th}$ $+$ $W_{active}$"

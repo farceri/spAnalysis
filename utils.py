@@ -1231,7 +1231,7 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "lang2con" and dir != "lang1con" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)

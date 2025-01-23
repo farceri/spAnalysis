@@ -240,6 +240,9 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
     else:
         pos = utils.getPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize)
     rad = np.array(np.loadtxt(dirName + sep + 'particleRad.dat'))
+    lw = 0.3
+    if(rad.shape[0] > 1024):
+        lw = 0.1
     if lj:
         rad *= 2**(1/6)
     if(shiftx != 0 or shifty != 0):
@@ -255,10 +258,12 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         elif(center == 'typecluster'):
             typeLabels = np.zeros(rad.shape[0])
             typeLabels[:num1] = 1
-            eps = 1.2*np.max(rad)
-            labels, maxLabel = cluster.getDoubleWrappedClusterLabels(pos, rad, boxSize, typeLabels, eps)
+            eps = 1.4*np.max(rad)
+            labels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, typeLabels, eps)
+            print(np.unique(labels))
             pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
             print('maxLabel:', maxLabel, 'number of particles in biggest cluster:', labels[labels==maxLabel].shape[0])
+            print('number of clusters:', np.unique(labels).shape[0])
     print('Center of mass:', np.mean(pos, axis=0))
     if not roundBox:
         print('BoxRatio Ly / Lx:', boxSize[1] / boxSize[0])
@@ -329,16 +334,16 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         #print('particle', particleId, 'position:', x, y)
         if quiver:
             #ax.add_artist(plt.Circle([x, y], r, edgecolor=colorId[particleId], facecolor='none', alpha=alpha, linewidth=0.7))
-            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
             vx = vel[particleId,0]
             vy = vel[particleId,1]
             ax.quiver(x, y, vx, vy, facecolor='k', linewidth=0.1, width=0.001, scale=80, headlength=5, headaxislength=5, headwidth=5, alpha=0.6)
         else:
-            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
             if roundBox:
                 if(outSideIdx.shape[0] != 0):
                     if(np.isin(particleId, outSideIdx)):
-                        ax.add_artist(plt.Circle([x, y], 10*r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.3))
+                        ax.add_artist(plt.Circle([x, y], 10*r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=lw))
                         vx = vel[particleId,0]
                         vy = vel[particleId,1]
                         ax.quiver(x, y, vx, vy, facecolor='k', width=0.002, scale=10)
@@ -977,6 +982,8 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
 
 def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, quiver=False, veltang=False, dense=False, 
                           perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0, colorMap=None):
+    if(rad.shape[0] > 1024):
+        lw = 0.05
     if boxSize.shape[0] == 1:
         pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
         utils.checkParticlesInCircle(pos, boxSize)
@@ -990,7 +997,7 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, qui
 
     if angle:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
-        plotSoftParticlesWithAngles(ax, pos, vel, rad, colorMap, scale)
+        plotSoftParticlesWithAngles(ax, pos, vel, rad, colorMap, scale, lw=lw)
 
     if quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
@@ -1123,12 +1130,13 @@ def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, 
         if annotate:
             ax.annotate(str(wallId), xy=(x, y), fontsize=3, verticalalignment='center', horizontalalignment='center')
     if wallQuiver:
-        for wallId in range(0,wallPos.shape[0],20):
-            x = wallPos[wallId,0]
-            y = wallPos[wallId,1]
-            vx = wallVel[wallId,0]
-            vy = wallVel[wallId,1]
-            ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=10, headlength=10, headaxislength=10, headwidth=10, alpha=1)
+        #for wallId in range(0,wallPos.shape[0],20):
+        wallId = 0
+        x = wallPos[wallId,0]
+        y = wallPos[wallId,1]
+        vx = wallVel[wallId,0]
+        vy = wallVel[wallId,1]
+        ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=10, headlength=10, headaxislength=10, headwidth=10, alpha=1)
 
     if angle or quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))

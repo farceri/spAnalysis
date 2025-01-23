@@ -1963,16 +1963,15 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
 
 ####################### Average cluster height interface #######################
 def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=True):
-    spacingName = str(spacing)
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
     if lj:
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
     meanArea = np.pi*(sigma/2)**2
-    eps = 1.4 * sigma
+    eps = 1.4 * np.max(sigma)
     spacing *= sigma # vertical
     #spacing = utils.getPairCorrelationPeakLocation(dirName)
     thickness = 3 # horizontal
@@ -2027,9 +2026,11 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
     mixedLength = 0
     for c in range(1,uniqueLabels.shape[0]):
         numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+        radCluster = rad[clusterLabels==uniqueLabels[c]]
         mixedNum += numCluster
+        mixedLength +=  np.sum(radCluster)
+        #mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
         #mixedLength += mixedNum * np.pi * sigma
-        mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
         #print("type1 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
     # clusters of second particle type
     labels = np.zeros(numParticles)
@@ -2039,18 +2040,23 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
     uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
     for c in range(1,uniqueLabels.shape[0]):
         numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+        radCluster = rad[clusterLabels==uniqueLabels[c]]
         mixedNum += numCluster
+        mixedLength +=  np.sum(radCluster)
+        #mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
         #mixedLength += mixedNum * np.pi * sigma
-        mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
         #print("type2 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
     length += mixedLength
     if(plot == "plot"):
         print("Number of mixed particles:", mixedNum, "length:", mixedLength)
         print("Interface length:", length, "proxy:", 2*boxSize[1])
-        fig, ax = plt.subplots(figsize=(3,3*boxSize[1]/boxSize[0]), dpi = 120)
+        if(boxSize[0] > boxSize[1]):
+            fig, ax = plt.subplots(figsize=(3*boxSize[0]/boxSize[1], 3), dpi = 120)
+        else:
+            fig, ax = plt.subplots(figsize=(3, 3*boxSize[1]/boxSize[0]), dpi = 120)
         ax.set_xlim(-0.2*boxSize[0],1.2*boxSize[0])
         ax.set_ylim(0,boxSize[1])
-        ax.plot(leftPos[:,0], leftPos[:,1], color='b', marker='o', markersize=4, fillstyle='none', lw=1)
+        ax.plot(leftPos[:,0], leftPos[:,1], color='g', marker='o', markersize=4, fillstyle='none', lw=1)
         ax.plot(rightPos[:,0], rightPos[:,1], color='g', marker='o', markersize=4, fillstyle='none', lw=1)
         ax.tick_params(axis='both', labelsize=12)
         ax.set_xlabel("x", fontsize=14)
