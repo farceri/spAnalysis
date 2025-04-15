@@ -746,8 +746,8 @@ def averageParticleVelSpaceCorr(dirName, dirSpacing=1000):
         distance = utils.computeDistances(pos, boxSize)
         vel = np.array(np.loadtxt(dirName + os.sep + dirList[d] + os.sep + "particleVel.dat"))
         velNorm = np.linalg.norm(vel, axis=1)
-        vel[:,0] /= velNorm
-        vel[:,1] /= velNorm
+        vel[velNorm > 0, 0] /= velNorm[velNorm > 0]
+        vel[velNorm > 0, 1] /= velNorm[velNorm > 0]
         velNormSquared = np.mean(velNorm**2)
         for i in range(distance.shape[0]):
             for j in range(i):

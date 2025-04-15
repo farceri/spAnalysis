@@ -6,6 +6,7 @@ Created by Francesco
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import cm
+from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 from scipy import interpolate
@@ -220,7 +221,7 @@ def plotInterfaceCorrelation(dirName, figureName, which='Dr'):
     fig.savefig(figureName, transparent=True, format = "png")
     plt.show()
 
-def plot2InterfaceFluctuations(dirName, figureName, which='lang2con', num1=0, thickness=3):
+def plot2InterfaceFluctuations(dirName, figureName, which='lang2con-log', num1=0, thickness=3):
     #boxHeight = np.loadtxt(dirName + "boxSize.dat")[1]
     dirList = np.array(["1e-05", "1e-04", "1e-03", "1e-02", "1e-01", "1", "1e01"])
     #dirList = np.array(["1e-15", "1e-10", "1e-05", "1e-03", "1e01"])
@@ -1769,79 +1770,109 @@ def plotSPEnergyLengthVSStrain(dirName, dirType='damping1e01', dynamics='/'):
     fig.tight_layout()
     plt.show()
 
-def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', active=0, ilength=0, window=3, every=0, plot=True):
-    # read energy at initial unstrained configuration
+def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', active=0, ilength=0, window=1, every=0, plot=True, activename='active'):
     numParticles = int(utils.readFromParams(dirName, 'numParticles'))
     num1 = int(utils.readFromParams(dirName, 'num1'))
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
-    # read energy for strained configurations
-    dirList, strain = utils.getOrderedStrainDirectories(dirName)
-    work = np.zeros((strain.shape[0],2))
-    heat = np.zeros((strain.shape[0],2))
-    epot = np.zeros((strain.shape[0],2))
-    ekin = np.zeros((strain.shape[0],2))
-    length = np.zeros((strain.shape[0],2))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + dirList[d] + os.sep + dirType + dynamics
-        if(os.path.exists(dirSample)):
-            epsilon = utils.readFromParams(dirSample, "epsilon")
-            data = np.loadtxt(dirSample + "/energy.dat")
-            if(every != 0):
-                data = data[::every,:]
-            data[:,2:] /= epsilon
-            work[d,0] = np.mean((data[:,2] + data[:,3]))
-            work[d,1] = np.std((data[:,2] + data[:,3]))
-            if(dirType != 'dynamics'): # nve directory - no heat
-                if(active == 'active'):
-                    heat[d,0] = np.mean((data[:,5] + data[:,6] + data[:,7]))
-                    heat[d,1] = np.std((data[:,5] + data[:,6] + data[:,7]))
-                else:
-                    heat[d,0] = np.mean((data[:,5] + data[:,6]))
-                    heat[d,1] = np.std((data[:,5] + data[:,6]))
-            epot[d,0] = np.mean(data[:,2])
-            epot[d,1] = np.std(data[:,2])/np.sqrt(data.shape[0])
-            ekin[d,0] = np.mean(data[:,3])
-            ekin[d,1] = np.std(data[:,3])/np.sqrt(data.shape[0])
-            dirTime, _ = utils.getOrderedDirectories(dirSample)
-            if(dirTime.shape[0] == 0):
-                length[d,0] = interface.get2InterfaceLength(dirSample, num1, 1.4, 2)
-                length[d,1] = 0
-            else:
-                sampleLength = np.empty(0)
-                for t in range(0,dirTime.shape[0],10):
-                    dirTimeSample = dirSample + dirTime[t] + os.sep
-                    sampleLength = np.append(sampleLength, interface.get2InterfaceLength(dirTimeSample, num1, 1.4, 2))
-                length[d,0] = np.mean(sampleLength)
-                length[d,1] = np.std(sampleLength)
-    strain = strain[work[:,0]!=0]
-    length = length[work[:,0]!=0]
-    epot = epot[work[:,0]!=0]
-    ekin = ekin[work[:,0]!=0]
-    heat = heat[work[:,0]!=0]
-    work = work[work[:,0]!=0]
-    if(window > 1):
-        work = np.column_stack((utils.computeMovingAverage(work[:,0], window), utils.computeMovingAverage(work[:,1], window)))
-        heat = np.column_stack((utils.computeMovingAverage(heat[:,0], window), utils.computeMovingAverage(heat[:,1], window)))
-        epot = np.column_stack((utils.computeMovingAverage(epot[:,0], window), utils.computeMovingAverage(epot[:,1], window)))
-        ekin = np.column_stack((utils.computeMovingAverage(ekin[:,0], window), utils.computeMovingAverage(ekin[:,1], window)))
     tension = np.zeros(2)
+    temp = np.zeros(2)
+    compute = True
+    '''
+    if(active == 'active'):
+        if(os.path.exists(dirName + "/energyStrain-" + activename + ".dat")):
+            compute = False
+            print("Reading energy data from file")
+    else:
+        if(os.path.exists(dirName + "/energyStrain-" + dirType + ".dat")):
+            compute = False
+            print("Reading energy data from file")
+    '''
+    if compute:
+        print("Computing energy data")
+        # read energy for strained configurations
+        dirList, strain = utils.getOrderedStrainDirectories(dirName)
+        dirList = dirList[strain<0.17]
+        strain = strain[strain<0.17]
+        work = np.zeros((strain.shape[0],2))
+        heat = np.zeros((strain.shape[0],2))
+        epot = np.zeros((strain.shape[0],2))
+        ekin = np.zeros((strain.shape[0],2))
+        length = np.zeros((strain.shape[0],2))
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + dirList[d] + os.sep + dirType + dynamics
+            if(os.path.exists(dirSample)):
+                epsilon = utils.readFromParams(dirSample, "epsilon")
+                data = np.loadtxt(dirSample + "/energy.dat")
+                if(every != 0):
+                    data = data[::every,:]
+                data[:,2:] /= epsilon
+                work[d,0] = np.mean((data[:,2] + data[:,3]))
+                work[d,1] = np.std((data[:,2] + data[:,3]))
+                if(dirType != 'dynamics'): # nve directory - no heat
+                    if(active == 'active'):
+                        heat[d,0] = np.mean((data[:,5] + data[:,6] + data[:,7]))
+                        heat[d,1] = np.std((data[:,5] + data[:,6] + data[:,7]))
+                    else:
+                        heat[d,0] = np.mean((data[:,5] + data[:,6]))
+                        heat[d,1] = np.std((data[:,5] + data[:,6]))
+                epot[d,0] = np.mean(data[:,2])
+                epot[d,1] = np.std(data[:,2])
+                ekin[d,0] = np.mean(data[:,3])
+                ekin[d,1] = np.std(data[:,3])
+                dirTime, _ = utils.getOrderedDirectories(dirSample)
+                if(ilength == 'length'):
+                    if(dirTime.shape[0] == 0):
+                        length[d,0] = interface.get2InterfaceLength(dirSample, num1, 1.4, 2)
+                        length[d,1] = 0
+                    else:
+                        sampleLength = np.empty(0)
+                        for t in range(0,dirTime.shape[0],10):
+                            dirTimeSample = dirSample + dirTime[t] + os.sep
+                            sampleLength = np.append(sampleLength, interface.get2InterfaceLength(dirTimeSample, num1, 1.4, 2))
+                        length[d,0] = np.mean(sampleLength)
+                        length[d,1] = np.std(sampleLength)
+            if plot:
+                print("strain:", strain[d], "length:", length[d], "work:", work[d])
+        strain = strain[work[:,0]!=0]
+        length = length[work[:,0]!=0]
+        epot = epot[work[:,0]!=0]
+        ekin = ekin[work[:,0]!=0]
+        heat = heat[work[:,0]!=0]
+        work = work[work[:,0]!=0]
+        if(window > 1):
+            work = np.column_stack((utils.computeMovingAverage(work[:,0], window), utils.computeMovingAverage(work[:,1], window)))
+            heat = np.column_stack((utils.computeMovingAverage(heat[:,0], window), utils.computeMovingAverage(heat[:,1], window)))
+            epot = np.column_stack((utils.computeMovingAverage(epot[:,0], window), utils.computeMovingAverage(epot[:,1], window)))
+            ekin = np.column_stack((utils.computeMovingAverage(ekin[:,0], window), utils.computeMovingAverage(ekin[:,1], window)))
+        temp[0] = np.mean(ekin[:,0])
+        temp[1] = np.std(ekin[:,0])
+        otherStrain = -strain/(1 + strain)
+        if(compext == 'ext'):
+            height = (1 + strain)*boxSize[1]
+            width = (1 + otherStrain)*boxSize[0]
+        elif(compext == 'comp'):
+            height = (1 + otherStrain)*boxSize[1]
+            width = (1 + strain)*boxSize[0]
+        if(active == 'active'):
+            np.savetxt(dirName + "/energyStrain-" + activename + ".dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
+        else:
+            np.savetxt(dirName + "/energyStrain-" + dirType + ".dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
+    if(active == 'active'):
+        data = np.loadtxt(dirName + "/energyStrain-" + activename + ".dat")
+    else:
+        data = np.loadtxt(dirName + "/energyStrain-" + dirType + ".dat")
+    work = data[:,1:3]
+    heat = data[:,3:5]
+    epot = data[:,5:7]
+    ekin = data[:,7:9]
+    height = data[:,9]/2
+    length = data[:,-2:]
     temp = np.zeros(2)
     temp[0] = np.mean(ekin[:,0])
     temp[1] = np.std(ekin[:,0])
-    otherStrain = -strain/(1 + strain)
-    if(compext == 'ext'):
-        height = (1 + strain)*boxSize[1]
-        width = (1 + otherStrain)*boxSize[0]
-    elif(compext == 'comp'):
-        height = (1 + otherStrain)*boxSize[1]
-        width = (1 + strain)*boxSize[0]
-    if(active == 'active'):
-        np.savetxt(dirName + "/energyStrain-active.dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
-    else:
-        np.savetxt(dirName + "/energyStrain-" + dirType + ".dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
     work *= numParticles
     if plot:
-        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+        fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
     fit = False
     if(which == 'workheat'):
         fitdata = work - heat
@@ -1862,7 +1893,8 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
                 fitdata = fitdata[np.argsort(length[:,0])]
                 length = length[np.argsort(length[:,0])]
             else:
-                length[:,0] = height
+                length[:,0] = 2*height
+                length[:,1] = 0
             fitdata[:,0] -= fitdata[0,0]
             length[:,0] -= length[0,0]
             y = fitdata[:,0]
@@ -1900,89 +1932,75 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
                 print("please specify the type of plot between potential or kinetic")
         ax.tick_params(axis='both', labelsize=14)
         ax.locator_params(axis='x', nbins=5)
-        #ax.set_xlabel("$Strain,$ $\\gamma$", fontsize=16)
         ax.set_xlabel("$(L-L^0)/\\sigma$", fontsize=16)
-        figureName = "/home/francesco/Pictures/soft/mips/workL-" + figureName
+        figureName = "/home/francesco/Pictures/soft/mips/work-" + figureName
         plt.tight_layout()
         fig.savefig(figureName + ".png", transparent=False, format = "png")
         plt.show()
     return tension, temp
 
-def noiseCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext', versus='temp', which='time', dynamics='/', window=10, every=10, compare=False):
+def noiseCompareEnergyStrain(dirName, figureName, versus='temp', compext='ext', dirType='dynamics', dynamics='/', ilength='length', window=1, every=0, compare=False):
     if(versus == 'temp'):
         fig, ax = plt.subplots(figsize=(8,5), dpi = 120)
         bigFig, bigAx = plt.subplots(2, 1, figsize=(9,12), dpi = 120)
+        dirList = np.array(['1.00', '1.20', '1.50', '1.70', '1.80'])#1.40 1.60
     else:
         fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    if(versus == 'damping'):
-        dirList = np.array(['damping1e-05', 'damping1e-04', 'damping1e-03', 'damping1e-02', 'damping1e-01', 'damping1', 'damping1e01'])
-        damping = np.array([1e-05, 1e-04, 1e-03, 1e-02, 1e-01, 1, 1e01])
-        labelList = np.array(['1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01'])
-        markerList = ['o', 'v', 'D', 's', '^', 'd', '+']
-    elif(versus == 'temp'):
-        dirList = np.array(['0.80', '0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00', '2.10', '2.20'])
-    strainList = np.ones(dirList.shape[0])*5e-06
+        dirList = np.array(['damping1e-07', 'damping1e-06', 'damping1e-05', 'damping1e-04', 'damping1e-03', 'damping1e-02', 'damping1e-01', 'damping1', 'damping1e01'])
+        damping = np.array([1e-07, 1e-06, 1e-05, 1e-04, 1e-03, 1e-02, 1e-01, 1, 1e01])
+        labelList = np.array(['1e-07', '1e-06', '1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01'])
+        markerList = ['^', 'd', 'o', 'v', 'D', 's', '^', 'd', '+']
     colorList = cm.get_cmap('viridis', dirList.shape[0])
     tension = np.zeros((dirList.shape[0],2))
     temp = np.zeros((dirList.shape[0],2))
     for d in range(dirList.shape[0]):
         if(versus == 'temp'):
-            if(which == 'time'):
-                dirSample = dirName + 'T' + dirList[d] + '/' + dirType + '/nve-biaxial-' + compext + '5e-06-tmax5e03/'
-            else:
-                dirSample = dirName + 'T' + dirList[d] + '/nve/nve-biaxial-' + compext + '5e-06-tmax5e03/'
+            dirSample = dirName + 'T' + dirList[d] + '/nve/nve-biaxial-' + compext + '5e-06-tmax2e03/'
         else:
-            dirSample = dirName + dirType + '/nve/nve-biaxial-' + compext + '5e-06-tmax5e03/'
+            dirSample = dirName + dirType + '/nve/nve-biaxial-' + compext + '5e-06-tmax2e03/'
         if(os.path.exists(dirSample)):
             numParticles = utils.readFromParams(dirSample, 'numParticles')
-            boxSize = np.loadtxt(dirSample + '/boxSize.dat')
-            if(which == 'time'):
-                if not(os.path.exists(dirSample + "/energyTime.dat")):
-                    if(compext == 'ext-rev' or compext == 'comp-rev'):
-                        plotSPStrainEnergyVSTime(dirSample, 'total', strainList[d], compext=compext, reverse='reverse', window=window)
-                    else:
-                        plotSPStrainEnergyVSTime(dirSample, 'total', strainList[d], compext=compext, window=window)
-                data = np.loadtxt(dirSample + "/energyTime.dat")
-                energy = data[:,1]*numParticles
-                energy -= energy[0]
-                height = data[:,-2] - boxSize[1]
-                ekin = data[:,5]
-                temp[d,0] = np.mean(ekin)
-                temp[d,1] = np.std(ekin)
-                if(compext == 'ext-rev' or compext == 'comp-rev'):
-                    tension[d] = utils.getTensionFromEnergyTime(dirSample, 'total', strainList[d], compext=compext, reverse='reverse', window=window)
-                else:
-                    tension[d] = utils.getTensionFromEnergyTime(dirSample, 'total', strainList[d], compext=compext, window=window)
-                print("tension from fit:", tension[d], "temp:", 2*temp[d])
-                # plotting data
-                if(versus == 'temp'):
-                    ax.plot(height, energy, color=colorList(d/dirList.shape[0]), ls='solid', label="$T=$" + dirList[d])
-                    bigAx[0].plot(height, energy, color=colorList(d/dirList.shape[0]), ls='solid', label="$T=$" + dirList[d])
-                elif(versus == 'damping'):
-                    ax.plot(height, energy, color=colorList(d/dirList.shape[0]), ls='solid', label="$\\beta=$" + dirList[d])
-            else:
-                if(versus == 'temp'):
-                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirType, dynamics, 0, 0, window, every, plot=False)
-                    data = np.loadtxt(dirSample + "/energyStrain-" + dirType + ".dat")
-                    energy = data[:,1:3]*numParticles
-                    ax.errorbar(data[:,-1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
-                    bigAx[0].errorbar(data[:,-1], energy[:,0]-energy[0,0], energy[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
-                elif(versus == 'damping'):
-                    tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirList[d], dynamics, 0, 'length', window, every, plot=False)
-                    data = np.loadtxt(dirSample + "/energyStrain-" + dirList[d] + ".dat")
-                    work = data[:,1:3]*numParticles
+            print(dirList[d])
+            if(versus == 'temp'):
+                tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirType, dynamics, 0, ilength, plot=False)
+                data = np.loadtxt(dirSample + "/energyStrain-" + dirType + ".dat")
+                temp[d,0] = np.mean(data[:,7])
+                print(temp[d,0])
+                work = data[:,1:3]*numParticles
+                if(ilength == 'length'):
                     length = data[:,-2:]
                     work = work[np.argsort(length[:,0])]
                     length = length[np.argsort(length[:,0])]
-                    work[:,0] -= work[0,0]
-                    length[:,0] -= length[0,0]
-                    ax.errorbar(length[:,-0], work[:,0], work[:,1], length[:,1], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, capsize=3, label="$\\beta^2=$" + labelList[d])
+                else:
+                    length = np.zeros((work.shape[0], 2))
+                    length[:,0] = data[:,-4]
+                    length[:,1] = 0
+                work[:,0] -= work[0,0]
+                length[:,0] -= length[0,0]
+                work = np.column_stack((utils.computeMovingAverage(work[:,0], window), utils.computeMovingAverage(work[:,1], window)))
+                ax.errorbar(length[:,0], work[:,0], work[:,1], length[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=6, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
+                bigAx[0].errorbar(length[:,0], work[:,0], work[:,1], length[:,1], color=colorList(d/dirList.shape[0]), marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$T=$" + dirList[d])
+            elif(versus == 'damping'):
+                tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirList[d], dynamics, 0, ilength, plot=False)
+                data = np.loadtxt(dirSample + "/energyStrain-" + dirList[d] + ".dat")
+                work = data[:,1:3]*numParticles
+                if(ilength == 'length'):
+                    length = data[:,-2:]
+                    work = work[np.argsort(length[:,0])]
+                    length = length[np.argsort(length[:,0])]
+                else:
+                    length = np.zeros((work.shape[0], 2))
+                    length[:,0] = data[:,-4]
+                    length[:,1] = 0
+                work[:,0] -= work[0,0]
+                length[:,0] -= length[0,0]
+                ax.errorbar(length[:,-0], work[:,0], work[:,1], length[:,1], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, capsize=3, label="$\\beta^2=$" + labelList[d])
     if(versus == 'temp'):
         colorBar = cm.ScalarMappable(cmap=colorList)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         cb = fig.colorbar(colorBar, cax)
-        cb.set_label(label='$\\frac{T}{\\varepsilon}$', fontsize=22, labelpad=20, rotation='horizontal')
+        cb.set_label(label='$\\frac{k_B T}{\\varepsilon}$', fontsize=22, labelpad=25, rotation='horizontal')
         cb.set_ticks([0,0.2,0.4,0.6,0.8,1])
         labels = np.linspace(temp[0,0], temp[-1,0], 6)
         for i in range(labels.shape[0]):
@@ -1994,7 +2012,7 @@ def noiseCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext', 
         divider = make_axes_locatable(bigAx[0])
         cax = divider.append_axes("right", size="5%", pad=0.05)
         cb = bigFig.colorbar(colorBar, cax=cax)
-        cb.set_label(label='$\\frac{T}{\\varepsilon}$', fontsize=28, labelpad=20, rotation='horizontal')
+        cb.set_label(label='$\\frac{k_B T}{\\varepsilon}$', fontsize=28, labelpad=25, rotation='horizontal')
         cb.set_ticks([0,0.2,0.4,0.6,0.8,1])
         labels = np.linspace(temp[0,0], temp[-1,0], 6)
         for i in range(labels.shape[0]):
@@ -2018,108 +2036,104 @@ def noiseCompareEnergyStrain(dirName, figureName, dirType='nve', compext='ext', 
         labels = np.array(['$10^{-8}$', '$10^{-6}$', '$10^{-4}$', '$10^{-2}$', '$10^0$'])
         cb.set_ticklabels(labels)
         cb.ax.tick_params(labelsize=14, size=0)
-        ax.set_xlabel("$(L_y-L_y^0)/ \\sigma$", fontsize=16)
+        ax.set_xlabel("$(L_-L_0)/ \\sigma$", fontsize=16)
     ax.tick_params(axis='both', labelsize=14)
     if(compext == 'ext' or compext == 'ext-wall' or compext == 'ext-eq0-' or compext == 'ext-eq1e-13-'):
-        ax.set_xlabel("$(L_y-L_y^0)/ \\sigma$", fontsize=16)
+        ax.set_xlabel("$(L-L_0)/ \\sigma$", fontsize=16)
         if(versus == 'temp'):
-            bigAx[0].set_xlabel("$(L_y-L_y^0)/ \\sigma$", fontsize=20)
+            bigAx[0].set_xlabel("$(L-L_0)/ \\sigma$", fontsize=20)
     elif(compext == 'comp' or compext == 'comp-wall' or compext == 'comp-eq0-' or compext == 'comp-eq1e-13-'):
-        ax.set_xlabel("$(L_y^0-L_y)/ \\sigma$", fontsize=16)
+        ax.set_xlabel("$(L_0-L)/ \\sigma$", fontsize=16)
         if(versus == 'temp'):
-            bigAx[0].set_xlabel("$(L_y^0-L_y)/ \\sigma$", fontsize=20)
+            bigAx[0].set_xlabel("$(L_0-L_)/ \\sigma$", fontsize=20)
     ax.set_ylabel("$\\frac{W}{2\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
     figureName = compext + "-" + figureName
     figure1Name = "/home/francesco/Pictures/soft/mips/noiseEnergy-" + figureName
     fig.tight_layout()
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    if(versus == 'damping'):
-        print("average tension over damping:", np.mean(tension[:,0]), "+-", np.sqrt(np.sum(tension[:,1]**2)))
-        fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
-        damping = damping[tension[:,0]!=0]
-        tension = tension[tension[:,0]!=0]
-        ax.errorbar(np.sqrt(damping), tension[:,0], tension[:,1], color='k', marker='o', lw=0.9, markersize=8, capsize=3, fillstyle='none')
-        ax.set_xscale('log')
-        ax.set_ylim(-0.02,1.06)
-        ax.tick_params(axis='both', labelsize=14)
-        ax.set_xlabel("$Damping,$ $\\beta \\tau_i$", fontsize=16)
-        ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
-    elif(versus == 'temp'):
-        if(which == 'time'):
-            if(dirType == 'nve'):
-                np.savetxt(dirName + "/energyTension-nve.dat", np.column_stack((temp, tension)))
-            elif(dirType == 'damping1e-15'):
-                np.savetxt(dirName + "energyTension-damping1e-15.dat", np.column_stack((temp, tension)))
-            elif(dirType == 'damping1e-10'):
-                np.savetxt(dirName + "energyTension-damping1e-10.dat", np.column_stack((temp, tension)))
-        fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
+    if(versus == 'temp'):
+        if(dirType == 'dynamics'):
+            data = np.loadtxt(dirName + "/energyTension-NVE.dat")
+            temp = np.zeros((data.shape[0],2))
+            tension = np.zeros((data.shape[0],2))
+            temp[:,0] = data[:,0]
+            temp[:,1] = data[:,1]
+            tension[:,0] = data[:,2]
+            tension[:,1] = data[:,3]
+            #np.savetxt(dirName + "/energyTension-nve.dat", np.column_stack((temp, tension)))
+        fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
         temp = temp[tension[:,0]!=0]
         tension = tension[tension[:,0]!=0]
         ax.errorbar(temp[:,0], tension[:,0], tension[:,1], temp[:,1], lw=1, color='k', marker='o', markersize=8, capsize=3, fillstyle='none', label='$Binary$')
         #ax.set_ylim(-0.22, 0.76)
-        ax.set_xlim(0.37, 1.13)
-        if(compare == 'compare'):
-            if(which == 'time'):
-                if(dirType == 'nve'):
-                    data = np.loadtxt(dirName + '../../../lj/0.60/nh2/energyTension-nve.dat')
-                    data = data[data[:,1]!=0]
-                    ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], lw=1, color='b', marker='s', markersize=8, capsize=3, fillstyle='none', label='$Unary$')
-                    ax.legend(fontsize=12, loc='best')
+        ax.set_xlim(0.47, 1.03)
+        if(compare == 'compare' and dirType == 'nve'):
+            data = np.loadtxt(dirName + '../../../lj/0.60/nh2/energyTension-nve.dat')
+            data = data[data[:,1]!=0]
+            ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], lw=1, color='b', marker='s', markersize=8, capsize=3, fillstyle='none', label='$Unary$')
+            ax.legend(fontsize=12, loc='best')
         ax.plot(np.linspace(0,2,100), np.zeros(100), ls='dashed', color='k', lw=0.5)
         ax.tick_params(axis='both', labelsize=14)
-        ax.set_xlabel("$Temperature,$ $T / \\varepsilon$", fontsize=16)
-        ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=10)
+        ax.set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=16)
+        ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
         # big plot
-        bigAx[1].errorbar(temp[:,0], tension[:,0], tension[:,1], temp[:,1], lw=0.9, color='k', marker='o', markersize=10, capsize=4, fillstyle='none', label='$Binary$')
+        bigAx[1].errorbar(temp[:,0], tension[:,0], tension[:,1], temp[:,1], lw=1, color='k', marker='o', markersize=10, capsize=4, fillstyle='none', label='$Binary$')
         #bigAx[1].set_ylim(-0.22, 0.76)
-        bigAx[1].set_xlim(0.37, 1.13)
-        if(which == 'time'):
-                if(dirType == 'nve'):
-                    data = np.loadtxt(dirName + '../../../lj/0.60/nh2/energyTension-nve.dat')
-                    data = data[data[:,1]!=0]
-                    bigAx[1].errorbar(data[:,0], data[:,2], data[:,3], data[:,1], lw=0.9, color='b', marker='s', markersize=10, capsize=4, fillstyle='none', label='$Unary$')
-                    #bigAx[1].legend(fontsize=14, loc='best')
+        bigAx[1].set_xlim(0.47, 1.03)
         bigAx[1].plot(np.linspace(0,2,100), np.zeros(100), ls='dashed', color='k', lw=0.5)
         bigAx[1].tick_params(axis='both', labelsize=16)
-        bigAx[1].set_xlabel("$Temperature,$ $T / \\varepsilon$", fontsize=20)
-        bigAx[1].set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=28, rotation='horizontal', labelpad=10)
+        bigAx[1].set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=20)
+        bigAx[1].set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=28, rotation='horizontal', labelpad=20)
         #bigAx[1].set_ylabel("$\\frac{dW}{d\\Delta L}\\frac{\\sigma}{2\\varepsilon}$", fontsize=28, rotation='horizontal', labelpad=20)
-    figure2Name = "/home/francesco/Pictures/soft/mips/tension-" + figureName
-    fig.tight_layout()
-    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
-    if(versus == 'temp'):
         bigFig.tight_layout()
         bigFig.subplots_adjust(hspace=0.2)
         bigFig.subplots_adjust(bottom=0.07)
         bigFigureName = "/home/francesco/Pictures/soft/mips/energyTension-" + figureName
-        bigFig.savefig(bigFigureName + ".png", transparent=True, format = "png")
+        bigFig.savefig(bigFigureName + ".png", transparent=False, format = "png")
+    elif(versus == 'damping'):
+        np.savetxt(dirName + "/energyTension-NVT.dat", np.column_stack((damping, tension)))
+        fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
+        damping = damping[tension[:,0]!=0]
+        tension = tension[tension[:,0]!=0]
+        ax.errorbar(np.sqrt(damping), tension[:,0], tension[:,1], color='k', marker='o', lw=0.9, markersize=8, capsize=3, fillstyle='none')
+        ax.set_xscale('log')
+        ax.set_ylim(-0.02,2.06)
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_xlabel("$Damping,$ $\\beta \\tau_i$", fontsize=16)
+        ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
+    figure2Name = "/home/francesco/Pictures/soft/mips/tension-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
 
-def activeCompareEnergyStrain(dirName, figureName, compext='ext', versus='driving', dynamics='/', window=1, every=0):
+def activeCompareEnergyStrain(dirName, figureName, versus='driving', compext='ext', dynamics='/', ilength='length', window=1, every=0):
     fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
     if(versus == "driving"):
         dirList = np.array(['1', '5e02', '1e03', '1.5e03', '2e03', '2.5e03', '3e03', '3.5e03', '4e03', '4.5e03', '5e03', '5.5e03', '6e03'])
         labelName = "$T_a=$"
     else:
-        dirList = np.array(['1e-05', '1e-04', '1e-03'])
+        dirList = np.array(['3e-04', '1e-03', '2e-03', '3e-03', '1e-02', '2e-02', '3e-02', '1e-01', '2e-01', '3e-01'])
         labelName = "$\\tau_p=$"
-    markerList = ['o', 'v', 'D', 's', '^', 'd', '+']
-    colorList = cm.get_cmap('viridis', dirList.shape[0])
+    markerList = ['o', 'v', 'D', 's', '^', 'd', '+', 'o', 'v', 'D', 's', '^', 'd', '+']
+    colorList = cm.get_cmap('plasma', dirList.shape[0])
     tension = np.zeros((dirList.shape[0],2))
     temp = np.zeros((dirList.shape[0],2))
     Pe = np.zeros(dirList.shape[0])
     # read thermal system at Pe = 0
-    dirSample = dirName + '/nve/nve-biaxial-' + compext + '5e-06-tmax5e03/'
+    dirSample = dirName + '/nve/nve-biaxial-' + compext + '5e-06-tmax2e03/'
     for d in range(dirList.shape[0]):
         numParticles = utils.readFromParams(dirSample, 'numParticles')
         if(versus == 'driving'):
             dirActive = 'damping1e01/tp1e-05-Ta' + dirList[d]
+            activename = "tp1e-05-Ta" + dirList[d]
         else:
             dirActive = 'damping1e01/tp' + dirList[d] + '-Ta1'
-        readDir = dirSample + os.sep + 'strain0.0200' + os.sep + dirActive
+            activename = "tp" + dirList[d] + "-Ta1"
+        print(dirActive)
+        readDir = dirSample + os.sep + 'strain0.0100' + os.sep + dirActive
         Pe[d] = utils.readFromDynParams(readDir, 'f0') * utils.readFromDynParams(readDir, 'taup') / utils.readFromDynParams(readDir, 'damping')
-        tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirActive, dynamics, 'active', 'length', window, every, plot=False)
-        data = np.loadtxt(dirSample + "/energyStrain-active.dat")
+        tension[d], temp[d] = plotSPEnergyVSStrain(dirSample, 'test', 'work', compext, dirActive, dynamics, 'active', ilength, window, every, plot=False, activename=activename)
+        data = np.loadtxt(dirSample + "/energyStrain-" + activename + ".dat")
         work = data[:,1:3]*numParticles
         length = data[:,-2:]
         work = work[np.argsort(length[:,0])]
@@ -2134,19 +2148,279 @@ def activeCompareEnergyStrain(dirName, figureName, compext='ext', versus='drivin
     figure1Name = "/home/francesco/Pictures/soft/mips/activeEnergy-" + figureName
     fig.tight_layout()
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+    fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
     temp = temp[tension[:,0]!=0]
     Pe = Pe[tension[:,0]!=0]
     tension = tension[tension[:,0]!=0]
-    #ax.errorbar(temp[:,0], tension[:,0], tension[:,1], lw=0.9, color='k', marker='o', markersize=8, capsize=3, fillstyle='none')
+    np.savetxt(dirName + "/energyTension-active.dat", np.column_stack((Pe, temp, tension)))
+    #temp0 = 0.5
+    #ax.errorbar(temp[:,0]- temp0, tension[:,0], tension[:,1], temp[:,1], lw=0.9, color='k', marker='o', markersize=8, capsize=3, fillstyle='none')
     ax.errorbar(Pe, tension[:,0], tension[:,1], lw=0.9, color='b', marker='s', markersize=8, capsize=3, fillstyle='none')
     ax.set_xscale('log')
-    ax.set_ylim(-0.02,1.06)
+    #ax.set_ylim(-0.02,1.06)
+    #ax.set_xlim(5.2e-06, 0.12)
+    #ax.plot(np.linspace(1e-06,1e01,100), np.zeros(100), ls='dashed', color='k', lw=0.5)
     ax.tick_params(axis='both', labelsize=14)
-    #ax.set_xlabel("$Temperature,$ $T / \\varepsilon$", fontsize=16)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    #ax.set_xlabel("$\\Delta T / \\varepsilon$", fontsize=16)
     ax.set_xlabel("$Peclet$ $number,$ $Pe$", fontsize=16)
+    ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=15)
+    figure2Name = "/home/francesco/Pictures/soft/mips/activeTension-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def activeCompareVelPDF(dirName, figureName, dynamics='/lang2con-log/'):
+    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+    dirList = np.array(['1e-03', '3e-03', '1e-02', '3e-02', '1e-01', '2e-01', '3e-01'])
+    labelName = "$\\tau_p=$"
+    markerList = ['o', 'v', 'D', 's', '^', 'd', '+', 'v', '^']
+    colorList = cm.get_cmap('plasma', dirList.shape[0]+1)
+    temp = np.zeros((dirList.shape[0],2))
+    Pe = np.zeros(dirList.shape[0])
+    taup = np.zeros(dirList.shape[0])
+    kurtosis = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + '/tp' + dirList[d] + '-Ta1' + dynamics
+        print(dirSample)
+        Pe[d] = utils.readFromDynParams(dirSample, 'f0') * utils.readFromDynParams(dirSample, 'taup') / utils.readFromDynParams(dirSample, 'damping')
+        taup[d] = utils.readFromDynParams(dirSample, 'taup')
+        veltot = interface.average2FluidsVelPDF(dirSample, 'x', 8214, dirSpacing=1e04)
+        mean = np.mean(veltot)
+        temp = np.var(veltot)
+        kurtosis[d] = np.mean((veltot - mean)**4)/temp**2
+        pdftot, edges = np.histogram(veltot, bins=np.linspace(np.min(veltot), np.max(veltot), 100), density=True)
+        edges = 0.5 * (edges[:-1] + edges[1:])
+        normalpdf = np.random.normal(mean, temp, edges.shape[0])
+        ax.plot(edges, pdftot, color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, label=labelName + dirList[d])
+    ax.set_yscale('log')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Velocity,$ $v_x$", fontsize=14)
+    ax.set_ylabel("$PDF(v_x)$", fontsize=14)
+    colorBar = cm.ScalarMappable(cmap=colorList)
+    cb = plt.colorbar(colorBar, ax=ax, pad=0, aspect=20)
+    label = "$\\tau_p/\\tau_i$"
+    min = np.min(taup)
+    max = np.max(taup)
+    cb.set_ticks(np.linspace(0,1,4))
+    cb.ax.tick_params(labelsize=12, length=0)
+    ticks = np.geomspace(min, max, 4)
+    ticklabels = []
+    for i in range(ticks.shape[0]):
+        ticklabels.append(np.format_float_scientific(ticks[i], 0))
+    ticklabels = np.array(["$2 \\times 10^{-4}$", "$2 \\times 10^{-3}$", "$2 \\times 10^{-2}$", "$2 \\times 10^{-1}$"])
+    cb.set_ticklabels(ticklabels)
+    cb.set_label(label=label, fontsize=14, labelpad=5, rotation='horizontal')
+    figure1Name = "/home/francesco/Pictures/soft/mips/velpdf-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(5,3.5), dpi = 120)
+    ax.plot(Pe, kurtosis, lw=1, color='k', marker='o', markersize=8, fillstyle='none')
+    ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    ax.set_xlabel("$Persistence$ $time,$ $\\tau_p / \\tau_i$", fontsize=14)
+    ax.set_ylabel("$Kurtosis$", fontsize=14)
+    figure2Name = "/home/francesco/Pictures/soft/mips/kurtosis-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def dampingCompareLogCorr(dirName, figureName, dynamics='/lang2con-log/'):
+    fig, ax = plt.subplots(figsize=(6,3.5), dpi = 120)
+    dirList = np.array(['1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01'])
+    labelName = "$\\beta \\tau_i=$"
+    markerList = ['o', 'v', 'D', 's', '^', 'd', 's', 'v', '^']
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+1)
+    temp = np.zeros((dirList.shape[0],2))
+    damping = np.zeros(dirList.shape[0])
+    tau = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + '/damping' + dirList[d] + '/' + dynamics
+        print(dirSample)
+        damping[d] = utils.readFromDynParams(dirSample, 'damping')
+        data = np.loadtxt(dirSample + "energy.dat")
+        temp[d,0] = np.mean(data[:,3])
+        temp[d,1] = np.std(data[:,3])
+        if not(os.path.exists(dirSample + "logCorr.dat")):
+            interface.compute2FluidsCorr(dirSample, 0, 7, 6, 0)
+        logcorr = np.loadtxt(dirSample + "logCorr.dat")
+        tau[d] = utils.getRelaxationTime(logcorr, index=2)
+        ax.plot(logcorr[:,0], logcorr[:,2], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, label=labelName + dirList[d])
+    ax.set_xscale('log')
+    colorBar = cm.ScalarMappable(cmap=colorList)
+    cb = plt.colorbar(colorBar, ax=ax, pad=0, aspect=20)
+    label = "$\\beta \\tau_i$"
+    min = np.min(damping)
+    max = np.max(damping)
+    cb.set_ticks(np.linspace(0,1,4))
+    cb.ax.tick_params(labelsize=12, length=0)
+    ticks = np.geomspace(min, max, 4)
+    ticklabels = np.array(["$5 \\times 10^{-3}$", "$5 \\times 10^{-2}$", "$5 \\times 10^{-1}$", "$5 \\times 10^0$"])
+    cb.set_ticklabels(ticklabels)
+    cb.set_label(label=label, fontsize=14, labelpad=5, rotation='horizontal')
+    #ax.set_xlim(0.054, 0.34)
+    #ax.set_ylim(-0.12, 0.52)
+    #ax.plot(np.linspace(0.01, 1, 100), np.ones(100)*np.exp(-1), ls='--', color='k', lw=0.7)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Elapsed$ $time,$ $\\Delta t$", fontsize=14)
+    ax.set_ylabel("$ISF(\\Delta t)$", fontsize=14)
+    figure1Name = "/home/francesco/Pictures/soft/mips/logcorrDamping-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(5,3.5), dpi = 120)
+    ax.plot(damping, tau, lw=1, color='k', marker='o', markersize=8, fillstyle='none')
+    ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.set_xlabel("$Damping,$ $\\beta \\tau_i$", fontsize=14)
+    ax.set_ylabel("$\\tau_{rel}/ \\tau_i$", fontsize=14)
+    figure2Name = "/home/francesco/Pictures/soft/mips/taurelDamping-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def activeCompareLogCorr(dirName, figureName, dynamics='/lang2con-log/', which='Pe'):
+    fig, ax = plt.subplots(figsize=(6,3.5), dpi = 120)
+    dirList = np.array(['3e-04', '1e-03', '3e-03', '1e-02', '3e-02', '1e-01', '3e-01'])
+    labelName = "$\\tau_p=$"
+    markerList = ['o', 'v', 'D', 's', '^', 'd', 's', 'v', '^']
+    colorList = cm.get_cmap('plasma', dirList.shape[0]+1)
+    temp = np.zeros((dirList.shape[0],2))
+    Pe = np.zeros(dirList.shape[0])
+    taup = np.zeros(dirList.shape[0])
+    tau = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + '/tp' + dirList[d] + '-Ta1' + dynamics
+        print(dirSample)
+        Pe[d] = utils.readFromDynParams(dirSample, 'f0') * utils.readFromDynParams(dirSample, 'taup') / utils.readFromDynParams(dirSample, 'damping')
+        taup[d] = utils.readFromDynParams(dirSample, 'taup')
+        data = np.loadtxt(dirSample + "energy.dat")
+        temp[d,0] = np.mean(data[:,3])
+        temp[d,1] = np.std(data[:,3])
+        if not(os.path.exists(dirSample + "logCorr.dat")):
+            interface.compute2FluidsCorr(dirSample, 0, 7, 6, 0)
+        logcorr = np.loadtxt(dirSample + "logCorr.dat")
+        tau[d] = utils.getRelaxationTime(logcorr, index=2)
+        ax.plot(logcorr[:,0], logcorr[:,2], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, label=labelName + dirList[d])
+    ax.set_xscale('log')
+    colorBar = cm.ScalarMappable(cmap=colorList)
+    cb = plt.colorbar(colorBar, ax=ax, pad=0, aspect=20)
+    label = "$\\tau_p/\\tau_i$"
+    min = np.min(taup)
+    max = np.max(taup)
+    cb.set_ticks(np.linspace(0,1,4))
+    cb.ax.tick_params(labelsize=12, length=0)
+    ticks = np.geomspace(min, max, 4)
+    ticklabels = []
+    for i in range(ticks.shape[0]):
+        ticklabels.append(np.format_float_scientific(ticks[i], 0))
+    ticklabels = np.array(["$2 \\times 10^{-4}$", "$2 \\times 10^{-3}$", "$2 \\times 10^{-2}$", "$2 \\times 10^{-1}$"])
+    cb.set_ticklabels(ticklabels)
+    cb.set_label(label=label, fontsize=14, labelpad=5, rotation='horizontal')
+    #ax.set_xlim(0.054, 0.34)
+    #ax.set_ylim(-0.12, 0.52)
+    #ax.plot(np.linspace(0.01, 1, 100), np.ones(100)*np.exp(-1), ls='--', color='k', lw=0.7)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Elapsed$ $time,$ $\\Delta t$", fontsize=14)
+    ax.set_ylabel("$ISF(\\Delta t)$", fontsize=14)
+    figure1Name = "/home/francesco/Pictures/soft/mips/logcorrActive-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(5,3.5), dpi = 120)
+    if which == 'temp':
+        xlabel = "$k_B \\Delta T /\\varepsilon$"
+        x = temp[:,0] - 1
+    elif which == 'Pe':
+        xlabel = "$Peclet$ $number,$ $Pe$"
+        x = Pe
+    else:
+        xlabel = "$Persistence$ $time,$ $\\tau_p / \\tau_i$"
+        x = taup
+    ax.plot(x, tau, lw=1, color='k', marker='o', markersize=8, fillstyle='none')
+    ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=12)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.set_xlabel(xlabel, fontsize=14)
+    ax.set_ylabel("$\\tau_{rel} / \\tau_i$", fontsize=14)
+    figure2Name = "/home/francesco/Pictures/soft/mips/taurelActive-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotActiveTension(dirName, figureName, which='Pe'):
+    data = np.loadtxt(dirName + "/energyTension-active.dat")
+    taup = np.array([3e-04, 1e-03, 2e-03, 3e-03, 1e-02, 2e-02, 3e-02, 1e-01, 2e-01, 3e-01])
+    Pe = data[:,0]
+    temp = data[:,1:3]
+    tension = data[:,3:5]
+    fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
+    if which == 'temp':
+        xlabel = "$k_B \\Delta T /\\varepsilon$"
+        x = temp[:,0] - 0.5
+    elif which == 'Pe':
+        xlabel = "$Peclet$ $number,$ $Pe$"
+        x = Pe
+    else:
+        xlabel = "$Persistence$ $time,$ $\\tau_p / \\tau_i$"
+        x = taup
+    ax.errorbar(x, tension[:,0], tension[:,1], lw=1, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+    ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.set_xlabel(xlabel, fontsize=16)
     ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=24, rotation='horizontal', labelpad=20)
     figure2Name = "/home/francesco/Pictures/soft/mips/activeTension-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure2Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def activeCompareVelCorr(dirName, figureName, dynamics='/lang2con-log/', which='Pe'):
+    fig, ax = plt.subplots(figsize=(6,4.5), dpi = 120)
+    dirList = np.array(['1e-04', '2e-04', '3e-04', '1e-03', '3e-03', '1e-02', '3e-02', '1e-01', '3e-01'])
+    labelName = "$\\tau_p=$"
+    markerList = ['o', 'v', 'D', 's', '^', 'd', 's', 'v', '^']
+    colorList = cm.get_cmap('viridis', dirList.shape[0]+1)
+    temp = np.zeros((dirList.shape[0],2))
+    Pe = np.zeros(dirList.shape[0])
+    tau = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + '/tp' + dirList[d] + '-Ta1' + dynamics
+        print(dirSample)
+        Pe[d] = utils.readFromDynParams(dirSample, 'f0') * utils.readFromDynParams(dirSample, 'taup') / utils.readFromDynParams(dirSample, 'damping')
+        data = np.loadtxt(dirSample + "energy.dat")
+        temp[d,0] = np.mean(data[:,3])
+        temp[d,1] = np.std(data[:,3])
+        if not(os.path.exists(dirSample + "velCorr.dat")):
+            interface.compute2FluidsVelCorr(dirSample, 0, 7, 6, 0)
+        velcorr = np.loadtxt(dirSample + "velCorr.dat")
+        tau[d] = utils.getRelaxationTime(velcorr, index=1)
+        ax.plot(velcorr[:,0], velcorr[:,1], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, label=labelName + dirList[d])
+    ax.set_xscale('log')
+    ax.legend(fontsize=11, loc='best', ncols=2)
+    #ax.set_xlim(0.054, 0.34)
+    #ax.set_ylim(-0.12, 0.52)
+    #ax.plot(np.linspace(0.01, 1, 100), np.ones(100)*np.exp(-1), ls='--', color='k', lw=0.7)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$Elapsed$ $time,$ $t$", fontsize=16)
+    ax.set_ylabel("$C_{vv}(\\Delta t)$", fontsize=16)
+    figure1Name = "/home/francesco/Pictures/soft/mips/velcorr-" + figureName
+    fig.tight_layout()
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    fig, ax = plt.subplots(figsize=(5.5,4.5), dpi = 120)
+    if which == 'temp':
+        xlabel = "$\\Delta T$"
+        x = temp[:,0] - 1
+    else:
+        xlabel = "$Peclet$ $number,$ $Pe$"
+        x = Pe
+    ax.plot(x, tau, lw=1, color='k', marker='o', markersize=8, fillstyle='none')
+    ax.set_xscale('log')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel("$\\tau_v$", fontsize=16)
+    figure2Name = "/home/francesco/Pictures/soft/mips/veltau-" + figureName
     fig.tight_layout()
     fig.savefig(figure2Name + ".png", transparent=True, format = "png")
     plt.show()
@@ -2336,6 +2610,38 @@ def plotHeatActive(dirName, figureName, dynamics = '/lang2con'):
     ax.set_xlabel("$Temperature,$ $T$", fontsize=16)
     ax.set_ylabel("$Heat,$ $Q/\\varepsilon$", fontsize=16)
     figureName = "/home/francesco/Pictures/soft/mips/activeHeatVStemp" + figureName
+    fig.tight_layout()
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotActiveEnergyRatio(dirName, figureName, dynamics = '/lang2con'):
+    dirSample0 = dirName + 'T1.00/nve/nve-biaxial-ext5e-06-tmax5e03/strain0.0200/damping1e01/'
+    epsilon = utils.readFromParams(dirSample0, "epsilon")
+    energy0 = np.loadtxt(dirSample0 + '/energy.dat')
+    temp0 = np.mean(energy0[:,3])/epsilon
+    epot0 = np.mean(energy0[:,2])
+    print(epot0, temp0)
+    fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
+    dirList = np.array(['1e-05', '1e-04', '1e-03', '1e-02', '1e-01'])
+    temp = np.zeros((dirList.shape[0],2))
+    ratio = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + 'T1.00/nve/nve-biaxial-ext5e-06-tmax5e03/strain0.0200/damping1e01/tp' + dirList[d] + '-Ta1' + dynamics
+        if(os.path.exists(dirSample + "/energy.dat")):
+            epsilon = utils.readFromParams(dirSample, "epsilon")
+            data = np.loadtxt(dirSample + "/energy.dat")
+            temp[d,0] = np.mean(data[:,3]/epsilon)
+            temp[d,1] = np.std(data[:,3]/epsilon)
+            ratio[d,0] = np.mean((data[:,2] - epot0)/data[:,3])
+            ratio[d,1] = np.std((data[:,2] - epot0)/data[:,3])
+    ax.errorbar(temp[temp[:,0]!=0,0] - temp0, ratio[temp[:,0]!=0,0], ratio[temp[:,0]!=0,1], temp[temp[:,0]!=0,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1.2, capsize=3)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    #ax.set_ylim(-0.00032, 0.00032)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel("$\\Delta T / \\varepsilon$", fontsize=16)
+    ax.set_ylabel("$\\frac{\\Delta U}{K}$", fontsize=24, rotation='horizontal', labelpad=15)
+    figureName = "/home/francesco/Pictures/soft/mips/energyRatioActive-" + figureName
     fig.tight_layout()
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
@@ -3434,24 +3740,50 @@ if __name__ == '__main__':
 
     elif(whichPlot == "ecomparenoise"):
         figureName = sys.argv[3]
-        type = sys.argv[4]
-        dirType = sys.argv[5]
-        versus = sys.argv[6]
-        which = sys.argv[7]
-        dynamics = sys.argv[8]
-        window = int(sys.argv[9])
-        every = int(sys.argv[10])
-        compare = sys.argv[11]
-        noiseCompareEnergyStrain(dirName, figureName, type, dirType, versus, which, dynamics, window, every, compare)
+        versus = sys.argv[4]
+        compext = sys.argv[5]
+        dirType = sys.argv[6]
+        dynamics = sys.argv[7]
+        ilength = sys.argv[8]
+        compare = sys.argv[9]
+        noiseCompareEnergyStrain(dirName, figureName, versus, compext, dirType, dynamics, ilength, compare)
+        #python3 interfaceGraphics.py /home/francesco/Documents/Data/65536-2d/box31/2lj/0.60/nh2/ ecomparenoise test damping ext T1.00 /lang2con/ length 0
 
     elif(whichPlot == "ecompareactive"):
         figureName = sys.argv[3]
-        compext = sys.argv[4]
-        versus = sys.argv[5]
+        versus = sys.argv[4]
+        compext = sys.argv[5]
         dynamics = sys.argv[6]
-        window = int(sys.argv[7])
-        every = int(sys.argv[8])
-        activeCompareEnergyStrain(dirName, figureName, compext, versus, dynamics, window, every)
+        ilength = sys.argv[7]
+        activeCompareEnergyStrain(dirName, figureName, versus, compext, dynamics, ilength)
+        #python3 interfaceGraphics.py /home/francesco/Documents/Data/65536-2d/box31/2lj/0.60/nh2/T1.00/ ecompareactive test taup ext /lang2con/ length
+
+    elif(whichPlot == "comparevelpdf"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        activeCompareVelPDF(dirName, figureName, dynamics)
+
+    elif(whichPlot == "activetension"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        plotActiveTension(dirName, figureName, which)
+
+    elif(whichPlot == "activevelcorr"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        which = sys.argv[5]
+        activeCompareVelCorr(dirName, figureName, dynamics, which)
+
+    elif(whichPlot == "activelogcorr"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        which = sys.argv[5]
+        activeCompareLogCorr(dirName, figureName, dynamics, which)
+
+    elif(whichPlot == "dampinglogcorr"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        dampingCompareLogCorr(dirName, figureName, dynamics)
 
     elif(whichPlot == "tensioncompare"):
         figureName = sys.argv[3]
@@ -3473,6 +3805,11 @@ if __name__ == '__main__':
         figureName = sys.argv[3]
         dynamics = sys.argv[4]
         plotHeatActive(dirName, figureName, dynamics)
+
+    elif(whichPlot == "ratioactive"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        plotActiveEnergyRatio(dirName, figureName, dynamics)
 
     elif(whichPlot == "reltemp"):
         figureName = sys.argv[3]

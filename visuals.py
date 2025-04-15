@@ -2,7 +2,7 @@
 Created by Francesco
 12 October 2021
 '''
-#functions and script to visualize a 2d dpm packing
+#functions and script to visualize samples
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
@@ -196,7 +196,7 @@ def getDoubleColorList(rad, num1=0, tag=False):
 
 def getClusterColorList(labels, maxLabel):
     uniqueLabels = np.unique(labels)
-    colorList = cm.get_cmap('hsv', uniqueLabels.shape[0])
+    colorList = cm.get_cmap('viridis', uniqueLabels.shape[0])
     colorId = np.zeros((labels.shape[0], 4))
     count = 0
     for labelId in uniqueLabels:
@@ -264,6 +264,9 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
             pos = utils.centerSlab(pos, rad, boxSize, labels, maxLabel)
             print('maxLabel:', maxLabel, 'number of particles in biggest cluster:', labels[labels==maxLabel].shape[0])
             print('number of clusters:', np.unique(labels).shape[0])
+            uniqueLabels = np.unique(labels)
+            #for i in range(uniqueLabels.shape[0]):
+            #    print("number of particles in cluster", uniqueLabels[i], ":", labels[labels==uniqueLabels[i]].shape[0])
     print('Center of mass:', np.mean(pos, axis=0))
     if not roundBox:
         print('BoxRatio Ly / Lx:', boxSize[1] / boxSize[0])
@@ -300,6 +303,7 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
     elif double:
         if center == 'typecluster':
             colorId = getClusterColorList(labels, maxLabel)
+            alpha = 1
         else:
             colorId = getDoubleColorList(rad, num1)
             labels = np.zeros(rad.shape[0])
@@ -945,8 +949,8 @@ def plotSoftParticlesWithAngles(axFrame, pos, vel, rad, colorMap, scale = 100, a
         r = rad[particleId]
         vx = vel[particleId,0]
         vy = vel[particleId,1]
-        if(pos.shape[0] < 3e03):
-            axFrame.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
+        if(rad.shape[0] <= 1024):
+            axFrame.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=lw, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
         axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
         if annotate:
             axFrame.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
@@ -983,6 +987,8 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
 def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, quiver=False, veltang=False, dense=False, 
                           perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0, colorMap=None):
     if(rad.shape[0] > 1024):
+        lw = 0.02
+    else:
         lw = 0.05
     if boxSize.shape[0] == 1:
         pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
@@ -991,9 +997,10 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, qui
         pos = utils.getPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize)
     #pos = np.loadtxt(dirName + os.sep + 'particlePos.dat')
     if double:
-        plotSoftParticleDouble(ax, pos, rad, num1, tag=False)
+        pos = utils.shiftPositions(pos, boxSize, np.mean(pos[:num1,0]), 0)
+        plotSoftParticleDouble(ax, pos, rad, num1, tag=False, lw=lw)
     else:
-        plotSoftParticles(ax, pos, rad)
+        plotSoftParticles(ax, pos, rad, lw=lw)
 
     if angle:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
@@ -1002,19 +1009,19 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, qui
     if quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
         if veltang == 'veltang':
-            plotSoftParticleCircleTangentVel(ax, pos, vel, rad, scale)
+            plotSoftParticleCircleTangentVel(ax, pos, vel, rad, scale, lw=lw)
         else:
-            plotSoftParticleQuiverVel(ax, pos, vel, rad, scale)
+            plotSoftParticleQuiverVel(ax, pos, vel, rad, scale, lw=lw)
 
     if dense:
         if not(os.path.exists(dirName + os.sep + 'particleList.dat')):
             cluster.computeDelaunayCluster(dirName)
         denseList = np.loadtxt(dirName + os.sep + 'particleList.dat')[:,0]
-        plotSoftParticleCluster(ax, pos, rad, denseList)
+        plotSoftParticleCluster(ax, pos, rad, denseList, lw=lw)
 
     if perturb:
         movedLabel = np.loadtxt(dirName + '/../movedLabel.dat')
-        plotSoftParticlePerturb(ax, pos, rad, movedLabel)
+        plotSoftParticlePerturb(ax, pos, rad, movedLabel, lw=lw)
 
     if pmap:
         if not(os.path.exists(dirName + os.sep + 'particleStress.dat')):
@@ -1025,7 +1032,7 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, qui
             else:
                 stress = cluster.computeParticleStress(dirName)
         stress = np.loadtxt(dirName + os.sep + 'particleStress.dat')
-        plotSoftParticleShearStressMap(ax, pos, stress, rad, potential)
+        plotSoftParticleShearStressMap(ax, pos, stress, rad, potential, lw=lw)
 
 def makeCircularColorBar(ax_cb, color_map):
     # Create an array of angles (theta) and radial distances (r) for the circular colorbar
@@ -1230,6 +1237,10 @@ def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=
         else:
             pos = utils.getPBCPositions(dirSample + os.sep + 'particlePos.dat', boxSize)
         rad = np.array(np.loadtxt(dirSample + os.sep + 'particleRad.dat'))
+        if(rad.shape[0] > 1024):
+            lw = 0.02
+        else:
+            lw = 0.05
         if lj:
             rad *= 2**(1/6)
         if boxSize.shape[0] == 1:
@@ -1240,10 +1251,10 @@ def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=
             ax.add_artist(plt.Circle([0, 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.5)) 
         else:
             setPackingAxes(boxSize, ax)
-        plotSoftParticles(ax, pos, rad)
+        plotSoftParticles(ax, pos, rad, lw=lw)
         if quiver:
             vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
-            plotSoftParticleQuiverVel(ax, pos, vel, rad)
+            plotSoftParticleQuiverVel(ax, pos, vel, rad, lw=lw)
         # Add title to the frame
         ax.set_title(f'$\\varphi=${dirList[i]}', fontsize=12)
         plt.tight_layout()
@@ -1273,14 +1284,18 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
         dirSample = dirName + dirList[i] + os.sep + dynamics
         boxSize = np.loadtxt(dirSample + os.sep + 'boxSize.dat')
         pos = utils.getPBCPositions(dirSample + os.sep + 'particlePos.dat', boxSize)
+        if(rad.shape[0] > 1024):
+            lw = 0.1
+        else:
+            lw = 0.2
         if centered == 'centered':
             setCenteredPackingAxes(boxSize, frameSize, ax)
         else:
             setAutoPackingAxes(frameSize, ax)
         if double:
-            plotSoftParticleDouble(ax, pos, rad, num1, tag=False)
+            plotSoftParticleDouble(ax, pos, rad, num1, tag=False,lw=lw)
         else:
-            plotSoftParticles(ax, pos, rad)
+            plotSoftParticles(ax, pos, rad, lw=lw)
         # Add title to the frame
         ax.set_title(f'Strain: {strainList[i]:.4f}', fontsize=12)
         plt.tight_layout()
@@ -1291,9 +1306,6 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
         dirList, strainList = utils.getOrderedStrainDirectories(dirName)
     elif(which == 'ext-rev' or which == 'comp-rev'):
         dirList, strainList = utils.getFrontBackStrainDirectories(dirName)
-    if(dynamics != 0):
-        dirList = dirList[1:]
-        strainList = strainList[1:]
     dirList = dirList[strainList < maxStrain]
     strainList = strainList[strainList < maxStrain]
     dirList = dirList[::strainFreq]
@@ -1314,7 +1326,7 @@ def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq
         frameSize[0] = 1.05*np.loadtxt(dirName + dirList[int(dirList.shape[0] / 2)] + os.sep + 'boxSize.dat')[0]
     else:
         frameSize = np.loadtxt(dirName + os.sep + 'boxSize.dat')
-    print('Frame size:', frameSize, 'initial boxSize:', np.loadtxt(dirName + dirList[0] + os.sep + 'boxSize.dat'))
+    print('Frame size:', frameSize)
 
     # Load initial data
     rad = np.array(np.loadtxt(dirName + os.sep + 'particleRad.dat'))
@@ -1340,7 +1352,7 @@ def makeSPShearPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq 
         ax.clear()  # Clear the previous frame
         setPackingAxes(boxSize, ax)
         dirSample = dirName + os.sep + dirList[i]
-        pos = utils.getLEPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize, strainList[i])
+        pos = utils.getLEPBCPositions(dirSample + os.sep + 'particlePos.dat', boxSize, strainList[i])
         plotSoftParticles(ax, pos, rad)
         plt.tight_layout()
         return ax.artists

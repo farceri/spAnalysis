@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib import cm
+from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq
@@ -186,16 +187,16 @@ def plotEnergy(dirName, figureName, which='all', log=False):
                 ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$K$")
         if which == 'thermostat':
             ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='g', linestyle='dashdot', alpha=0.8, label="$Damping$")
-            ax.plot(energy[:,0], 0.5*energy[:,6], linewidth=1.5, color='c', linestyle='dotted', alpha=0.8, label="$White$ $noise$")
-            heat = energy[:,5] + 0.5*energy[:,6]
+            ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='c', linestyle='dotted', alpha=0.8, label="$White$ $noise$")
+            heat = energy[:,5] + energy[:,6]
             ax.plot(energy[:,0], heat, linewidth=1, color='k', linestyle='solid', alpha=0.8, label="$Heat$")
             print("heat:", np.mean(heat), "+-", np.std(heat), "  std/mean:", np.std(heat)/np.abs(np.mean(heat)))
             label = "$E_{tot}$ $+$ $W_{th}$"
         if which == 'active':
             ax.plot(energy[:,0], energy[:,5], linewidth=1.5, color='g', linestyle='dashdot', alpha=0.8, label="$Damping$")
-            ax.plot(energy[:,0], 0.5*energy[:,6], linewidth=1.5, color='c', linestyle='dotted', alpha=0.8, label="$White$ $noise$")
+            ax.plot(energy[:,0], energy[:,6], linewidth=1.5, color='c', linestyle='dotted', alpha=0.8, label="$White$ $noise$")
             ax.plot(energy[:,0], energy[:,7], linewidth=1.5, color=[1,0.5,0], linestyle='solid', alpha=0.6, label="$Active$ $noise$")
-            heat = energy[:,5] + 0.5*energy[:,6] + energy[:,7]
+            heat = energy[:,5] + energy[:,6] + energy[:,7]
             ax.plot(energy[:,0], heat, linewidth=1, color='k', linestyle='solid', alpha=0.8, label="$Heat$")
             print("heat:", np.mean(heat), "+-", np.std(heat), "  std/mean:", np.std(heat)/np.abs(np.mean(heat)))
             print("active work:", np.mean(energy[:,7]), "+-", np.std(energy[:,7]))
@@ -212,6 +213,7 @@ def plotEnergy(dirName, figureName, which='all', log=False):
                 ax.plot(energy[:,0], energy[:,4], linewidth=1.5, color='b', linestyle='dotted', label=label)
             print("\ntotal energy per particle:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]), "  std/mean:", np.std(energy[:,4])/np.abs(np.mean(energy[:,4])))
         ax.tick_params(axis='both', labelsize=14)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
         ax.set_xlabel("$Simulation$ $step$", fontsize=16)
         ax.legend(fontsize=12, loc='upper left')
         #ax.set_ylim(50, 700)

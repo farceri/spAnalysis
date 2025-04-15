@@ -11,6 +11,10 @@ import time
 import utils
 import utilsPlot as uplot
 import spCluster as cluster
+from scipy.stats import norm
+from scipy.spatial import cKDTree
+from tqdm import tqdm
+from numba import njit
 
 def computeClusterTemperatureVSTime(dirName, threshold=0.3, dirSpacing=1):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
@@ -1756,7 +1760,7 @@ def compute2PhaseWidthVSStrain(dirName, num1=0):
     np.savetxt(dirName + "phaseWidth.dat", np.column_stack((strain, lengthBox, widthBox, width)))
 
 ####################### Compute ISF for the two fluids ########################
-def compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=False):
+def average2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=False):
     boxSize = np.loadtxt(dirName + "boxSize.dat")
     rad = np.loadtxt(dirName + "particleRad.dat").astype(np.float64)
     sigma = 2 * np.mean(rad)
@@ -1844,8 +1848,7 @@ def compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
         #plt.show()
 
 ############################ Velocity distribution #############################
-def average2FluidsVelPDF(dirName, num1=0, plot=False, dirSpacing=1000000):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+def average2FluidsVelPDF(dirName, which='speed', num1=0, plot=False, figureName=None, dirSpacing=1):
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -1856,13 +1859,15 @@ def average2FluidsVelPDF(dirName, num1=0, plot=False, dirSpacing=1000000):
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         vel = np.loadtxt(dirSample + os.sep + "particleVel.dat")
-        velNorm = np.linalg.norm(vel, axis=1)
+        if(which == 'x'):
+            velNorm = vel[:,0]
+        elif(which == 'y'):
+            velNorm = vel[:,1]
+        else:
+            velNorm = np.linalg.norm(vel, axis=1)
         vel1 = np.append(vel1, velNorm[:num1].flatten())
         vel2 = np.append(vel2, velNorm[num1:].flatten())
         veltot = np.append(veltot, velNorm.flatten())
-    vel1 = vel1[vel1>0]
-    vel2 = vel2[vel2>0]
-    veltot = veltot[veltot>0]
     min = np.min(np.array([np.min(vel1), np.min(vel2), np.min(veltot)]))
     max = np.max(np.array([np.max(vel1), np.max(vel2), np.max(veltot)]))
     bins = np.linspace(min, max, 100)
@@ -1874,30 +1879,244 @@ def average2FluidsVelPDF(dirName, num1=0, plot=False, dirSpacing=1000000):
     mean = np.mean(vel1)
     temp = np.var(vel1)
     skewness = np.mean((vel1 - mean)**3)/temp**(3/2)
-    kurtosis = np.mean((vel1 - mean)**4)/temp**2
-    print("Variance of the velocity in fluid 1: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
-    print("4th moment:", np.sqrt(0.5*np.mean((vel1 - mean)**4)))
+    kurtosis = np.mean((vel1 - mean)**4)/temp**2 - 3
+    print("Variance of the velocity in fluid 1: ", temp, " kurtosis - 3: ", kurtosis, " skewness: ", skewness)
+    #if(which == 'x' or which == 'y'): pdf1 /= norm.pdf(edges, loc=mean, scale=np.sqrt(temp))
     mean = np.mean(vel2)
     temp = np.var(vel2)
     skewness = np.mean((vel2 - mean)**3)/temp**(3/2)
-    kurtosis = np.mean((vel2 - mean)**4)/temp**2
-    print("Variance of the velocity in fluid 2: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
-    print("4th moment:", np.sqrt(0.5*np.mean((vel1 - mean)**4)))
+    kurtosis = np.mean((vel2 - mean)**4)/temp**2 - 3
+    print("Variance of the velocity in fluid 2: ", temp, " kurtosis - 3: ", kurtosis, " skewness: ", skewness)
+    #if(which == 'x' or which == 'y'): pdf2 /= norm.pdf(edges, loc=mean, scale=np.sqrt(temp))
     mean = np.mean(veltot)
     temp = np.var(veltot)
     skewness = np.mean((veltot - mean)**3)/temp**(3/2)
-    kurtosis = np.mean((veltot - mean)**4)/temp**2
-    print("Variance of the velocity in total: ", temp, " kurtosis: ", kurtosis, " skewness: ", skewness)
-    print("4th moment:", np.sqrt(0.5*np.mean((veltot - mean)**4)))
+    kurtosis = np.mean((veltot - mean)**4)/temp**2 - 3
+    print("Variance of the velocity in total: ", temp, " kurtosis - 3: ", kurtosis, " skewness: ", skewness)
+    #if(which == 'x' or which == 'y'): pdftot /= norm.pdf(edges, loc=mean, scale=np.sqrt(temp))
     if(plot == "plot"):
-        uplot.plotCorrelation(edges, pdf1, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='g')
-        uplot.plotCorrelation(edges, pdf2, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='b')
-        uplot.plotCorrelation(edges, pdftot, "$Speed$ $distribution,$ $P(s)$", xlabel = "$Speed,$ $s$", color='k')
+        if(which == 'x'):
+            xlabel = "$v_x$"
+            ylabel = "$PDF/G(\\langle v_x \\rangle, \\sigma_{v_x})$"
+        elif(which == 'y'):
+            xlabel = "$v_y$"
+            ylabel = "$PDF/G(\\langle v_y \\rangle, \\sigma_{v_y})$"
+        else:
+            xlabel = "$Speed,$ $s = \\sqrt{v_x^2 + v_y^2}$"
+            ylabel = "$PDF(s)$"
+        #if(which == 'x' or which == 'y'):
+        #    edges = edges[10:-10]
+        #    pdf1 = pdf1[10:-10]
+        #    pdf2 = pdf2[10:-10]
+        #    pdftot = pdftot[10:-10]
+        uplot.plotCorrelation(edges, pdf1, ylabel=ylabel, xlabel=xlabel, color='g', markersize=8, marker='v', fs='none')
+        uplot.plotCorrelation(edges, pdf2, ylabel=ylabel, xlabel = xlabel, color='b', markersize=8, marker='D', fs='none')
+        uplot.plotCorrelation(edges, pdftot, ylabel=ylabel, xlabel = xlabel, logy=True, color='k', markersize=8, fs='none')
+        plt.legend(["$Phase$ $1$", "$Phase$ $2$", "$Total$"], fontsize=12, loc='best')
+        plt.savefig('/home/francesco/Pictures/soft/mips/2velpdf-' + figureName + '-' + which + '.png', transparent=True, format = 'png')
+        plt.pause(0.5)
+        #plt.show()
+    return veltot
+
+####################### Compute Velocity Autocorrelation for the two fluids ########################
+def average2FluidsVelCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=False):
+    timeStep = utils.readFromParams(dirName, "dt")
+    if(num1 != 0):
+        particleVelCorr1 = []
+        particleVelCorr2 = []
+    else:
+        particleVelCorr = []
+    stepList = []
+    freqDecade = int(10**freqPower)
+    decadeSpacing = 10
+    spacingDecade = 1
+    stepDecade = 10
+    numBlocks = int(10**(maxPower-freqPower))
+    for power in range(maxPower):
+        for spacing in range(1,decadeSpacing):
+            stepRange = np.arange(0,stepDecade,spacing*spacingDecade,dtype=int)
+            #print(stepRange, spacing*spacingDecade)
+            if(num1 != 0):
+                stepParticleVelCorr1 = []
+                numPairs1 = 0
+                stepParticleVelCorr2 = []
+                numPairs2 = 0
+            else:
+                stepParticleVelCorr = []
+                numPairs = 0
+            for multiple in range(startBlock, numBlocks):
+                for i in range(stepRange.shape[0]-1):
+                    if(utils.checkPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])):
+                        #print(multiple, i, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
+                        vel1, vel2 = utils.readVelPair(dirName, multiple*freqDecade + stepRange[i], multiple*freqDecade + stepRange[i+1])
+                        if(num1 != 0):
+                            stepParticleVelCorr1.append(np.mean(np.sum(np.multiply(vel1[:num1],vel2[:num1]), axis=1))/np.mean(np.linalg.norm(vel1[:num1], axis=1)**2))
+                            numPairs1 += 1
+                            stepParticleVelCorr2.append(np.mean(np.sum(np.multiply(vel1[num1:],vel2[num1:]), axis=1))/np.mean(np.linalg.norm(vel1[num1:], axis=1)**2))
+                            numPairs2 += 1
+                        else:
+                            stepParticleVelCorr.append(np.mean(np.sum(np.multiply(vel1,vel2), axis=1))/np.mean(np.linalg.norm(vel1, axis=1)**2))
+                            numPairs += 1
+            if(num1 != 0):
+                if(numPairs1 > 0 or numPairs2 > 0):
+                    stepList.append(spacing*spacingDecade)
+                    particleVelCorr1.append([np.mean(stepParticleVelCorr1, axis=0), np.std(stepParticleVelCorr1, axis=0)])
+                    particleVelCorr2.append([np.mean(stepParticleVelCorr2, axis=0), np.std(stepParticleVelCorr2, axis=0)])
+            else:
+                if(numPairs > 0):
+                    stepList.append(spacing*spacingDecade)
+                    particleVelCorr.append([np.mean(stepParticleVelCorr, axis=0), np.std(stepParticleVelCorr, axis=0)])
+        stepDecade *= 10
+        spacingDecade *= 10
+    stepList = np.array(stepList) * timeStep
+    if(num1 != 0):
+        particleVelCorr1 = np.array(particleVelCorr1).reshape((stepList.shape[0],2))
+        particleVelCorr1 = particleVelCorr1[np.argsort(stepList)]
+        particleVelCorr2 = np.array(particleVelCorr2).reshape((stepList.shape[0],2))
+        particleVelCorr2 = particleVelCorr2[np.argsort(stepList)]
+        np.savetxt(dirName + os.sep + "2velCorr.dat", np.column_stack((stepList, particleVelCorr1, particleVelCorr2)))
+        data = np.column_stack((stepList, particleVelCorr1))
+        tau = utils.getRelaxationTime(data, index=1)
+        print("Fluid 1: velocity relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
+        data = np.column_stack((stepList, particleVelCorr2))
+        tau = utils.getRelaxationTime(data, index=1)
+        print("Fluid 2: velocity relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
+    else:
+        particleVelCorr = np.array(particleVelCorr).reshape((stepList.shape[0],2))
+        particleVelCorr = particleVelCorr[np.argsort(stepList)]
+        np.savetxt(dirName + os.sep + "velCorr.dat", np.column_stack((stepList, particleVelCorr)))
+        data = np.column_stack((stepList, particleVelCorr))
+        tau = utils.getRelaxationTime(data, index=1)
+        print("Velocity relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
+    if(plot=="plot"):
+        stepList /= timeStep
+        if(num1 != 0):
+            uplot.plotCorrWithError(stepList, particleVelCorr1[:,0], particleVelCorr1[:,1], "$C_{vv}(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'b')
+            uplot.plotCorrWithError(stepList, particleVelCorr2[:,0], particleVelCorr2[:,1], "$C_{vv}(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'g')
+        else:
+            uplot.plotCorrWithError(stepList, particleVelCorr[:,0], particleVelCorr[:,1], "$C_{vv}(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
+        plt.pause(0.5)
+        #plt.show()
+
+@njit
+def pbc_delta(pos_i, pos_j, boxSize):
+    delta = pos_i - pos_j
+    delta += boxSize / 2
+    delta %= boxSize
+    delta -= boxSize / 2
+    return delta
+
+@njit
+def compute_velocity_correlations_2D(pos, vel, bins, boxSize):
+    num = pos.shape[0]
+    vel_corr = np.zeros((len(bins) - 1, 4))
+    count = np.zeros(len(bins) - 1, dtype=np.int64)
+
+    for i in range(num):
+        for j in range(i + 1, num):  # Only consider each unique pair once
+            r_ij = pbc_delta(pos[i], pos[j], boxSize)
+            dist = np.sqrt(r_ij[0]**2 + r_ij[1]**2)
+
+            if dist >= bins[-1]:
+                continue
+
+            bin_idx = np.searchsorted(bins, dist) - 1
+            if bin_idx < 0 or bin_idx >= len(bins) - 1:
+                continue
+
+            delta = r_ij / dist
+            deltaPerp = np.array([-delta[1], delta[0]])
+
+            parProj_i = np.dot(vel[i], delta)
+            parProj_j = np.dot(vel[j], delta)
+            perpProj_i = np.dot(vel[i], deltaPerp)
+            perpProj_j = np.dot(vel[j], deltaPerp)
+
+            vel_corr[bin_idx, 0] += parProj_i * parProj_j
+            vel_corr[bin_idx, 1] += perpProj_i * perpProj_j
+            vel_corr[bin_idx, 2] += 0.5 * (perpProj_i * parProj_j + parProj_i * perpProj_j)
+            vel_corr[bin_idx, 3] += np.dot(vel[i], vel[j])
+            count[bin_idx] += 1
+    
+    return vel_corr, count
+
+############################# Velocity Correlation #############################
+def average2FluidsSpaceVelCorr(dirName, num1=0, plot=False, dirSpacing=1000000):
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    print("boxSize: ", boxSize)
+    sigma = 2*np.mean(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    bins = np.arange(0, 4*sigma, sigma/10)
+    print(bins[1]-bins[0], bins.shape[0])
+    binCenter = (bins[1:] + bins[:-1])/2
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    print(dirList)
+    # divide system in horizontal slices to manage RAM occupancy
+    yList = np.linspace(0,boxSize[1],6)
+    if(num1 != 0):
+        velCorr1 = np.zeros((yList.shape[0], bins.shape[0]-1, 4))
+        velCorr2 = np.zeros((yList.shape[0], bins.shape[0]-1, 4))
+        counts1 = np.zeros((yList.shape[0], bins.shape[0]-1))
+        counts2 = np.zeros((yList.shape[0], bins.shape[0]-1))
+    else:
+        velCorr = np.zeros((yList.shape[0], bins.shape[0]-1, 4))
+        counts = np.zeros((yList.shape[0], bins.shape[0]-1))
+    for d in range(dirList.shape[0]):
+        print(dirList[d])
+        pos = utils.getPBCPositions(dirName + os.sep + dirList[d] + os.sep + "particlePos.dat", boxSize)
+        vel = np.array(np.loadtxt(dirName + os.sep + dirList[d] + os.sep + "particleVel.dat"))
+        velNorm = np.linalg.norm(vel, axis=1)
+        velNormSquared = np.mean(velNorm**2)
+        for y in range(1, yList.shape[0]):
+            slicedVel = vel[np.argwhere(pos[:,1] < yList[y])[:,0]]
+            slicedPos = pos[np.argwhere(pos[:,1] < yList[y])[:,0]]
+            slicedVel = slicedVel[np.argwhere(slicedPos[:,1] > yList[y-1])[:,0]]
+            slicedPos = slicedPos[np.argwhere(slicedPos[:,1] > yList[y-1])[:,0]]
+            print("Computing correlations in slice between: ", yList[y-1], " and ", yList[y], " with ", slicedPos.shape[0], " particles")
+            if (num1 != 0):
+                # type 1
+                pos1 = slicedPos[:num1]
+                vel1 = slicedVel[:num1]
+                velCorr1[y], counts1[y] = compute_velocity_correlations_2D(pos1, vel1, bins, boxSize)
+                # type 2
+                pos2 = slicedPos[num1:]
+                vel2 = slicedVel[num1:]
+                velCorr2[y], counts2[y] = compute_velocity_correlations_2D(pos2, vel2, bins, boxSize)
+            else:
+                velCorr[y], counts[y] = compute_velocity_correlations_2D(slicedPos, slicedVel, bins, boxSize)
+    if(num1 != 0):
+        velCorr1 = np.sum(velCorr1, axis=0)
+        velCorr2 = np.sum(velCorr2, axis=0)
+        counts1 = np.sum(counts1, axis=0)
+        counts2 = np.sum(counts2, axis=0)
+        for i in range(velCorr1.shape[1]):
+            velCorr1[counts1>0,i] /= counts1[counts1>0]
+            velCorr2[counts2>0,i] /= counts2[counts2>0]
+        velCorr1 /= velNormSquared
+        velCorr2 /= velNormSquared
+        np.savetxt(dirName + os.sep + "2spaceVelCorr.dat", np.column_stack((binCenter, velCorr1, velCorr2, counts1, counts2)))
+    else:
+        velCorr = np.sum(velCorr, axis=0)
+        counts = np.sum(counts, axis=0)
+        for i in range(velCorr.shape[1]):
+            velCorr[counts>0,i] /= counts[counts>0]
+        velCorr /= velNormSquared
+        np.savetxt(dirName + os.sep + "spaceVelCorr.dat", np.column_stack((binCenter, velCorr, counts)))
+    if plot == 'plot':
+        if(num1 != 0):
+            uplot.plotCorrelation(binCenter, velCorr1[:,0], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'r')
+            uplot.plotCorrelation(binCenter, velCorr1[:,1], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'g')
+            uplot.plotCorrelation(binCenter, velCorr1[:,2], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'k')
+        else:
+            uplot.plotCorrelation(binCenter, velCorr[:,0], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'r')
+            uplot.plotCorrelation(binCenter, velCorr[:,1], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'g')
+            uplot.plotCorrelation(binCenter, velCorr[:,2], "$C_{vv}(r)$", "$Distance,$ $r$", color = 'k')
         #plt.pause(0.5)
         plt.show()
 
 ####################### Average interface fluctuations in binary mixture #######################
-def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirSpacing=1):
+def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirSpacing=100000):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
     dirList, timeList = utils.getOrderedDirectories(dirName)
@@ -2020,11 +2239,12 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
         for j in range(1,bins.shape[0]-1):
             length += np.linalg.norm(leftPos[j] - prevPos)
             prevPos = leftPos[j]
+    '''
     uniqueLabels = np.unique(clusterLabels)
     uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
     mixedNum = 0
     mixedLength = 0
-    for c in range(1,uniqueLabels.shape[0]):
+    for c in range(2,uniqueLabels.shape[0]):
         numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
         radCluster = rad[clusterLabels==uniqueLabels[c]]
         mixedNum += numCluster
@@ -2038,7 +2258,7 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
     clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
     uniqueLabels = np.unique(clusterLabels)
     uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
-    for c in range(1,uniqueLabels.shape[0]):
+    for c in range(2,uniqueLabels.shape[0]):
         numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
         radCluster = rad[clusterLabels==uniqueLabels[c]]
         mixedNum += numCluster
@@ -2047,14 +2267,16 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
         #mixedLength += mixedNum * np.pi * sigma
         #print("type2 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
     length += mixedLength
+    '''
     if(plot == "plot"):
-        print("Number of mixed particles:", mixedNum, "length:", mixedLength)
-        print("Interface length:", length, "proxy:", 2*boxSize[1])
+        #print("Number of mixed particles:", mixedNum, "length:", mixedLength)
+        print("Interface length:", length)
+        #print("Without mixed length:", length - mixedLength)
         if(boxSize[0] > boxSize[1]):
-            fig, ax = plt.subplots(figsize=(3*boxSize[0]/boxSize[1], 3), dpi = 120)
+            fig, ax = plt.subplots(figsize=(2.5*boxSize[0]/boxSize[1], 3), dpi = 120)
         else:
             fig, ax = plt.subplots(figsize=(3, 3*boxSize[1]/boxSize[0]), dpi = 120)
-        ax.set_xlim(-0.2*boxSize[0],1.2*boxSize[0])
+        ax.set_xlim(-0.02*boxSize[0],1.02*boxSize[0])
         ax.set_ylim(0,boxSize[1])
         ax.plot(leftPos[:,0], leftPos[:,1], color='g', marker='o', markersize=4, fillstyle='none', lw=1)
         ax.plot(rightPos[:,0], rightPos[:,1], color='g', marker='o', markersize=4, fillstyle='none', lw=1)
@@ -2947,12 +3169,27 @@ if __name__ == '__main__':
         freqPower = float(sys.argv[5])
         num1 = int(sys.argv[6])
         plot = sys.argv[7]
-        compute2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1, plot)
+        average2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1, plot)
 
     elif(whichCorr == "2velpdf"):
+        which = sys.argv[3]
+        num1 = int(sys.argv[4])
+        plot = sys.argv[5]
+        figureName = sys.argv[6]
+        average2FluidsVelPDF(dirName, which, num1, plot, figureName)
+
+    elif(whichCorr == "2velcorr"):
+        startBlock = int(sys.argv[3])
+        maxPower = int(sys.argv[4])
+        freqPower = float(sys.argv[5])
+        num1 = int(sys.argv[6])
+        plot = sys.argv[7]
+        average2FluidsVelCorr(dirName, startBlock, maxPower, freqPower, num1, plot)
+
+    elif(whichCorr == "2spacevelcorr"):
         num1 = int(sys.argv[3])
         plot = sys.argv[4]
-        average2FluidsVelPDF(dirName, num1, plot)
+        average2FluidsSpaceVelCorr(dirName, num1, plot)
 
     elif(whichCorr == "2interface"):
         num1 = int(sys.argv[3])

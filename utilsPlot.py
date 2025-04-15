@@ -74,10 +74,10 @@ def plotCorrWithError(x, y, err, ylabel, xlabel = "$Time$ $interval,$ $\\Delta t
     if(show == True):
         plt.pause(0.5)
 
-def plotCorrelation(x, y, ylabel, xlabel = "$Distance,$ $r$", logy = False, logx = False, color = 'k', markersize = 4, lw = 1.2, ls='solid', show = True, marker='o'):
-    fig = plt.figure(figsize=(2,6), dpi = 120)
+def plotCorrelation(x, y, ylabel, xlabel = "$Distance,$ $r$", logy = False, logx = False, color = 'k', markersize = 4, lw = 1.2, ls='solid', show = True, marker='o', fs='full'):
+    fig = plt.figure(0, dpi = 120)
     ax = fig.gca()
-    ax.plot(x, y, color=color, marker=marker, markersize=markersize, lw=lw, ls=ls)
+    ax.plot(x, y, color=color, marker=marker, markersize=markersize, lw=lw, ls=ls, fillstyle=fs)
     #ax.plot(np.linspace(np.min(x), np.max(x), 100), np.ones(100)*1e07, lw=1.2, ls='dotted', color='k')
     if(logy == True):
         ax.set_yscale('log')
