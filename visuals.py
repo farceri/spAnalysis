@@ -14,6 +14,7 @@ from sklearn.cluster import KMeans
 from sklearn.cluster import DBSCAN
 from scipy.spatial import Voronoi, voronoi_plot_2d, Delaunay
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.patches import Rectangle, Circle
 import itertools
 import sys
 import os
@@ -96,6 +97,22 @@ def setBigBoxAxes(boxSize, ax, delta=1.1):
 
 def setInvisiblePackingAxes(boxSize, ax):
     setBigBoxAxes(boxSize, ax, 1.05)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+def set3RoundBoxAxes(boxSize, ax, delta=1.1):
+    if(boxSize.shape[0] == 1):
+        ax.set_xlim(-3.5*boxSize, 3.5*boxSize)
+        ax.set_ylim(-boxSize, boxSize)
+        xBounds = np.array([-3.5*boxSize*delta, 3.5*boxSize*delta])
+        yBounds = np.array([-boxSize*delta, boxSize*delta])
+    ax.set_xlim(xBounds[0], xBounds[1])
+    ax.set_ylim(yBounds[0], yBounds[1])
+    ax.set_aspect('equal', adjustable='box')
+    setAxes2D(ax)
+
+def set3InvisiblePackingAxes(boxSize, ax):
+    set3RoundBoxAxes(boxSize, ax, 1.05)
     for spine in ax.spines.values():
         spine.set_visible(False)
 
@@ -219,7 +236,7 @@ def getGroupColorList(labels):
         count += 1
     return colorId
 
-def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap=False, forcemap=False, quiver=False, group=False, eps=1.4, dense=False, border=False, 
+def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap=False, forcemap=False, quiver=False, group=False, eps=1.5, dense=False, border=False, 
                   threshold=0.62, filter='filter', strain=0, shiftx=0, shifty=0, center=False, double=False, num1=0, alpha=0.6):
     sep = utils.getDirSep(dirName, 'boxSize')
     boxSize = np.atleast_1d(np.loadtxt(dirName + sep + 'boxSize.dat'))
@@ -238,13 +255,16 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         figureName = '/home/francesco/Pictures/soft/packings/shear-' + figureName + '.png'
         pos = utils.getLEPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize, strain)
     else:
+        #print("PBC ON")
         pos = utils.getPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize)
+        #pos = np.loadtxt(dirName + os.sep + 'particlePos.dat')
     rad = np.array(np.loadtxt(dirName + sep + 'particleRad.dat'))
-    lw = 0.3
-    if(rad.shape[0] > 1024):
+    if(rad.shape[0] > 1024): lw = 0.02
+    else: lw = 0.05
+    if rad.shape[0] == 4096:
         lw = 0.1
-    if lj:
-        rad *= 2**(1/6)
+        alpha = 0.9
+    if lj: rad *= 2**(1/6)
     if(shiftx != 0 or shifty != 0):
         pos = utils.shiftPositions(pos, boxSize, shiftx, shifty)
     else:
@@ -317,14 +337,23 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         angle = np.where(angle < 0, angle + 2 * np.pi, angle)
         spread = np.empty(0)
         weight = np.empty(0)
+        phi_r = np.empty(0)
         if(uniqueLabels.shape[0] > 1):
             for label in uniqueLabels:
                 thisangle = angle[labels==label]
                 numLabel = labels[labels==label].shape[0]
                 weight = np.append(weight, numLabel / labels.shape[0])
                 spread = np.append(spread, np.std(thisangle)/(np.pi/np.sqrt(3)))
-                print("label", label, "num particles in cluster", numLabel, "spread", spread[-1])
-        print("number of clusters:", np.unique(labels).shape[0], "average spread", np.mean(weight*spread)/np.mean(weight))
+                # compute Kuramoto order parameter for the cluster
+                numCluster = thisangle.shape[0]
+                sumReal = 0
+                sumImag = 0
+                for i in range(numCluster):
+                    sumReal += np.cos(thisangle[i])
+                    sumImag += np.sin(thisangle[i])
+                phi_r = np.append(phi_r, np.sqrt(sumReal**2 + sumImag**2) / numCluster)
+                #print("label", label, "num particles in cluster", numLabel, "spread", spread[-1], "phi_r", phi_r[-1])
+        print("number of clusters:", np.unique(labels).shape[0], "average spread", np.mean(weight*spread)/np.mean(weight), "average phi_r", np.mean(phi_r))
         colorId = getGroupColorList(labels)
     else:
         colorId = getRadColorList(rad)
@@ -372,6 +401,79 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
     plt.savefig(figureName, transparent=False)
     plt.show()
 
+def plotAnglePacking(dirName, figureName, lj=False, quiver=True, alpha=0.8):
+    sep = utils.getDirSep(dirName, 'boxSize')
+    boxSize = np.atleast_1d(np.loadtxt(dirName + sep + 'boxSize.dat'))
+    print(boxSize)
+    pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
+    rad = np.array(np.loadtxt(dirName + sep + 'particleRad.dat'))
+    if lj:
+        rad *= 2**(1/6)
+    print('Center of mass:', np.mean(pos, axis=0))
+    vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
+    colorId = getAngleColorList(vel)
+    # make figure
+    fig, ax = plt.subplots(dpi=200)
+    setInvisiblePackingAxes(boxSize, ax)
+    ax.add_artist(plt.Circle([0, 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.5))
+    for particleId in range(rad.shape[0]):
+        x = pos[particleId,0]
+        y = pos[particleId,1]
+        if quiver:
+            vx = vel[particleId,0]
+            vy = vel[particleId,1]
+            ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.002, scale=100, headlength=5, headaxislength=5, headwidth=5, alpha=0.6)
+        r = rad[particleId]
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.2))
+    # Create a polar axis for the circular colorbar
+    ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.6], polar=True)  # Position for the colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
+    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    figureName = '/home/francesco/Pictures/soft/packings/angle-' + figureName + '.png'
+    plt.tight_layout()
+    plt.savefig(figureName, transparent=False)
+    plt.show()
+
+def plot3AnglePackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
+    dirList = np.array(['3e-02', '3e01', '3e03'])
+    # make figure
+    fig, ax = plt.subplots(figsize=(9,3), dpi=200)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + 'j' + dirList[d] + '-tp1e02/dynamics-vel/'
+        sep = utils.getDirSep(dirSample, 'boxSize')
+        boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+        print(boxSize)
+        if d == 0:
+            sep = utils.getDirSep(dirSample, 'boxSize')
+            rad = np.array(np.loadtxt(dirSample + sep + 'particleRad.dat'))
+            boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+            set3InvisiblePackingAxes(boxSize, ax)
+            originList = np.array([-2.3,0,2.3]) * boxSize
+        pos = np.array(np.loadtxt(dirSample + os.sep + 'particlePos.dat'))
+        if lj:
+            rad *= 2**(1/6)
+        print('Center of mass:', np.mean(pos, axis=0))
+        vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
+        colorId = getAngleColorList(vel)
+        ax.add_artist(plt.Circle([originList[d], 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.5))
+        for particleId in range(rad.shape[0]):
+            x = pos[particleId,0] + originList[d]
+            y = pos[particleId,1]
+            if quiver:
+                vx = vel[particleId,0]
+                vy = vel[particleId,1]
+                ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.001, scale=250, headlength=4, headaxislength=4, headwidth=4, alpha=0.6)
+            r = rad[particleId]
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.2))
+    # Create a polar axis for the circular colorbar
+    ax_cb = fig.add_axes([0.86, 0.6, 0.05, 0.3], polar=True)  # Position for the colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
+    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    figureName = '/home/francesco/Pictures/soft/packings/3angle-' + figureName + '.png'
+    #plt.tight_layout()
+    plt.savefig(figureName, transparent=False)
+    plt.show()
+
 def plotWallPacking(dirName, figureName, lj=False, colorAngle=False, alpha=0.6):
     sep = utils.getDirSep(dirName, 'boxSize')
     boxSize = np.atleast_1d(np.loadtxt(dirName + sep + 'boxSize.dat'))
@@ -397,11 +499,12 @@ def plotWallPacking(dirName, figureName, lj=False, colorAngle=False, alpha=0.6):
         y = wallPos[wallId,1]
         r = wallRad
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[0.9,0.9,0.9], alpha=alpha, linewidth=0.3))
-        ax.annotate(str(wallId), xy=(x, y), fontsize=3, verticalalignment='center', horizontalalignment='center')
+        #ax.annotate(str(wallId), xy=(x, y), fontsize=3, verticalalignment='center', horizontalalignment='center')
     # choose color map and plot particles
     if colorAngle:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
         colorId = getAngleColorList(vel)
+        print("Coloring particles by velocity angle")
     else:
         colorId = getRadColorList(rad)
     for particleId in range(rad.shape[0]):
@@ -409,7 +512,7 @@ def plotWallPacking(dirName, figureName, lj=False, colorAngle=False, alpha=0.6):
         y = pos[particleId,1]
         r = rad[particleId]
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
-        ax.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
+        #ax.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
     figureName = '/home/francesco/Pictures/soft/packings/wall-' + figureName + '.png'
     plt.tight_layout()
     plt.savefig(figureName, transparent=False)
@@ -949,8 +1052,7 @@ def plotSoftParticlesWithAngles(axFrame, pos, vel, rad, colorMap, scale = 100, a
         r = rad[particleId]
         vx = vel[particleId,0]
         vy = vel[particleId,1]
-        if(rad.shape[0] <= 1024):
-            axFrame.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=lw, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
+        axFrame.quiver(x, y, vx, vy, facecolor=colorId[particleId], edgecolor='k', linewidth=lw, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
         axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
         if annotate:
             axFrame.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
@@ -986,10 +1088,8 @@ def makeSPPackingClusterMixingVideo(dirName, figureName, numFrames = 20, firstSt
 
 def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, quiver=False, veltang=False, dense=False, 
                           perturb=False, pmap=False, potential=False, lcut=4, double=False, num1=0, colorMap=None):
-    if(rad.shape[0] > 1024):
-        lw = 0.02
-    else:
-        lw = 0.05
+    if(rad.shape[0] > 1024): lw = 0.02
+    else: lw = 0.05
     if boxSize.shape[0] == 1:
         pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
         utils.checkParticlesInCircle(pos, boxSize)
@@ -1037,7 +1137,6 @@ def makeSoftParticleFrame(ax, dirName, rad, boxSize, angle=False, scale=100, qui
 def makeCircularColorBar(ax_cb, color_map):
     # Create an array of angles (theta) and radial distances (r) for the circular colorbar
     theta = np.linspace(0, 2*np.pi, 100)
-
     # Create a meshgrid for colors, where the color values are determined by theta
     theta_grid, r_grid = np.meshgrid(theta, [0,1])
 
@@ -1049,8 +1148,10 @@ def makeCircularColorBar(ax_cb, color_map):
     ax_cb.set_yticklabels([])
 
     # Set the angular ticks and labels
-    ax_cb.set_xticks([0, np.pi])
-    ax_cb.set_xticklabels(['0', r'$\pi$'], fontsize=9)
+    ax_cb.set_xticks([])
+    #ax_cb.tick_params(pad=-4)
+    #ax_cb.set_xticklabels(['0', r'$\pi$'], fontsize=8)
+    ax_cb.spines['polar'].set_linewidth(0.2)
 
     # Set aspect ratio to be equal for a circular look
     ax_cb.set_aspect(1)
@@ -1115,7 +1216,92 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
     anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
     #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
 
-def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, annotate=False, angle=False, quiver=False, scale=100, colorMap=None):
+def makeRelativeClusterFrame(axFrame, dirSample, rad, colorMap, scale = 100, eps = 1.5, alpha = 0.6, lw = 0.3, annotate = False):
+    pos = np.array(np.loadtxt(dirSample + os.sep + 'particlePos.dat'))
+    # Find largest cluster
+    eps *= 2*np.mean(rad)
+    labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
+    maxLabel = utils.findLargestParticleCluster(rad, labels)
+    numCluster = labels[labels==maxLabel].shape[0]
+    if numCluster != pos.shape[0]: print('Largest cluster label:', maxLabel, 'number of particles:',numCluster)
+    vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
+    # Filter velocities and positions for largest cluster and compute relative values
+    vel = vel[labels==maxLabel]
+    pos = pos[labels==maxLabel]
+    rad = rad[labels==maxLabel]
+    vel -= np.mean(vel, axis=0)
+    pos -= np.mean(pos, axis=0)
+    angle = ((utils.getVelocityAngles(vel) + 2.*np.pi) % (2. * np.pi)) / (2*np.pi)
+    # Create color array based on normalized angles
+    colorId = colorMap(angle)
+    for particleId in range(pos.shape[0]):
+        x = pos[particleId,0]
+        y = pos[particleId,1]
+        r = rad[particleId]
+        #vx = scale * vel[particleId,0]
+        #vy = scale * vel[particleId,1]
+        #axFrame.quiver(x, y, vx, vy, facecolor=colorId[particleId], edgecolor='k', linewidth=lw, width=0.002, scale=1, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
+        axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
+        if annotate:
+            axFrame.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
+
+def makeRelativeClusterVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=1e04, logSpaced=False, scale=100, lj=False):
+    def animate(i):
+        ax.clear()  # Clear the previous frame
+        setBigBoxAxes(boxSize, ax, 0.2) # smaller box to zoom in on cluster
+        fig.patch.set_facecolor('white')
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.add_artist(plt.Circle([0, 0], boxSize * 0.2, edgecolor=[1,1,1], facecolor=[1,1,1], linewidth=0.5)) 
+        dirSample = dirName + os.sep + 't' + str(stepList[i])
+        makeRelativeClusterFrame(ax, dirSample, rad, colorMap, scale)
+        plt.subplots_adjust()
+        return ax.artists
+    
+    frameTime = 120
+    if(logSpaced == False):
+        stepList = utils.getStepList(numFrames, firstStep, stepFreq)
+    else:
+        print("entering log spaced")
+        stepList = utils.getLogSpacedStepList(minDecade=5, maxDecade=9)
+        numFrames = stepList.shape[0]
+    print('Time list:', stepList)
+
+    boxSize = np.atleast_1d(np.loadtxt(dirName + os.sep + 'boxSize.dat'))
+    if(boxSize.shape[0] == 1):
+        print("Setting circular box geometry")
+    else:
+        print("This function is only for circular boxes")
+        exit()
+    rad = np.array(np.loadtxt(dirName + os.sep + 'particleRad.dat'))
+    if lj: rad *= 2**(1/6)
+
+    # Initialize figure and axis
+    fig, ax = plt.subplots(dpi=200)
+    # Set background to transparent
+    fig.patch.set_facecolor('white')
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Create a polar axis for the circular colorbar
+    ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.5], polar=True)  # Position for the colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
+    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    
+    # Create animation
+    numFrames = len(stepList) # One extra frame for the repeated first image
+    anim = animation.FuncAnimation(fig, animate, frames=numFrames, interval=frameTime, blit=False)
+    
+    # Set figure background to transparent
+    fig.patch.set_facecolor('none')
+
+    # Save the animation
+    anim.save(f'/home/francesco/Pictures/soft/packings/relCluster-{figureName}.gif', writer='pillow', dpi=fig.dpi)
+    #anim.save(f'/home/francesco/Pictures/soft/packings/relCluster-{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
+
+def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallOmega, boxSize, annotate=False, angle=False, quiver=False, scale=100, colorMap=None):
+    if(rad.shape[0] > 1024): lw = 0.02
+    else: lw = 0.05
     if boxSize.shape[0] == 1:
         pos = np.array(np.loadtxt(dirName + os.sep + 'particlePos.dat'))
         #utils.checkParticlesInCircle(pos, boxSize)
@@ -1123,17 +1309,18 @@ def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, 
         pos = utils.getPBCPositions(dirName + os.sep + 'particlePos.dat', boxSize)
     
     wallQuiver = False
-    if(wallDyn.shape[0] != 0):
+    if(wallOmega != 0):
+        #print("Wall dynamics found, plotting wall velocities")
         wallVel = np.zeros((wallPos.shape[0], 2))
         wallVel = np.column_stack((-wallPos[:,1], wallPos[:,0]))
-        wallVel *= wallDyn[1]*np.sqrt(wallPos[0,0]**2 + wallPos[1,1]**2)
+        wallVel *= wallOmega * np.sqrt(wallPos[0,0]**2 + wallPos[1,1]**2)
         wallQuiver = True
     # plot wall monomers
     r = wallRad
     for wallId in range(wallPos.shape[0]):
         x = wallPos[wallId,0]
         y = wallPos[wallId,1]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[0.9,0.9,0.9], alpha=0.6, linewidth=0.3))
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[0.9,0.9,0.9], alpha=0.6, linewidth=0.1))
         if annotate:
             ax.annotate(str(wallId), xy=(x, y), fontsize=3, verticalalignment='center', horizontalalignment='center')
     if wallQuiver:
@@ -1143,7 +1330,7 @@ def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, 
         y = wallPos[wallId,1]
         vx = wallVel[wallId,0]
         vy = wallVel[wallId,1]
-        ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=10, headlength=10, headaxislength=10, headwidth=10, alpha=1)
+        ax.quiver(x, y, vx, vy, facecolor='r', edgecolor='k', linewidth=0.5, width=0.005, scale=1000, headlength=5, headaxislength=5, headwidth=5, alpha=1)
 
     if angle or quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
@@ -1157,15 +1344,16 @@ def makeWallParticleFrame(ax, dirName, rad, wallRad, wallPos, wallDyn, boxSize, 
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.6, linewidth=0.3))
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=0.6, linewidth=lw))
         if annotate:
             ax.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
         if quiver:
             vx = vel[particleId,0]
             vy = vel[particleId,1]
-            ax.quiver(x, y, vx, vy, facecolor='k', edgecolor='k', linewidth=0.1, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)
+            ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], edgecolor='k', linewidth=0.1, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)
 
-def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=1e04, mobile=False, annotate=False, angle=False, quiver=False, scale=100, lj=False):
+def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=1e04, rough=False, mobile=False, annotate=False, angle=False, 
+                         quiver=False, scale=100, lj=False):
     def animate(i):
         ax.clear()  # Clear the previous frame
         if boxSize.shape[0] == 1:
@@ -1179,12 +1367,16 @@ def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFre
         else:
             setPackingAxes(boxSize, ax)
         dirSample = dirName + os.sep + 't' + str(stepList[i])
-        wallPos = np.loadtxt(dirSample + os.sep + 'wallPos.dat')
-        if(os.path.exists(dirSample + os.sep + 'wallDynamics.dat')):
-            wallDyn = np.loadtxt(dirSample + os.sep + 'wallDynamics.dat')
+        if rough:
+            wallPos = np.loadtxt(dirName + os.sep + 'wallPos.dat')
         else:
-            wallDyn = np.empty(0)
-        makeWallParticleFrame(ax, dirSample, rad, wallRad, wallPos, wallDyn, boxSize, annotate, angle, quiver, scale, colorMap)
+            wallPos = np.loadtxt(dirSample + os.sep + 'wallPos.dat')
+        if(os.path.exists(dirName + os.sep + 'wallDynamics.dat')):
+            wallDyn = np.loadtxt(dirName + os.sep + 'wallDynamics.dat')
+            wallOmega = wallDyn[i,3]
+        else:
+            wallOmega = 0
+        makeWallParticleFrame(ax, dirSample, rad, wallRad, wallPos, wallOmega, boxSize, annotate, angle, quiver, scale, colorMap)
         plt.tight_layout()
         return ax.artists
     
@@ -1237,10 +1429,8 @@ def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=
         else:
             pos = utils.getPBCPositions(dirSample + os.sep + 'particlePos.dat', boxSize)
         rad = np.array(np.loadtxt(dirSample + os.sep + 'particleRad.dat'))
-        if(rad.shape[0] > 1024):
-            lw = 0.02
-        else:
-            lw = 0.05
+        if(rad.shape[0] > 1024): lw = 0.02
+        else: lw = 0.05
         if lj:
             rad *= 2**(1/6)
         if boxSize.shape[0] == 1:
@@ -1278,16 +1468,17 @@ def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=
     anim.save(f'/home/francesco/Pictures/soft/packings/comp-{figureName}.gif', writer='pillow', dpi=fig.dpi)
     #anim.save(f'/home/francesco/Pictures/soft/packings/comp-{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
 
-def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq = 2, which = 'extend', centered = 'centered', dynamics = 'dynamics', lj = False, double = False, num1 = 0):
+def makeSPExtendPackingVideo(dirName, figureName, maxStrain = 0.0300, strainFreq = 2, which = 'extend', centered = 'centered', dynamics = 'dynamics', 
+                             lj = False, double = False, num1 = 0):
     def animate(i):
         ax.clear()  # Clear the previous frame
         dirSample = dirName + dirList[i] + os.sep + dynamics
+        #print(dirSample)
         boxSize = np.loadtxt(dirSample + os.sep + 'boxSize.dat')
         pos = utils.getPBCPositions(dirSample + os.sep + 'particlePos.dat', boxSize)
-        if(rad.shape[0] > 1024):
-            lw = 0.1
-        else:
-            lw = 0.2
+        #pos = np.loadtxt(dirSample + os.sep + 'particlePos.dat')
+        if(rad.shape[0] > 1024): lw = 0.1
+        else: lw = 0.2
         if centered == 'centered':
             setCenteredPackingAxes(boxSize, frameSize, ax)
         else:
@@ -1543,6 +1734,12 @@ if __name__ == '__main__':
     elif(whichPlot == 'ljvel'):
         plotSPPacking(dirName, figureName, lj=True, quiver=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), center=sys.argv[6])
 
+    elif(whichPlot == 'angle'):
+        plotAnglePacking(dirName, figureName, lj=True, quiver=True)
+
+    elif(whichPlot == '3angle'):
+        plot3AnglePackings(dirName, figureName, lj=True, quiver=True)
+
     elif(whichPlot == 'wall'):
         plotWallPacking(dirName, figureName, lj=True, colorAngle=False)
 
@@ -1703,6 +1900,20 @@ if __name__ == '__main__':
         stepFreq = float(sys.argv[6])
         scale = int(sys.argv[7])
         makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, angle=True, scale=scale, lj=True)
+
+    elif(whichPlot == 'relclustervideo'):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        scale = int(sys.argv[7])
+        makeRelativeClusterVideo(dirName, figureName, numFrames, firstStep, stepFreq, scale=scale, lj=True)
+
+    elif(whichPlot == 'roughvideo'):
+        numFrames = int(sys.argv[4])
+        firstStep = float(sys.argv[5])
+        stepFreq = float(sys.argv[6])
+        scale = int(sys.argv[7])
+        makeWallPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, rough=True, annotate=False, quiver=True, angle=True, scale=scale, lj=True)
 
     elif(whichPlot == 'rigidvideo'):
         numFrames = int(sys.argv[4])

@@ -183,6 +183,7 @@ def plotEnergy(dirName, figureName, which='all', log=False):
         fig, ax = plt.subplots(figsize=(6,4.5), dpi = 120)
         if which != 'simple':
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
+                print('etot')
                 ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$U$")
                 ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$K$")
         if which == 'thermostat':
@@ -209,6 +210,8 @@ def plotEnergy(dirName, figureName, which='all', log=False):
         else:
             if(which != 'eab' and which != 'thermostat' and which != 'active'):
                 label = "$U+K$"
+                ax.plot(energy[:,0], energy[:,2], linewidth=1.5, color='k', linestyle='solid', label="$U$")
+                ax.plot(energy[:,0], energy[:,3], linewidth=1.5, color='r', linestyle='dashed', label="$K$")
                 ax.plot(energy[:,0], energy[:,4], linewidth=4, color='b', linestyle='solid', alpha=0.3)
                 ax.plot(energy[:,0], energy[:,4], linewidth=1.5, color='b', linestyle='dotted', label=label)
             print("\ntotal energy per particle:", np.mean(energy[:,4]), "+-", np.std(energy[:,4]), "  std/mean:", np.std(energy[:,4])/np.abs(np.mean(energy[:,4])))
@@ -262,6 +265,82 @@ def compareEnergy(dirName, figureName):
     ax.set_ylabel("$\\frac{\\sigma_{E}}{\\langle E \\rangle}$", fontsize=24, rotation='horizontal', labelpad=30)
     plt.tight_layout()
     figureName = "/home/francesco/Pictures/soft/compareError-" + figureName
+    plt.show()
+
+########################## nve and langevin comparison #########################
+def compareForceMagnitude(dirName, figureName, which='force'):
+    dirList = np.array(['test-dt2e-04', 'damping1e-07/test-dt2e-04', 'damping1e-05/test-dt2e-04', 'damping1e-03/test-dt2e-04',
+                        'damping1e-01/test-dt2e-04', 'damping1e01/test-dt2e-04', 'damping1e01/tp3e-04-Ta1/test-dt2e-04',
+                        'damping1e01/tp3e-04-Ta1e02/test-dt2e-04', 'damping1e01/tp3e-04-Ta8e02/dynamics-dt2e-04', 
+                        'damping1e01/tp3e-04-Ta1e03/test-dt2e-04', 'damping1e01/tp3e-04-Ta1.8e03/dynamics-dt2e-04'])
+    labels = np.array(['$NVE$', '$\\beta = 10^{-7}$', '$\\beta = 10^{-5}$', '$\\beta = 10^{-3}$', '$\\beta = 10^{-1}$', '$\\beta = 10^1$',
+                       '$T_a = 1$', '$T_a = 10^2$', '$T_a = 8 \\times 10^2$', '$T_a = 10^3$', '$T_a = 1.8 \\times 0^3$'])
+    xaxis = np.arange(1, dirList.shape[0]+1, 1)
+    fig, ax = plt.subplots(figsize=(12,4), dpi = 120)
+    mean = np.zeros(dirList.shape[0])
+    error = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(os.path.exists(dirSample)):
+            if which == 'force':
+                data = np.loadtxt(dirSample + os.sep + "particleForce.dat")
+                data = np.linalg.norm(data, axis=1)
+            elif which == 'etot':
+                data = np.loadtxt(dirSample + os.sep + "energy.dat")[:,4]
+            else:
+                data = np.loadtxt(dirSample + os.sep + "energy.dat")[:,3]
+            mean[d] = np.mean(data)
+            error[d] = np.std(data)
+    ax.errorbar(xaxis, mean, error, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, lw=0.9, label='$\\Delta t = 2 \\times 10^{-4}$')
+    ax.set_ylim(np.min(mean) - 20*np.max(error), np.max(mean) + 20*np.max(error))
+    ax.set_xticks(xaxis)
+    ax.set_xticklabels(labels)
+    dirList = np.array(['damping1e01/tp3e-04-Ta1/test-dt2e-05', 'damping1e01/tp3e-04-Ta1e02/test-dt2e-05', 'damping1e01/tp3e-04-Ta8e02/dynamics-dt2e-05', 
+                        'damping1e01/tp3e-04-Ta1e03/test-dt2e-05', 'damping1e01/tp3e-04-Ta1.8e03/dynamics-dt2e-05'])
+    xaxis = xaxis[-dirList.shape[0]:]
+    mean = np.zeros(dirList.shape[0])
+    error = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(os.path.exists(dirSample)):
+            if which == 'force':
+                data = np.loadtxt(dirSample + os.sep + "particleForce.dat")
+                data = np.linalg.norm(data, axis=1)
+            elif which == 'etot':
+                data = np.loadtxt(dirSample + os.sep + "energy.dat")[:,4]
+            else:
+                data = np.loadtxt(dirSample + os.sep + "energy.dat")[:,3]
+            mean[d] = np.mean(data)
+            error[d] = np.std(data)
+    ax.errorbar(xaxis, mean, error, color='g', marker='v', markersize=8, fillstyle='none', capsize=3, lw=0.9, label='$\\Delta t = 2 \\times 10^{-5}$')
+    dirList = np.array(['damping1e01/tp3e-04-Ta1/test-dt2e-06', 'damping1e01/tp3e-04-Ta1e02/test-dt2e-06', 'damping1e01/tp3e-04-Ta8e02/dynamics-dt2e-06', 
+                        'damping1e01/tp3e-04-Ta1e03/test-dt2e-06', 'damping1e01/tp3e-04-Ta1.8e03/dynamics-dt2e-06'])
+    mean = np.zeros(dirList.shape[0])
+    error = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + dirList[d]
+        if(os.path.exists(dirSample)):
+            if which == 'force':
+                data = np.loadtxt(dirSample + os.sep + "particleForce.dat")
+                data = np.linalg.norm(data, axis=1)
+            elif which == 'etot':
+                data = np.loadtxt(dirSample + os.sep + "energy.dat")[:,4]
+            else:
+                data = np.loadtxt(dirSample + os.sep + "energy.dat")[:,3]
+            mean[d] = np.mean(data)
+            error[d] = np.std(data)
+    ax.errorbar(xaxis, mean, error, color='b', marker='s', markersize=8, fillstyle='none', capsize=3, lw=0.9, label='$\\Delta t = 2 \\times 10^{-6}$')
+    ax.legend(fontsize=12, loc='best')
+    ax.tick_params(axis='both', labelsize=12)
+    if which == 'force':
+        ax.set_ylabel("$\\langle | \\vec{F} | \\rangle$", fontsize=16, rotation='horizontal', labelpad=20)
+    elif which == 'etot':
+        ax.set_ylabel("$\\langle E \\rangle$", fontsize=16, rotation='horizontal', labelpad=20)
+    else:
+        ax.set_ylabel("$\\langle K \\rangle$", fontsize=16, rotation='horizontal', labelpad=20)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/compareForce-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
 ########################## check force across wall ##########################
@@ -2661,6 +2740,11 @@ if __name__ == '__main__':
     elif(whichPlot == "compare"):
         figureName = sys.argv[3]
         compareEnergy(dirName, figureName)
+
+    elif(whichPlot == "forcemag"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        compareForceMagnitude(dirName, figureName, which)
 
     elif(whichPlot == "force"):
         figureName = sys.argv[3]

@@ -1770,15 +1770,14 @@ def plotSPEnergyLengthVSStrain(dirName, dirType='damping1e01', dynamics='/'):
     fig.tight_layout()
     plt.show()
 
-def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', active=0, ilength=0, window=1, every=0, plot=True, activename='active'):
+def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirType='damping1e01', dynamics='/', thermo=0, ilength=0, window=1, every=0, plot=True, activename='active'):
     numParticles = int(utils.readFromParams(dirName, 'numParticles'))
     num1 = int(utils.readFromParams(dirName, 'num1'))
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     tension = np.zeros(2)
     temp = np.zeros(2)
     compute = True
-    '''
-    if(active == 'active'):
+    if(thermo == 'active'):
         if(os.path.exists(dirName + "/energyStrain-" + activename + ".dat")):
             compute = False
             print("Reading energy data from file")
@@ -1786,7 +1785,6 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
         if(os.path.exists(dirName + "/energyStrain-" + dirType + ".dat")):
             compute = False
             print("Reading energy data from file")
-    '''
     if compute:
         print("Computing energy data")
         # read energy for strained configurations
@@ -1809,10 +1807,10 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
                 work[d,0] = np.mean((data[:,2] + data[:,3]))
                 work[d,1] = np.std((data[:,2] + data[:,3]))
                 if(dirType != 'dynamics'): # nve directory - no heat
-                    if(active == 'active'):
+                    if(thermo == 'active'):
                         heat[d,0] = np.mean((data[:,5] + data[:,6] + data[:,7]))
                         heat[d,1] = np.std((data[:,5] + data[:,6] + data[:,7]))
-                    else:
+                    elif(thermo == 'nvt'):
                         heat[d,0] = np.mean((data[:,5] + data[:,6]))
                         heat[d,1] = np.std((data[:,5] + data[:,6]))
                 epot[d,0] = np.mean(data[:,2])
@@ -1853,14 +1851,14 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
         elif(compext == 'comp'):
             height = (1 + otherStrain)*boxSize[1]
             width = (1 + strain)*boxSize[0]
-        if(active == 'active'):
+        if(thermo == 'active'):
             np.savetxt(dirName + "/energyStrain-" + activename + ".dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
         else:
-            np.savetxt(dirName + "/energyStrain-" + dirType + ".dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
-    if(active == 'active'):
+            np.savetxt(dirName + "/energyStrain-" + dirType[:-1] + ".dat", np.column_stack((strain, work, heat, epot, ekin, 2*height, width, length)))
+    if(thermo == 'active'):
         data = np.loadtxt(dirName + "/energyStrain-" + activename + ".dat")
     else:
-        data = np.loadtxt(dirName + "/energyStrain-" + dirType + ".dat")
+        data = np.loadtxt(dirName + "/energyStrain-" + dirType[:-1] + ".dat")
     work = data[:,1:3]
     heat = data[:,3:5]
     epot = data[:,5:7]
@@ -1936,7 +1934,10 @@ def plotSPEnergyVSStrain(dirName, figureName, which='total', compext='ext', dirT
         figureName = "/home/francesco/Pictures/soft/mips/work-" + figureName
         plt.tight_layout()
         fig.savefig(figureName + ".png", transparent=False, format = "png")
-        plt.show()
+        if plot == 'pause':
+            plt.pause(0.5)
+        else:
+            plt.show()
     return tension, temp
 
 def noiseCompareEnergyStrain(dirName, figureName, versus='temp', compext='ext', dirType='dynamics', dynamics='/', ilength='length', window=1, every=0, compare=False):
@@ -2227,8 +2228,8 @@ def activeCompareVelPDF(dirName, figureName, dynamics='/lang2con-log/'):
     plt.show()
 
 def dampingCompareLogCorr(dirName, figureName, dynamics='/lang2con-log/'):
-    fig, ax = plt.subplots(figsize=(6,3.5), dpi = 120)
-    dirList = np.array(['1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01'])
+    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+    dirList = np.array(['1e-07', '1e-06', '1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01'])
     labelName = "$\\beta \\tau_i=$"
     markerList = ['o', 'v', 'D', 's', '^', 'd', 's', 'v', '^']
     colorList = cm.get_cmap('viridis', dirList.shape[0]+1)
@@ -2237,17 +2238,17 @@ def dampingCompareLogCorr(dirName, figureName, dynamics='/lang2con-log/'):
     tau = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         dirSample = dirName + '/damping' + dirList[d] + '/' + dynamics
-        print(dirSample)
         damping[d] = utils.readFromDynParams(dirSample, 'damping')
         data = np.loadtxt(dirSample + "energy.dat")
         temp[d,0] = np.mean(data[:,3])
         temp[d,1] = np.std(data[:,3])
-        if not(os.path.exists(dirSample + "logCorr.dat")):
-            interface.compute2FluidsCorr(dirSample, 0, 7, 6, 0)
+        if not(os.path.exists(dirSample + "!logCorr.dat")):
+            interface.average2FluidsCorr(dirSample, 0, 7, 6, 0)
         logcorr = np.loadtxt(dirSample + "logCorr.dat")
         tau[d] = utils.getRelaxationTime(logcorr, index=2)
-        ax.plot(logcorr[:,0], logcorr[:,2], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, label=labelName + dirList[d])
+        ax.plot(logcorr[:,0], logcorr[:,-1], color=colorList(d/dirList.shape[0]), marker=markerList[d], markersize=6, fillstyle='none', lw=1, label=labelName + dirList[d])
     ax.set_xscale('log')
+    #ax.set_yscale('log')
     colorBar = cm.ScalarMappable(cmap=colorList)
     cb = plt.colorbar(colorBar, ax=ax, pad=0, aspect=20)
     label = "$\\beta \\tau_i$"
@@ -2256,6 +2257,7 @@ def dampingCompareLogCorr(dirName, figureName, dynamics='/lang2con-log/'):
     cb.set_ticks(np.linspace(0,1,4))
     cb.ax.tick_params(labelsize=12, length=0)
     ticks = np.geomspace(min, max, 4)
+    print(min, max)
     ticklabels = np.array(["$5 \\times 10^{-3}$", "$5 \\times 10^{-2}$", "$5 \\times 10^{-1}$", "$5 \\times 10^0$"])
     cb.set_ticklabels(ticklabels)
     cb.set_label(label=label, fontsize=14, labelpad=5, rotation='horizontal')
@@ -2268,7 +2270,7 @@ def dampingCompareLogCorr(dirName, figureName, dynamics='/lang2con-log/'):
     figure1Name = "/home/francesco/Pictures/soft/mips/logcorrDamping-" + figureName
     fig.tight_layout()
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    fig, ax = plt.subplots(figsize=(5,3.5), dpi = 120)
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
     ax.plot(damping, tau, lw=1, color='k', marker='o', markersize=8, fillstyle='none')
     ax.set_xscale('log')
     ax.tick_params(axis='both', labelsize=12)
@@ -3707,11 +3709,11 @@ if __name__ == '__main__':
         compext = sys.argv[5]
         dirType = sys.argv[6]
         dynamics = sys.argv[7]
-        active = sys.argv[8]
+        thermo = sys.argv[8]
         ilength = sys.argv[9]
         window = int(sys.argv[10])
         every = int(sys.argv[11])
-        plotSPEnergyVSStrain(dirName, figureName, which, compext, dirType, dynamics, active, ilength, window, every, plot=True)
+        plotSPEnergyVSStrain(dirName, figureName, which, compext, dirType, dynamics, thermo, ilength, window, every, plot=True)
 
     elif(whichPlot == "energytime"):
         figureName = sys.argv[3]

@@ -906,6 +906,14 @@ def getDoubleWrappedClusterLabels(pos, rad, boxSize, denseList, eps):
     labels = utils.wrapDoubleClusterLabels(doubleLabels, maxLabel, pos.shape[0])
     return labels, maxLabel
 
+def getClusterLabels(pos, rad, boxSize, denseList, eps):
+    labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=denseList)
+    clusterLabels = -1*np.ones(denseList.shape[0], dtype=np.int64)
+    clusterLabels[denseList==1] = labels + 1
+    clusterLabels = clusterLabels.astype(np.int64)
+    maxLabel = utils.findLargestParticleCluster(rad, clusterLabels)
+    return clusterLabels, maxLabel
+
 def getParticleClusterLabels(dirSample, boxSize, eps, threshold=0.62, compute=False, save='save'):
     if(compute==True or compute=='cluster'):
         computeDelaunayCluster(dirSample, threshold=threshold, save=save)

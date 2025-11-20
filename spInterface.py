@@ -5,6 +5,8 @@ Created by Francesco
 #functions and script to compute cluster correlations
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import cm
+from matplotlib.ticker import ScalarFormatter
 import sys
 import os
 import time
@@ -14,6 +16,8 @@ import spCluster as cluster
 from scipy.stats import norm
 from scipy.spatial import cKDTree
 from tqdm import tqdm
+from scipy.optimize import curve_fit
+from scipy.interpolate import interp1d
 from numba import njit
 
 def computeClusterTemperatureVSTime(dirName, threshold=0.3, dirSpacing=1):
@@ -1619,55 +1623,460 @@ def compute2DensityProfile(dirName, num1=0):
     uplot.plotCorrelation(centers, particleDensity[:,1], "$Density$ $profile$", xlabel = "$x$", color='b')
     plt.show()
 
+def hyperbolicTan(x, a, b, x0, w):
+    return 0.5*(a+b) - 0.5*(a-b)*np.tanh(2*(x-x0)/w)
+
 ####################### Average linear density profile ########################
-def average2DensityProfile(dirName, num1=0, plot=False, dirSpacing=1):
-    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+def average2DensityProfile(dirName, num1=0, plot=False, dirSpacing=500000):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    # distance bins
+    rad = np.array(np.loadtxt(dirName + os.sep + "../particleRad.dat"))
     bins = np.arange(0, boxSize[0], np.max(rad))
+    centers = (bins[1:] + bins[:-1])/2
     binWidth = bins[1] - bins[0]
     binArea = binWidth*boxSize[1]
-    centers = (bins[1:] + bins[:-1])/2
-    # density lists
-    particleDensity = np.zeros((dirList.shape[0], bins.shape[0]-1,2))
-    width = np.zeros(dirList.shape[0])
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    print(numParticles, "particles in system")
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    particleDensity = np.zeros((dirList.shape[0],bins.shape[0]-1,2))
+    mask = np.zeros(dirList.shape[0], dtype=bool)
     for d in range(dirList.shape[0]):
         dirSample = dirName + os.sep + dirList[d]
         # first compute particle density
         pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.centerCOM1(pos, rad, boxSize, num1)
-        for i in range(numParticles):
-            for j in range(bins.shape[0]-1):
-                if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
-                    if(i < num1):
-                        particleDensity[d,j,0] += np.pi*rad[i]**2
-                    else:
-                        particleDensity[d,j,1] += np.pi*rad[i]**2
-        particleDensity[d,:,0] /= binArea
-        particleDensity[d,:,1] /= binArea
-        x = centers
-        y = particleDensity[d,:,0]
-        bulk = x[np.argwhere(y>0.5)[:,0]]
-        if(bulk.shape[0] != 0):
-            width[d] = bulk[-1] - bulk[0]
+        if(pos.shape[0] == numParticles):
+            if(rad.shape[0] == numParticles):
+                mask[d] = True
+                pos = utils.centerCOM1(pos, rad, boxSize, num1)
+                for i in range(numParticles):
+                    for j in range(bins.shape[0]-1):
+                        if(pos[i,0] > bins[j] and pos[i,0] <= bins[j+1]):
+                            if(i < num1):
+                                particleDensity[d,j,0] += np.pi*rad[i]**2
+                            else:
+                                particleDensity[d,j,1] += np.pi*rad[i]**2
+                particleDensity[d,:,0] /= binArea
+                particleDensity[d,:,1] /= binArea
         else:
-            width[d] = 0
-    particleDensity1 = np.column_stack((np.mean(particleDensity[:,:,0], axis=0), np.std(particleDensity[:,:,0], axis=0)))
-    particleDensity2 = np.column_stack((np.mean(particleDensity[:,:,1], axis=0), np.std(particleDensity[:,:,1], axis=0)))
+            print("WARNING: directory", dirList[d], "has", pos.shape[0], "particles. Skipping this directory.")
+    particleDensity1 = np.column_stack((np.mean(particleDensity[mask,:,0], axis=0), np.std(particleDensity[mask,:,0], axis=0)))
+    particleDensity2 = np.column_stack((np.mean(particleDensity[mask,:,1], axis=0), np.std(particleDensity[mask,:,1], axis=0)))
     np.savetxt(dirName + os.sep + "densityProfile.dat", np.column_stack((centers, particleDensity1, particleDensity2)))
-    np.savetxt(dirName + os.sep + "phaseWidth.dat", np.column_stack((timeList, width)))
-    print("average phase 1 width during compression: ", np.mean(width), "+-", np.std(width))
-    if(plot=='plot'):
-        uplot.plotCorrelation(timeList, width, "$Interface$ $width$")
-        #uplot.plotCorrWithError(centers, particleDensity1[:,0], particleDensity1[:,1], "$Density$ $profile$", xlabel = "$x$", color='g')
-        #uplot.plotCorrWithError(centers, particleDensity2[:,0], particleDensity2[:,1], "$Density$ $profile$", xlabel = "$x$", color='b')
-        #plt.show()
+    center = np.mean(centers)
+    x = centers[centers>center]
+    y = particleDensity1[centers>center,0]
+    # Initial guess for parameters: [low_density, high_density, center_x, width]
+    p0 = [np.max(y), np.min(y), np.mean(x), 10]
+    # Fit the data
+    popt, pcov = curve_fit(hyperbolicTan, x, y, p0=p0)
+    # Extract fitted parameters
+    a_fit, b_fit, x0_fit, w_fit = popt
+    print(f"Fitted parameters: high_phi = {a_fit:.4f}, low_phi = {b_fit:.4f}, center = {x0_fit:.2f}, width = {w_fit:.5f}, error = {np.sqrt(pcov[3,3]):.5f}")
+    if(plot=='plot' or plot=='show'):
+        #uplot.plotCorrelation(timeList, width, "$Interface$ $width$")
+        plt.errorbar(centers, particleDensity1[:,0], particleDensity1[:,1], color='g', marker='o', fillstyle='none', markersize=6, capsize=3)
+        plt.errorbar(centers, particleDensity2[:,0], particleDensity2[:,1], color='b', marker='o', fillstyle='none', markersize=6, capsize=3)
+        x_fit = np.linspace(np.min(x), np.max(x), 300)
+        y_fit = hyperbolicTan(x_fit, *popt)
+        plt.plot(x_fit, y_fit, color='k', lw=1, ls='--')
+        plt.xlim(np.min(x_fit), np.max(x_fit))
+        plt.tick_params(axis='both', labelsize=14)
+        plt.xlabel("$x$", fontsize=20)
+        plt.ylabel("$Density$", fontsize=20)
+        plt.tight_layout()
+        if(plot=='show'):
+            plt.show()
+        else:
+            plt.pause(0.5)
+
+def plotWidth(dirName, num1, which, strain="0.0100", damping='1e01', pause='show'):
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    if which == 'nvt':
+        dirList = np.array(['1e-09', '1e-08', '1e-07', '1e-06', '1e-05', '1e-04', '1e-03', '1e-02', '1e-01', '1', '1e01'])
+    elif which == 'active-tp3e-01':
+        dirList = np.array(['1', '2', '3', '4', '5', '6'])#, '7', '8', '9', '10'])
+    elif which == 'active-tp3e-04':
+        dirList = np.array(['1e02', '2e02', '4e02', '6e02', '8e02', '1e03'])#, '1.2e03', '1.4e03', '1.6e03', '1.8e03'])
+    elif which == 'nvtvst':
+        dirList = np.array(['1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00', '2.10', '2.20'])
+    else:
+        which = 'nve'
+        dirList = np.array(['0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00', '2.10', '2.20'])
+    if which == 'nvt':
+        colorList = cm.get_cmap('viridis', dirList.shape[0])
+        beta = np.zeros(dirList.shape[0])
+    else:
+        colorList = cm.get_cmap('plasma')
+        temp = np.zeros((dirList.shape[0],2))
+    width = np.zeros((dirList.shape[0],2))
+    for d in range(dirList.shape[0]):
+        if which == 'nvt':
+            dirSample = dirName + "/strain" + strain + os.sep + "damping" + dirList[d] + os.sep + "lang2con/" 
+        elif which == 'active-tp3e-01':
+            dirSample = dirName + "/strain" + strain + os.sep + "damping1e01/tp3e-01-Ta" + dirList[d] + os.sep + "lang2con/" 
+        elif which == 'active-tp3e-04':
+            dirSample = dirName + "/strain" + strain + os.sep + "damping1e01/tp3e-04-Ta" + dirList[d] + os.sep + "lang2con/"
+        elif which == 'nvtvst':
+            dirSample = dirName + os.sep + "T" + dirList[d] + os.sep + "nve/nve-biaxial-ext5e-06-tmax2e03/strain" + strain + "/damping" + damping + "/lang2con/"
+        else:
+            dirSample = dirName + os.sep + "T" + dirList[d] + os.sep + "nve/nve-biaxial-ext5e-06-tmax2e03/strain" + strain + "/dynamics/"
+        #print(dirSample)
+        if which == 'nvt':
+            beta[d] = utils.readFromDynParams(dirSample, "damping")
+            colorId = d / dirList.shape[0]
+        else:
+            ekin = np.loadtxt(dirSample + os.sep + "energy.dat", usecols=(3,))
+            epsilon = utils.readFromParams(dirSample, "epsilon")
+            temp[d,0] = np.mean(ekin)/epsilon
+            temp[d,1] = np.std(ekin)/epsilon
+            colorId = (temp[d,0] - 0.45) / (1.05 - 0.45)
+        if (os.path.exists(dirSample + os.sep + "t0")):
+            if not(os.path.exists(dirSample + os.sep + "densityProfile.dat")):
+                print("Computing average density profile in", dirSample)
+                average2DensityProfile(dirSample, num1)
+            data = np.loadtxt(dirSample + os.sep + "densityProfile.dat")
+            centers = data[:,0]
+            particleDensity1 = data[:,1:3]#particleDensity2 = data[:,3:5]
+            center = np.mean(centers)
+            boxSize = np.loadtxt(dirSample + os.sep + "boxSize.dat")
+            x = centers[centers>center] / boxSize[0]
+            y = particleDensity1[centers>center,0]
+            p0 = [np.min(y), np.max(y), np.mean(x), 100]
+            popt, pcov = curve_fit(hyperbolicTan, x, y, p0=p0)
+            ax.plot(x, y, color=colorList(colorId), lw=1)
+            x_fit = np.linspace(np.min(x), np.max(x), 300)
+            y_fit = hyperbolicTan(x_fit, *popt)
+            plt.plot(x_fit, y_fit, color='k', lw=1, ls='--')
+            # Extract fitted parameters
+            width[d,0] = np.abs(popt[3]) / boxSize[0]
+            width[d,1] = np.sqrt(pcov[3,3]) / boxSize[0]
+    # save width data
+    if which == 'nvt':
+        np.savetxt(dirName + os.sep + "width-nvt-strain" + strain + ".dat", np.column_stack((beta, width)))
+    elif which == 'active-tp3e-01':
+        np.savetxt(dirName + os.sep + "width-active-tp3e-01-strain" + strain + ".dat", np.column_stack((temp, width)))
+    elif which == 'active-tp3e-04':
+        np.savetxt(dirName + os.sep + "width-active-tp3e-04-strain" + strain + ".dat", np.column_stack((temp, width)))
+    elif which == 'nvtvst':
+        np.savetxt(dirName + os.sep + "width-nvtvst-damping" + damping + "-strain" + strain + ".dat", np.column_stack((temp, width)))
+    else:
+        np.savetxt(dirName + os.sep + "width-nve-strain" + strain + ".dat", np.column_stack((temp, width)))
+    # plot density profile
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$x / L_x$", fontsize=14)
+    ax.set_ylabel("$Density$", fontsize=14)
+    plt.tight_layout()
+    fig.savefig("/home/francesco/Pictures/soft/mips/profile-" + which + ".png", dpi=120)
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Interface$ $width,$ $w/L_x$", fontsize=14)
+    if which == 'nvt':
+        ax.set_xscale('log')
+        ax.set_xlabel("$Damping,$ $\\beta$", fontsize=14)
+        ax.errorbar(beta, width[:,0], width[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+    else:
+        #ax.set_xlim(0.525, 1.015)
+        ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+        ax.errorbar(temp[:,0], width[:,0], width[:,1], temp[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+    plt.tight_layout()
+    fig.savefig("/home/francesco/Pictures/soft/mips/width-" + which + ".png", dpi=120)
+    if pause == 'show':
+        plt.show()
+    else:
         plt.pause(0.5)
+
+def plotAverageWidth(dirName, which, pause='show'):
+    strainList = np.array(['0.0100', '0.0200', '0.0300', '0.0400', '0.0500', '0.0600', '0.0700', '0.0800',
+                           '0.0900', '0.1000', '0.1100', '0.1200', '0.1300', '0.1400', '0.1500', '0.1600'])
+    width = np.empty(0)
+    temp = np.empty(0)
+    beta = np.zeros(strainList.shape[0])
+    for d in range(strainList.shape[0]):
+        if which == 'nvt':
+            data = np.loadtxt(dirName + os.sep + "width-nvt-strain" + strainList[d] + ".dat")
+            beta = data[:,0]
+        elif which == 'active-tp3e-01':
+            data = np.loadtxt(dirName + os.sep + "width-active-tp3e-01-strain" + strainList[d] + ".dat")
+        elif which == 'active-tp3e-04':
+            data = np.loadtxt(dirName + os.sep + "width-active-tp3e-04-strain" + strainList[d] + ".dat")
+        elif which == 'nvtvst-damping1e01':
+            data = np.loadtxt(dirName + os.sep + "width-nvtvst-damping1e01-strain" + strainList[d] + ".dat")
+        elif which == 'nvtvst-damping1e-03':
+            data = np.loadtxt(dirName + os.sep + "width-nvtvst-damping1e-03-strain" + strainList[d] + ".dat")
+        elif which == 'nvtvst-damping1e-07':
+            data = np.loadtxt(dirName + os.sep + "width-nvtvst-damping1e-07-strain" + strainList[d] + ".dat")
+        else:
+            data = np.loadtxt(dirName + os.sep + "width-nve-strain" + strainList[d] + ".dat")
+        dirLength = data.shape[0]
+        if which != 'nvt':
+            temp = np.append(temp, data[:,0])
+        width = np.append(width, data[:,-2])
+    if which != 'nvt':
+        print(temp.shape, strainList.shape, dirLength)
+        temp = temp.reshape((strainList.shape[0], dirLength))
+        temp = np.column_stack((np.mean(temp, axis=0), np.std(temp, axis=0)))
+    width = width.reshape((strainList.shape[0], dirLength))
+    width = np.column_stack((np.mean(width, axis=0), np.std(width, axis=0)))
+    # save average width data
+    print(which)
+    if which == 'nvt':
+        np.savetxt(dirName + os.sep + "averageWidth-nvt.dat", np.column_stack((beta, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-nvt.dat")
+    elif which == 'active-tp3e-01':
+        np.savetxt(dirName + os.sep + "averageWidth-active-tp3e-01.dat", np.column_stack((temp, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-active-tp3e-01.dat")
+    elif which == 'active-tp3e-04':
+        np.savetxt(dirName + os.sep + "averageWidth-active-tp3e-04.dat", np.column_stack((temp, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-active-tp3e-04.dat")
+    elif which == 'nvtvst-damping1e01':
+        np.savetxt(dirName + os.sep + "averageWidth-nvtvst-damping1e01.dat", np.column_stack((temp, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-nvtvst-damping1e01.dat")
+    elif which == 'nvtvst-damping1e-03':
+        np.savetxt(dirName + os.sep + "averageWidth-nvtvst-damping1e-03.dat", np.column_stack((temp, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-nvtvst-damping1e-03.dat")
+    elif which == 'nvtvst-damping1e-07':
+        np.savetxt(dirName + os.sep + "averageWidth-nvtvst-damping1e-07.dat", np.column_stack((temp, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-nvtvst-damping1e-07.dat")
+    else:
+        np.savetxt(dirName + os.sep + "averageWidth-nve.dat", np.column_stack((temp, width)))
+        print("Saved in", dirName + os.sep + "averageWidth-nve.dat")
+    # plot density profile
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    # Force scientific notation on x and y axes
+    formatter = ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-3, 3))  # always use scientific notation outside [-10^3, 10^3]
+
+    ax.xaxis.set_major_formatter(formatter)
+    ax.yaxis.set_major_formatter(formatter)
+    if which == 'nvt':
+        ax.set_xscale('log')
+        ax.set_xlabel("$Damping,$ $\\beta$", fontsize=14)
+        ax.errorbar(beta, width[:,0], width[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+    else:
+        ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+        #data = data[:-2,:]
+        ax.errorbar(temp[:,0], width[:,0], width[:,1], temp[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+    ax.set_ylabel("$Interface$ $width,$ $w / L_x$", fontsize=14)
+    plt.tight_layout()
+    fig.savefig("/home/francesco/Pictures/soft/mips/averageWidth-" + which + ".png", dpi=120)
+    if pause == 'show':
+        plt.show()
+    else:
+        plt.pause(1)
+
+def compareAverageWidth(dirName, figureName):
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    dirList = np.array(['/', '/', '/', '/', 'T1.00/nve/nve-biaxial-ext5e-06-tmax2e03/', 'T1.00/nve/nve-biaxial-ext5e-06-tmax2e03/'])
+    fileList = np.array(['nve', 'nvtvst-damping1e-07', 'nvtvst-damping1e-03', 'nvtvst'])#, 'active-tp3e-01', 'active-tp3e-04'])
+    labelList = np.array(['$NVE$', '$NVT,$ $\\tau_d = 10^{-4}$', '$NVT,$ $\\tau_d = 10^{-2}$', '$NVT,$ $\\tau_d = 1$', 
+                          '$Active,$ $\\tau_p / \\tau_d = 10^{-2}$', '$Active,$ $\\tau_p / \\tau_d = 10^{-5}$'])
+    colorList = ['k', 'b', 'g', 'c', 'r', [1,0.5,0]]
+    markerList = ['o', 'd', 'D', 's', '^', '^']
+    for d in range(fileList.shape[0]):
+        print("Loading data from", dirName + dirList[d] + "averageWidth-" + fileList[d] + ".dat")
+        if os.path.exists(dirName + dirList[d] + "averageWidth-" + fileList[d] + ".dat"):
+            data = np.loadtxt(dirName + dirList[d] + "averageWidth-" + fileList[d] + ".dat")
+            if(d == 0 or d == 1 or d == 2 or d == 3):
+                data = data[:-2,:]
+            ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color=colorList[d], marker=markerList[d], markersize=8, 
+                        fillstyle='none', lw=1, capsize=3, label=labelList[d])
+    ax.legend(loc='best', fontsize=10)
+    ax.tick_params(axis='both', labelsize=12)
+    # Force scientific notation on x and y axes
+    formatter = ScalarFormatter(useMathText=True)
+    formatter.set_scientific(True)
+    formatter.set_powerlimits((-3, 3))  # always use scientific notation outside [-10^3, 10^3]
+
+    ax.xaxis.set_major_formatter(formatter)
+    ax.yaxis.set_major_formatter(formatter)
+    ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    ax.set_ylabel("$Interface$ $width,$ $w / L_x$", fontsize=14)
+    plt.tight_layout()
+    fig.savefig("/home/francesco/Pictures/soft/mips/compareWidth-vsTemp" + figureName + ".png", dpi=120)
+    plt.show()
+
+def computeWidth(centers, particleDensity1):
+    center = np.mean(centers)
+    x = centers[centers>center]
+    y = particleDensity1[centers>center,0]
+    p0 = [np.min(y), np.max(y), np.mean(x), 10]
+    popt, pcov = curve_fit(hyperbolicTan, x, y, p0=p0)
+    # Extract fitted parameters
+    mean = np.abs(popt[3])
+    std = np.sqrt(pcov[3,3])
+    return np.array([mean, std])
+
+def computeInterfaceLength(typePos, bins, thickness):
+    leftPos = np.zeros((bins.shape[0]-1,2))
+    rightPos = np.zeros((bins.shape[0]-1,2))
+    rightInterface = np.zeros(bins.shape[0]-1)
+    leftInterface = np.zeros(bins.shape[0]-1)
+    # find particle positions in a vertical bin
+    for j in range(bins.shape[0]-1): 
+        topMask = np.argwhere(typePos[:,1] > bins[j])[:,0]
+        binPos = typePos[topMask]
+        bottomMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
+        binPos = binPos[bottomMask]
+        if(binPos.shape[0] > 0):
+            binDistance = binPos[:,0]
+            #left interface
+            leftMask = np.argsort(binDistance)[:thickness]
+            leftInterface[j] = np.mean(binDistance[leftMask])
+            leftPos[j,0] = leftInterface[j]
+            leftPos[j,1] = np.mean(binPos[leftMask,1])
+            # right interface
+            rightMask = np.argsort(binDistance)[-thickness:]
+            rightInterface[j] = np.mean(binDistance[rightMask])
+            rightPos[j,0] = rightInterface[j]
+            rightPos[j,1] = np.mean(binPos[rightMask,1])
+    # sum segments between interface coordinates
+    length = 0
+    if(rightInterface[rightInterface!=0].shape[0] == rightInterface.shape[0]):
+        prevPos = rightPos[0]
+        for j in range(1,bins.shape[0]-1):
+            length += np.linalg.norm(rightPos[j] - prevPos)
+            prevPos = rightPos[j]
+    if(leftInterface[leftInterface!=0].shape[0] == leftInterface.shape[0]):
+        prevPos = leftPos[0]
+        for j in range(1,bins.shape[0]-1):
+            length += np.linalg.norm(leftPos[j] - prevPos)
+            prevPos = leftPos[j]
+    return length
+
+def average2InterfaceLength(dirName, num1=0, spacing=2, lj=True):
+    boxSize = np.array(np.loadtxt(dirName + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + "particleRad.dat"))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    if lj:
+        rad *= 2**(1/6)
+    sigma = 2 * np.mean(rad)
+    eps = 1.4 * np.max(sigma)
+    spacing *= sigma # vertical
+    thickness = 3 # horizontal
+    bins = np.arange(0, boxSize[1], spacing)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    length = np.zeros(dirList.shape[0])
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        if not(os.path.exists(dirSample + os.sep + "interfaceLength.dat")):
+            # load particle variables
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            labels = np.zeros(numParticles)
+            labels[:num1] = 1
+            clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+            pos = utils.centerSlab(pos, rad, boxSize, clusterLabels, maxLabel)
+            typePos = pos[clusterLabels==maxLabel]
+            length[d] = computeInterfaceLength(typePos, bins, thickness)
+            np.savetxt(dirName + os.sep + "interfaceLength.dat", np.column_stack((length[d], 0, 0)))
+        else:
+            data = np.loadtxt(dirSample + os.sep + "interfaceLength.dat")
+            length[d] = data[0]
+    np.savetxt(dirName + os.sep + "timeLength.dat", np.column_stack((timeList, length)))
+    return length
+
+def plotWidthVSLength(dirName, num1, dynamics, pause='show'):
+    strainList = np.array(['0.0100', '0.0200', '0.0300', '0.0400', '0.0500', '0.0600', '0.0700', '0.0800',
+                           '0.0900', '0.1000', '0.1100', '0.1200', '0.1300', '0.1400', '0.1500', '0.1600'])
+    width1 = np.zeros((strainList.shape[0],2))
+    width2 = np.zeros((strainList.shape[0],2))
+    length = np.zeros((strainList.shape[0],2))
+    height = np.zeros(strainList.shape[0])
+    for d in range(strainList.shape[0]):
+        dirSample = dirName + os.sep + "nve/nve-biaxial-ext5e-06-tmax2e03/strain" + strainList[d] + os.sep + dynamics
+        boxSize = np.loadtxt(dirSample + os.sep + "boxSize.dat")
+        if not(os.path.exists(dirSample + os.sep + "densityProfile.dat")):
+            average2DensityProfile(dirSample, num1=0)
+        data = np.loadtxt(dirSample + os.sep + "densityProfile.dat")
+        centers = data[:,0]
+        particleDensity1 = data[:,1:3]
+        width1[d] = computeWidth(centers, particleDensity1) / boxSize[0]
+        particleDensity2 = data[:,3:5]
+        width2[d] = computeWidth(centers, particleDensity2) / boxSize[0]
+        # Collect length data at current time
+        if not(os.path.exists(dirSample + "timeLength.dat")):
+            average2InterfaceLength(dirSample, num1)
+        data = np.loadtxt(dirSample + "timeLength.dat")
+        length[d,0] = np.mean(data[:,1])
+        length[d,1] = np.std(data[:,1])
+        height[d] = np.loadtxt(dirSample + os.sep + "boxSize.dat")[0]
+    np.savetxt(dirName + os.sep + "widthLength.dat", np.column_stack((length, width1, width2)))
+    # plot square width vs length
+    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Interface$ $length,$ $L$", fontsize=14)
+    ax.set_ylabel("$(w / L_x)^2$", fontsize=14)
+    #ax.errorbar(height, width1[:,0]**2, width1[:,1]*2*width1[:,0], color='g', marker='v', markersize=12, fillstyle='none', lw=1, capsize=3, label="$\\phi_1$")
+    #ax.errorbar(height, width2[:,0]**2, width2[:,1]*2*width2[:,0], color='b', marker='v', markersize=12, fillstyle='none', lw=1, capsize=3, label="$\\phi_2$")
+    width1 = width1[np.argsort(length[:,0])]
+    width2 = width2[np.argsort(length[:,0])]
+    length = np.sort(length, axis=0)
+    ax.errorbar(length[:,0], width1[:,0]**2, width1[:,1]*2*width1[:,0], color='g', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$\\phi_1$")
+    ax.errorbar(length[:,0], width2[:,0]**2, width2[:,1]*2*width2[:,0], color='b', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label="$\\phi_2$")
+    ax.legend(loc='best', fontsize=12)
+    plt.tight_layout()
+    #fig.savefig("/home/francesco/Pictures/soft/mips/widthVSlength-" + dynamics + ".png", dpi=120)
+    if pause == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+    
+
+####################### Average cluster height interface #######################
+def average2InterfaceCorrelation(dirName, num1=0, thickness=3, plot=False, dirSpacing=1000000):
+    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    sigma = np.mean(rad)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
+    spacing = thickness * sigma
+    bins = np.arange(0, boxSize[1], spacing)
+    centers = (bins[1:] + bins[:-1])/2
+    maxCorrIndex = int((bins.shape[0]-1) / 2)
+    centers = centers[:maxCorrIndex]
+    leftHeightCorr = np.zeros((dirList.shape[0], maxCorrIndex))
+    rightHeightCorr = np.zeros((dirList.shape[0], maxCorrIndex))
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + dirList[d]
+        # load particle variables
+        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+        pos = utils.centerCOM1(pos, rad, boxSize, num1)
+        pos = pos[:num1]
+        leftHeight = np.zeros(bins.shape[0]-1)
+        rightHeight = np.zeros(bins.shape[0]-1)
+        for j in range(bins.shape[0]-1): # find particle positions in a bin
+            downMask = np.argwhere(pos[:,1] > bins[j])[:,0]
+            binPos = pos[downMask]
+            upMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
+            binPos = binPos[upMask]
+            if(binPos.shape[0] > 0):
+                center = np.mean(binPos, axis=0)[0] # center of dense cluster
+                binDistance = binPos[:,0] - center
+                leftMask = np.argsort(binDistance)[:thickness]
+                leftHeight[j] = np.mean(binDistance[leftMask])
+                rightMask = np.argsort(binDistance)[-thickness:]
+                rightHeight[j] = np.mean(binDistance[rightMask])
+        leftHeightCorr[d] = utils.getHeightCorr(leftHeight, maxCorrIndex)
+        rightHeightCorr[d] = utils.getHeightCorr(rightHeight, maxCorrIndex)
+    leftHeightCorr = np.column_stack((np.mean(leftHeightCorr, axis=0), np.std(leftHeightCorr, axis=0)))
+    rightHeightCorr = np.column_stack((np.mean(rightHeightCorr, axis=0), np.std(rightHeightCorr, axis=0)))
+    heightCorr = np.zeros(leftHeightCorr.shape)
+    heightCorr[:,0] = np.mean(np.column_stack((leftHeightCorr[:,0],rightHeightCorr[:,0])), axis=1)
+    heightCorr[:,1] = np.sqrt(np.mean(np.column_stack((leftHeightCorr[:,1]**2,rightHeightCorr[:,1]**2)), axis=1))
+    np.savetxt(dirName + os.sep + "heightCorr.dat", np.column_stack((centers, heightCorr)))
+    if(plot=='plot' or plot=='show'):
+        plt.errorbar(centers, heightCorr[:,0], color='k', marker='o', fillstyle='none', markersize=6, capsize=3)
+        plt.tick_params(axis='both', labelsize=14)
+        plt.xlabel("$\\Delta s$", fontsize=20)
+        plt.ylabel("$C_{hh}$", fontsize=20)
+        plt.tight_layout()
+        if(plot=='show'):
+            plt.show()
+        else:
+            plt.pause(0.5)
 
 ####################### Average linear density profile ########################
 def compute2InterfaceEnergy(dirName, num1=0, which='strain', plot=False, dirSpacing=1):
@@ -1766,7 +2175,7 @@ def average2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
     sigma = 2 * np.mean(rad)
     timeStep = utils.readFromParams(dirName, "dt")
     longWave = 2 * np.pi / sigma
-    shortWave = 2 * np.pi / boxSize[1]
+    shortWave = 2 * np.pi / (20 * sigma)
     if(num1 != 0):
         particleCorr1 = []
         particleCorr2 = []
@@ -1816,9 +2225,9 @@ def average2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
         spacingDecade *= 10
     stepList = np.array(stepList) * timeStep
     if(num1 != 0):
-        particleCorr1 = np.array(particleCorr1).reshape((stepList.shape[0],5))
+        particleCorr1 = np.array(particleCorr1).reshape((stepList.shape[0],6))
         particleCorr1 = particleCorr1[np.argsort(stepList)]
-        particleCorr2 = np.array(particleCorr2).reshape((stepList.shape[0],5))
+        particleCorr2 = np.array(particleCorr2).reshape((stepList.shape[0],6))
         particleCorr2 = particleCorr2[np.argsort(stepList)]
         np.savetxt(dirName + os.sep + "2logCorr.dat", np.column_stack((stepList, particleCorr1, particleCorr2)))
         data = np.column_stack((stepList, particleCorr1))
@@ -1828,7 +2237,7 @@ def average2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
         tau = utils.getRelaxationTime(data)
         print("Fluid 2: relaxation time:", tau, "time step:", timeStep, " relaxation step:", tau / timeStep)
     else:
-        particleCorr = np.array(particleCorr).reshape((stepList.shape[0],5))
+        particleCorr = np.array(particleCorr).reshape((stepList.shape[0],6))
         particleCorr = particleCorr[np.argsort(stepList)]
         np.savetxt(dirName + os.sep + "logCorr.dat", np.column_stack((stepList, particleCorr)))
         data = np.column_stack((stepList, particleCorr))
@@ -1838,14 +2247,14 @@ def average2FluidsCorr(dirName, startBlock, maxPower, freqPower, num1=0, plot=Fa
         stepList /= timeStep
         if(num1 != 0):
             uplot.plotCorrelation(stepList, particleCorr1[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
-            uplot.plotCorrelation(stepList, particleCorr1[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
+            uplot.plotCorrelation(stepList, particleCorr1[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'g')
             uplot.plotCorrelation(stepList, particleCorr2[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k', ls='dashed')
-            uplot.plotCorrelation(stepList, particleCorr2[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r', ls='dashed')
+            uplot.plotCorrelation(stepList, particleCorr2[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'g', ls='dashed')
         else:
             uplot.plotCorrelation(stepList, particleCorr[:,1], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'k')
-            uplot.plotCorrelation(stepList, particleCorr[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'r')
-        plt.pause(0.5)
-        #plt.show()
+            uplot.plotCorrelation(stepList, particleCorr[:,2], "$ISF(\\Delta t)$", "$time$ $interval,$ $\\Delta t$", logx = True, color = 'g')
+        #plt.pause(0.5)
+        plt.show()
 
 ############################ Velocity distribution #############################
 def average2FluidsVelPDF(dirName, which='speed', num1=0, plot=False, figureName=None, dirSpacing=1):
@@ -2115,6 +2524,120 @@ def average2FluidsSpaceVelCorr(dirName, num1=0, plot=False, dirSpacing=1000000):
         #plt.pause(0.5)
         plt.show()
 
+def compute_mobility(positions, delta_t):
+    # positions: shape (T, N, dim)
+    displacements = positions[delta_t:] - positions[:-delta_t]
+    mobility = np.linalg.norm(displacements, axis=-1)  # shape: (T - delta_t, N)
+    return mobility
+
+def minimum_image_distance(ri, pos_t, boxSize):
+    delta = pos_t - ri  # shape: (N, d)
+    delta += boxSize / 2
+    delta %= boxSize
+    delta -= boxSize / 2
+    return delta
+
+def compute_spatial_mobility_correlation_PBC(wrapped_positions, unwrapped_positions, box_size, delta_t, r_max, dr):
+    """
+    wrapped_positions: shape (T, N, dim) — for distances
+    unwrapped_positions: shape (T, N, dim) — for mobility
+    box_size: array of length dim
+    """
+    T, N, dim = wrapped_positions.shape
+    mobility = np.linalg.norm(unwrapped_positions[delta_t:] - unwrapped_positions[:-delta_t], axis=-1)  # (T - delta_t, N)
+    
+    r_bins = np.arange(0, r_max + dr, dr)
+    r_centers = 0.5 * (r_bins[:-1] + r_bins[1:])
+    g_r = np.zeros_like(r_centers)
+    counts = np.zeros_like(r_centers)
+
+    print("Number of time windows:", T - delta_t)
+    for t in range(T - delta_t):
+        print("Time window index:", t)
+        pos_t = wrapped_positions[t]                # shape (N, dim)
+        mu_t = mobility[t]                          # shape (N,)
+        mu_fluct = mu_t - np.mean(mu_t)
+
+        for i in range(N):
+            #if i%1e04 == 0: print("Computing correlations of particle:", i)
+            ri = pos_t[i]
+            mui = mu_fluct[i]
+
+            rij = minimum_image_distance(ri, pos_t, box_size)    # (N, dim)
+            dist = np.linalg.norm(rij, axis=-1)                  # (N,)
+            muj = mu_fluct
+            correl = mui * muj
+
+            dist[i] = np.inf   # exclude self
+            correl[i] = 0.0
+
+            bin_indices = np.floor(dist / dr).astype(int)
+            for j in range(N):
+                if j != i:
+                    # Exclude self
+                    b = bin_indices[j]
+                    if b < len(g_r) and b >= 0:
+                        g_r[b] += correl[j]
+                        counts[b] += 1
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        g_r = np.where(counts > 0, g_r / counts, 0)
+
+    return r_centers, g_r
+
+def computeMobilityCorrelation(dirName, delta_t=10, plot=False, dirSpacing=100000):
+    # Load box size
+    box_size = np.array(np.loadtxt(os.path.join(dirName, "boxSize.dat")))
+    dt = utils.readFromParams(dirName, "dt")
+    sigma = 2*np.mean(np.loadtxt(dirName + os.sep + "particleRad.dat"))
+    r_max = 10*sigma
+    dr = sigma/10
+    # Get sorted directories and times
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    timeList = timeList.astype(int)
+    
+    # Filter time points based on dirSpacing
+    selected_indices = np.argwhere(timeList % dirSpacing == 0)[:, 0]
+    dirList = dirList[selected_indices]
+    print("Selected delta_t:", delta_t, "frame interval:", timeList[delta_t] - timeList[0], "time interval:", (timeList[delta_t] - timeList[0])*dt)
+
+    # Load positions for each frame and stack
+    wrapped_positions_list = []
+    unwrapped_positions_list = []
+
+    for d in dirList:
+        dirSample = os.path.join(dirName, d)
+        # Load wrapped and unwrapped positions
+        wrapped = utils.getPBCPositions(os.path.join(dirSample, "particlePos.dat"), box_size)
+        unwrapped = np.loadtxt(os.path.join(dirSample, "particlePos.dat"))  # assume shape (N, dim)
+        wrapped_positions_list.append(wrapped)
+        unwrapped_positions_list.append(unwrapped)
+
+    # Convert to arrays
+    wrapped_positions = np.stack(wrapped_positions_list, axis=0)      # shape: (T, N, dim)
+    unwrapped_positions = np.stack(unwrapped_positions_list, axis=0)  # shape: (T, N, dim)
+
+    # Compute spatial mobility correlation
+    r_centers, g_r = compute_spatial_mobility_correlation_PBC(wrapped_positions,   # shape: (T, N, dim)
+                                                              unwrapped_positions, # shape: (T, N, dim)
+                                                              box_size=box_size,   # shape: (dim,)
+                                                              delta_t=delta_t,     # time window for mobility
+                                                              r_max=r_max,         # max distance for correlation
+                                                              dr=dr                # bin size
+                                                              )
+    # Save results
+    np.savetxt(os.path.join(dirName, "mobilityCorr-delta" + str(delta_t) + ".dat"), np.column_stack((r_centers, g_r)))
+    # Plot if requested
+    if plot:
+        plt.plot(r_centers, g_r, color='k')
+        plt.xlabel("Distance r")
+        plt.ylabel("Mobility correlation G₄(r)")
+        plt.title("Spatial correlation of mobility")
+        plt.tight_layout()
+        plt.pause(0.5)
+
+    return r_centers, g_r
+
 ####################### Average interface fluctuations in binary mixture #######################
 def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirSpacing=100000):
     boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
@@ -2181,29 +2704,36 @@ def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirS
         plt.show()
 
 ####################### Average cluster height interface #######################
-def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=True):
+def get2InterfaceLength(dirName, num1=0, spacing='2', window=3, mixed=0, plot=False, lj=True):
+    if mixed == 'mixed':
+        lengthType = "MixedLength"
+    else:
+        lengthType = "Length"
+        mixedLength = 0
+    if spacing != 3 or window != 2:
+        lengthType += f"-s{spacing}-w{window}"
+    #print(lengthType)
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + sep + "particleRad.dat"))
+    rad = np.array(np.loadtxt(dirName + "../particleRad.dat"))
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
+    # load particle variables
+    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
     if lj:
         rad *= 2**(1/6)
     sigma = 2*np.mean(rad)
-    meanArea = np.pi*(sigma/2)**2
-    eps = 1.4 * np.max(sigma)
-    spacing *= sigma # vertical
+    #meanArea = np.pi*(sigma/2)**2
+    eps = 1.4 * np.max(rad)
+    spacing = float(spacing) * sigma # vertical
     #spacing = utils.getPairCorrelationPeakLocation(dirName)
     thickness = 3 # horizontal
     bins = np.arange(0, boxSize[1], spacing)
     rightInterface = np.zeros(bins.shape[0]-1)
     leftInterface = np.zeros(bins.shape[0]-1)
-    # load particle variables
-    pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
     labels = np.zeros(numParticles)
     labels[:num1] = 1
-    #typePos = pos[labels==1]
-    pos = utils.centerSlab(pos, rad, boxSize, labels, 1)
     clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+    pos = utils.centerSlab(pos, rad, boxSize, clusterLabels, maxLabel)
     #print(maxLabel, clusterLabels[clusterLabels==maxLabel].shape[0])
     typePos = pos[clusterLabels==maxLabel]
     leftPos = np.zeros((bins.shape[0]-1,2))
@@ -2239,35 +2769,37 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
         for j in range(1,bins.shape[0]-1):
             length += np.linalg.norm(leftPos[j] - prevPos)
             prevPos = leftPos[j]
-    '''
-    uniqueLabels = np.unique(clusterLabels)
-    uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
-    mixedNum = 0
-    mixedLength = 0
-    for c in range(2,uniqueLabels.shape[0]):
-        numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
-        radCluster = rad[clusterLabels==uniqueLabels[c]]
-        mixedNum += numCluster
-        mixedLength +=  np.sum(radCluster)
-        #mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
-        #mixedLength += mixedNum * np.pi * sigma
-        #print("type1 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
-    # clusters of second particle type
-    labels = np.zeros(numParticles)
-    labels[num1:] = 1
-    clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
-    uniqueLabels = np.unique(clusterLabels)
-    uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
-    for c in range(2,uniqueLabels.shape[0]):
-        numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
-        radCluster = rad[clusterLabels==uniqueLabels[c]]
-        mixedNum += numCluster
-        mixedLength +=  np.sum(radCluster)
-        #mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
-        #mixedLength += mixedNum * np.pi * sigma
-        #print("type2 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
-    length += mixedLength
-    '''
+    # Add lengths of mixed regions
+    if mixed == 'mixed':
+        uniqueLabels = np.unique(clusterLabels)
+        uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
+        mixedNum = 0
+        mixedLength = 0
+        for c in range(2,uniqueLabels.shape[0]):
+            numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+            radCluster = rad[clusterLabels==uniqueLabels[c]]
+            mixedNum += numCluster
+            mixedLength +=  np.sum(radCluster)
+            #mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
+            #mixedLength += mixedNum * np.pi * sigma
+            #print("type1 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
+        # clusters of second particle type
+        pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
+        labels = np.zeros(numParticles)
+        labels[num1:] = 1
+        clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+        uniqueLabels = np.unique(clusterLabels)
+        uniqueLabels = np.delete(uniqueLabels, np.argwhere(uniqueLabels==maxLabel)[0,0])
+        for c in range(2,uniqueLabels.shape[0]):
+            numCluster = clusterLabels[clusterLabels==uniqueLabels[c]].shape[0]
+            radCluster = rad[clusterLabels==uniqueLabels[c]]
+            mixedNum += numCluster
+            mixedLength +=  np.sum(radCluster)
+            #mixedLength += utils.getClusterLength(numCluster, sigma, meanArea)
+            #mixedLength += mixedNum * np.pi * sigma
+            #print("type2 ", c, clusterLabels[clusterLabels==uniqueLabels[c]].shape[0])
+        length += mixedLength
+    np.savetxt(dirName + os.sep + "interface" + lengthType + ".dat", np.column_stack((length, length - mixedLength, mixedLength)))
     if(plot == "plot"):
         #print("Number of mixed particles:", mixedNum, "length:", mixedLength)
         print("Interface length:", length)
@@ -2287,6 +2819,881 @@ def get2InterfaceLength(dirName, num1=0, spacing=2, window=3, plot=False, lj=Tru
         #plt.pause(0.5)
         plt.show()
     return length
+
+def bin_and_average(length, etot, epot, temp, bin_size=1.0, bin_by='length'):
+    '''
+    Bin the data by either length or etot and return the average values per bin
+    '''
+    if bin_by == 'etot':
+        bin_values = etot
+        other_values = length
+    elif bin_by == 'epot':
+        bin_values = epot
+        other_values = length
+        energy_values = etot
+    elif bin_by == 'temp':
+        bin_values = temp
+        other_values = length
+        energy_values = etot
+    else:
+        bin_values = length
+        other_values = etot
+
+    # Create bin edges
+    min_val = np.min(bin_values)
+    max_val = np.max(bin_values)
+    bins = np.arange(min_val, max_val + bin_size, bin_size)
+
+    # Assign each value to a bin
+    bin_indices = np.digitize(bin_values, bins) - 1  # make bins zero-indexed
+
+    # Store average values per bin
+    avg_bin_values = np.empty(0)
+    err_bin_values = np.empty(0)
+    avg_other_values = np.empty(0)
+    err_other_values = np.empty(0)
+    if bin_by == 'epot' or bin_by == 'temp':
+        avg_energy_values = np.empty(0)
+        err_energy_values = np.empty(0)
+
+    for i in range(len(bins) - 1):
+        in_bin = bin_indices == i
+        if np.any(in_bin):  # skip empty bins
+            avg_bin_values = np.append(avg_bin_values, np.mean(bin_values[in_bin]))
+            err_bin_values = np.append(err_bin_values, np.std(bin_values[in_bin]))
+            avg_other_values = np.append(avg_other_values, np.mean(other_values[in_bin]))
+            err_other_values = np.append(err_other_values, np.std(other_values[in_bin]))
+            if bin_by == 'epot' or bin_by == 'temp':
+                avg_energy_values = np.append(avg_energy_values, np.mean(energy_values[in_bin]))
+                err_energy_values = np.append(err_energy_values, np.std(energy_values[in_bin]))
+
+
+    # Always return (length, etot)
+    if bin_by == 'etot':
+        return np.column_stack((avg_other_values, err_other_values)), np.column_stack((avg_bin_values, err_bin_values))
+    elif bin_by == 'epot':
+        return np.column_stack((avg_other_values, err_other_values)), np.column_stack((avg_energy_values, err_energy_values))
+    elif bin_by == 'temp':
+        return np.column_stack((avg_other_values, err_other_values)), np.column_stack((avg_energy_values, err_energy_values))
+    else:
+        return np.column_stack((avg_bin_values, err_bin_values)), np.column_stack((avg_other_values, err_other_values))
+
+# Define linear fit function
+def poly1(x, a, b):
+    return a * x + b
+
+def saveSignalOverFloor(signal, noise, signal_length, noise_length, temp, dirName, dynamics='dynamics', dynType='nve'):
+    if dynType == 'nve':
+        file_path = os.path.join(dirName, f"../../../signalFloor-nve.dat")
+        data = np.array([np.mean(temp), signal, noise, signal_length, noise_length])
+    elif dynType == 'nvt':
+        file_path = os.path.join(dirName, f"../../../signalFloor-nvt.dat")
+        damping = utils.readFromDynParams(dirName + os.sep + 'strain0.0100' + os.sep + dynamics, "damping")
+        data = np.array([np.mean(temp), signal, noise, signal_length, noise_length, damping])
+    else:
+        file_path = os.path.join(dirName, f"../../../signalFloor-" + dynType + ".dat")
+        data = np.array([np.mean(temp), signal, noise, signal_length, noise_length])
+    # Check if file exists
+    file_exists = os.path.isfile(file_path)
+    # Open in append mode and write
+    with open(file_path, 'a') as f:
+        if not file_exists:
+            # Write header only once
+            if dynType == 'nve':
+                f.write("# mean_temp  std_temp  slope  slope_err\n")
+            elif dynType == 'nvt':
+                f.write("# damping  mean_temp  std_temp  slope  slope_err\n")
+            else:
+                f.write("# mean_temp  std_temp  slope  slope_err\n")
+        np.savetxt(f, data.reshape(1, -1), fmt="%.6e")
+
+def saveLineTension(dirName, slope, slope_err, temp, dynamics='dynamics', dynType='nve', mixed='mixed', ab=False):
+    # Save line tension data
+    if ab == 'ab':
+        fileName = "lineTension-ab-"
+    else:
+        fileName = "lineTension-"
+    if mixed == 'mixed':
+        file_path = os.path.join(dirName, f"../../../" + fileName + dynType + "-mixed.dat")
+    else:
+        file_path = os.path.join(dirName, f"../../../" + fileName + dynType + ".dat")
+    if(dynType == 'nvt' or dynType == 'nvt-l1' or dynType == 'nvt-l2' or dynType == 'nvt-l1-long' or dynType == 'nvt-l2-long'):
+        damping = utils.readFromDynParams(dirName + os.sep + 'strain0.0100' + os.sep + dynamics, "damping")
+        data = np.array([np.mean(temp), np.std(temp), slope, slope_err, damping])
+    else:
+        data = np.array([np.mean(temp), np.std(temp), slope, slope_err])
+    # Check if file exists
+    file_exists = os.path.isfile(file_path)
+    print(file_path)
+    # Open in append mode and write
+    with open(file_path, 'a') as f:
+        if not file_exists:
+            # Write header only once
+            if dynType == 'nve':
+                f.write("# mean_temp  std_temp  slope  slope_err\n")
+            elif dynType == 'nvt':
+                f.write("# damping  mean_temp  std_temp  slope  slope_err\n")
+            else:
+                f.write("# mean_temp  std_temp  slope  slope_err\n")
+        np.savetxt(f, data.reshape(1, -1), fmt="%.6e")
+
+def plotEnergyVSHeight(dirName, dynamics='dynamics', dynType='nve', which='etot', figureName='nve', show=False):
+    '''
+    plot energy and box height data for all the values of strain and time
+    '''
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Box$ $height,$ $H$", fontsize=14)
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    strainList, strain = utils.getOrderedStrainDirectories(dirName)
+    epot = np.empty(0)
+    ekin = np.empty(0)
+    etot = np.empty(0)
+    heat = np.empty(0)
+    height = np.empty(0)
+    count = np.zeros(strainList.shape[0])
+    for s in range(strainList.shape[0]):
+        dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+        # Read energy and timestep data
+        if(dynType == 'nve' or dynType == 'nh'):
+            energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(2,3,4))) / utils.readFromParams(dirStrain, "epsilon")
+        elif(dynType == 'nvt' or dynType == 'nvtvst' or dynType == 'nvt-l1' or dynType == 'nvt-l2' or dynType == 'nvt-l1-long' or dynType == 'nvt-l2-long'):
+            energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(2,3,4,7))) / utils.readFromParams(dirStrain, "epsilon")
+        else:
+            energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(2,3,4,8))) / utils.readFromParams(dirStrain, "epsilon")
+        epot = np.append(epot, energy[:,0])
+        ekin = np.append(ekin, energy[:,1])
+        etot = np.append(etot, energy[:,2])
+        count[s] = energy.shape[0]
+        if(dynType == 'nve' or dynType == 'nh'):
+            heat = np.append(heat, 0)
+        else:
+            heat = np.append(heat, energy[:,3])
+        boxSize = np.loadtxt(dirStrain + "/boxSize.dat")
+        height = np.append(height, np.ones(energy.shape[0]) * boxSize[1])
+        print(strainList[s])
+    if which == 'epot':
+        etot = epot
+        ax.set_ylabel("$U$", fontsize=14, rotation='horizontal')
+    elif which == 'ekin':
+        ax.set_ylabel("$K$", fontsize=14, rotation='horizontal')
+        etot = ekin
+    elif which == 'heat':
+        ax.set_ylabel("$Q$", fontsize=14, rotation='horizontal')
+        etot = heat
+    else:
+        ax.set_ylabel("$E$", fontsize=14)
+        etot = etot # + np.mean(ekin) + np.mean(heat)
+    # Group length and energy data by strain
+    meanEtot = np.zeros((strainList.shape[0], 2))
+    meanHeight = np.zeros(strainList.shape[0])
+    for c in range(count.shape[0]):
+        if c == 0:
+            meanEtot[c,0] = np.mean(etot[0:int(count[c])])
+            meanEtot[c,1] = np.std(etot[0:int(count[c])])
+            meanHeight[c] = np.mean(height[0:int(count[c])])
+        else:
+            meanEtot[c,0] = np.mean(etot[int(np.sum(count[0:c])):int(np.sum(count[0:c+1]))])
+            meanEtot[c,1] = np.std(etot[int(np.sum(count[0:c])):int(np.sum(count[0:c+1]))])
+            meanHeight[c] = np.mean(height[int(np.sum(count[0:c])):int(np.sum(count[0:c+1]))])
+    ax.plot(height, etot, color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
+    ax.errorbar(meanHeight, meanEtot[:,0], meanEtot[:,1], color='g', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label='Average')
+    # Fit curve to polynomial and get first-power coefficient
+    x = meanHeight
+    y = meanEtot[:,0] # Subtract first value to normalize
+    x_fit = np.linspace(np.min(x), np.max(x), 100)
+    popt, pcov = curve_fit(poly1, x, y)
+    slope, intercept = popt
+    slope_err = np.sqrt(np.diag(pcov))[0]
+    y_fit = poly1(x_fit, slope, intercept)
+    print(f"Slope = {slope} ± {slope_err}")
+    temp = ekin / numParticles
+    print(f"Temperature = {np.mean(temp)} ± {np.std(temp)}, range = [{np.min(temp)} - {np.max(temp)}]")
+    if(np.abs(slope) < 1e-03):
+        ax.plot(x_fit, y_fit, color='r', lw=1, label=f'Linear Fit, slope={slope:.2e}±{slope_err:.2e}')
+    else:
+        ax.plot(x_fit, y_fit, color='r', lw=1, label=f'Linear Fit, slope={slope:.2f}±{slope_err:.2f}')
+    ax.legend(loc='best', fontsize=12)
+    fig.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/" + which + "Height-" + figureName + ".png", dpi=120)
+    if show == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+
+def plotLengthVSTime(dirName, dynamics='dynamics', spacing='3', window=2, mixed='mixed', show=False):
+    '''
+    plot interface length vs time for a set of strain values
+    '''
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Length,$ $L$", fontsize=14)
+    ax.set_xlabel("$Time,$ $t$", fontsize=14)
+    if mixed == 'mixed':
+        lengthType = "MixedLength"
+    else:
+        lengthType = "Length"
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    num1 = int(utils.readFromParams(dirName, 'num1'))
+    strainList = np.array(['strain0.0200', 'strain0.0800', 'strain0.1400'])
+    colorList = ['b', 'g', 'c']
+    for s in range(strainList.shape[0]):
+        if(os.path.exists(dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep)):
+            dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+            dirList, timeList = utils.getOrderedDirectories(dirStrain)
+            count = 0
+            length = np.empty(0)
+            time = np.empty(0)
+            for t in range(dirList.shape[0]):
+                dirSample = dirStrain + dirList[t] + os.sep
+                if(os.path.exists(dirSample)):
+                    # Collect length data at current time
+                    collect = False
+                    if (os.path.exists(dirSample + "particlePos.dat")):
+                        pos = np.loadtxt(dirSample + "particlePos.dat")
+                        rad = np.loadtxt(dirSample + "../particleRad.dat")
+                        if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
+                            collect = True
+                            if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
+                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                            currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
+                        else:
+                            print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
+                        if np.isnan(currentLength):
+                            print("Warning: NaN length found in", dirSample + "interface" + lengthType + ".dat")
+                            collect = False
+                    if collect:
+                        count += 1
+                        length = np.append(length, currentLength)
+                        time = np.append(time, timeList[t])
+            print(strainList[s], "collected", count, "relative length fluctuation", np.std(length)/np.mean(length))
+            ax.plot(time, length, color=colorList[s], lw=1, label=f'Strain {strainList[s][-6:]}')
+    ax.legend(loc='best', fontsize=12)
+    fig.tight_layout()
+    if show == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+
+def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', spacing='1', window=5, bin_by='length', mixed='mixed', degree=1, show=False):
+    '''
+    group energy and length data for all the values of strain and time
+    '''
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Length,$ $L$", fontsize=14)
+    ax.set_ylabel("$\\frac{E}{N}$", fontsize=20, rotation='horizontal', labelpad=15)
+    if mixed == 'mixed':
+        lengthType = "MixedLength"
+    else:
+        lengthType = "Length"
+    if spacing != 3 or window != 2:
+        lengthType += f"-s{spacing}-w{window}"
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    num1 = int(utils.readFromParams(dirName, 'num1'))
+    if not(os.path.exists(dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat")):
+        strainList, _ = utils.getOrderedStrainDirectories(dirName)
+        strainList = strainList[:16]  # limit to first 16 strains to avoid large deformations
+        epot = np.empty(0)
+        ekin = np.empty(0)
+        etot = np.empty(0)
+        heat = np.empty(0)
+        length = np.empty(0)
+        for s in range(strainList.shape[0]):
+            dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+            # Read energy and timestep data
+            if(dynType == 'nve' or dynType == 'nh'):
+                energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(2,3,4))) / utils.readFromParams(dirStrain, "epsilon")
+            elif(dynType == 'nvt' or dynType == 'nvtvst' or dynType == 'nvt-l1' or dynType == 'nvt-l2' or dynType == 'nvt-l1-long' or dynType == 'nvt-l2-long'):
+                energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(2,3,4,7))) / utils.readFromParams(dirStrain, "epsilon")
+            else:
+                energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(2,3,4,8))) / utils.readFromParams(dirStrain, "epsilon")
+            dirList, _ = utils.getOrderedDirectories(dirStrain)
+            count = 0
+            for t in range(dirList.shape[0]):
+                dirSample = dirStrain + dirList[t] + os.sep
+                if(os.path.exists(dirSample)):
+                    # Collect length data at current time
+                    collect = False
+                    if (os.path.exists(dirSample + "particlePos.dat")):
+                        pos = np.loadtxt(dirSample + "particlePos.dat")
+                        rad = np.loadtxt(dirSample + "../particleRad.dat")
+                        if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
+                            collect = True
+                            if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
+                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                            currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
+                        else:
+                            print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
+                        if np.isnan(currentLength):
+                            print("Warning: NaN length found in", dirSample + "interface" + lengthType + ".dat")
+                            collect = False
+                    if collect:
+                        count += 1
+                        length = np.append(length, currentLength)
+                        # Collect energy data at current time
+                        epot = np.append(epot, energy[t,0])
+                        ekin = np.append(ekin, energy[t,1])
+                        etot = np.append(etot, energy[t,2])
+                        if(dynType == 'nve' or dynType == 'nh'):
+                            heat = np.append(heat, 0)
+                        else:
+                            heat = np.append(heat, energy[t,3])
+            print(strainList[s], count)
+        np.savetxt(dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat", np.column_stack((length, etot, epot, ekin, heat)))
+    else:
+        length, etot, epot, ekin, heat = np.loadtxt(dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat", unpack=True)
+        #print("Loaded data from file:", dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat")
+    #etot = epot + np.mean(ekin) + np.mean(heat)
+    #etot += heat
+    #print(np.isnan(length).any(), np.isnan(etot).any(), np.isnan(epot).any(), np.isnan(temp).any())
+    # Group length and energy data by length
+    if bin_by == 'etot':
+        length = length[np.argsort(etot)]
+        etot = np.sort(etot)
+        bin_size = (np.max(etot) - np.min(etot)) / 16
+    elif bin_by == 'epot':
+        length = length[np.argsort(epot)]
+        etot = etot[np.argsort(epot)]
+        bin_size = (np.max(epot) - np.min(epot)) / 16
+    elif bin_by == 'ekin':
+        length = length[np.argsort(ekin)]
+        etot = etot[np.argsort(ekin)]
+        bin_size = (np.max(ekin) - np.min(ekin)) / 16
+    else: # Bin by length by default 
+        etot = etot[np.argsort(length)]
+        length = np.sort(length)
+        bin_size = (np.max(length) - np.min(length)) / 16
+    # Compute binned data and averages
+    bin_length, bin_etot = bin_and_average(length, etot, epot, ekin, bin_size, bin_by)
+    ax.plot(np.sort(length), etot[np.argsort(length)]/numParticles, color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
+    ax.errorbar(bin_length[:,0], bin_etot[:,0]/numParticles, bin_etot[:,1]/numParticles, bin_length[:,1], color='g', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label='Binned Data')
+    # Fit curve to polynomial and get first-power coefficient
+    x = bin_length[:,0]
+    y = bin_etot[:,0]  # Subtract first value to normalize
+    y = y[np.argsort(x)]
+    x = np.sort(x)
+    x_fit = np.linspace(np.min(x), np.max(x), 100)
+    if degree == 1:
+        popt, pcov = curve_fit(poly1, x, y)
+        slope, intercept = popt
+        slope_err = np.sqrt(np.diag(pcov))[0]
+        y_fit = poly1(x_fit, slope, intercept)
+        print(f"Slope = {slope} ± {slope_err}")
+        temp = ekin / numParticles
+        print(f"Temperature = {np.mean(temp)} ± {np.std(temp)}, range = [{np.min(temp)} - {np.max(temp)}]")
+        ax.plot(x_fit, y_fit/numParticles, color='r', lw=1, label=f'Linear Fit, slope $\\times N$={slope:.2f}±{slope_err:.2f}')
+        #saveLineTension(dirName, slope, slope_err, temp, dynamics=dynamics, dynType=dynType, mixed=mixed)
+        # Create interpolation function for the fitted curve
+        fit_interp = interp1d(x_fit, y_fit, kind='linear', fill_value='extrapolate')
+        # Evaluate the fit at the raw length values
+        etot_fit = fit_interp(length)
+        # Compute residuals
+        residuals = etot - etot_fit
+        # Compute standard deviation of residuals (this is your noise)
+        noise = np.std(residuals, ddof=1)
+        signal = np.max(bin_etot[:,0]) - np.min(bin_etot[:,0])
+        print("Noise in energy (std of residuals):", noise, "signal:", signal, "signal/noise:", signal/noise)
+        # Create inverse interpolation function: from energy to expected length
+        inv_fit_interp = interp1d(y_fit, x_fit, kind='linear', fill_value='extrapolate')
+        # Evaluate the expected length at each raw energy point
+        length_fit = inv_fit_interp(etot)
+        # Compute residuals in length
+        residuals_length = length - length_fit
+        # Compute standard deviation of residuals in length (noise)
+        noise_length = np.std(residuals_length, ddof=1)
+        signal_length = np.max(bin_length[:,0]) - np.min(bin_length[:,0])
+        print("Noise in length (std of residuals):", noise_length, "signal:", signal_length, "signal/noise:", signal_length/noise_length)
+        #saveSignalOverFloor(signal, noise, signal_length, noise_length, temp, dirName, dynamics=dynamics, dynType=dynType)
+    else:
+        coeffs, cov = np.polyfit(x, y, degree, cov=True)
+        print(coeffs)
+        slope = coeffs[-2]  # Coefficient of x (first power)
+        slope_err = np.sqrt(np.diag(cov))[-2]
+        y_fit = np.polyval(coeffs, x_fit)
+        ax.plot(x_fit, y_fit, color='r', lw=1, label=f'Polynomial Fit (deg={degree})')
+    ax.legend(loc='best', fontsize=12)
+    fig.tight_layout()
+    if show == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+
+def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', spacing='3', window=2, bin_by='length', mixed='mixed', degree=1, show=False):
+    '''
+    group energy and length data for all the values of strain and time
+    '''
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Length,$ $L$", fontsize=14)
+    ax.set_ylabel("$\\frac{\\Delta U_{AB}}{N}$", fontsize=20, rotation='horizontal', labelpad=15)
+    if mixed == 'mixed':
+        lengthType = "MixedLength"
+    else:
+        lengthType = "Length"
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    num1 = int(utils.readFromParams(dirName, 'num1'))
+    if not(os.path.exists(dirName + os.sep + "energyAB" + lengthType + "-" + fileName + ".dat")):
+        strainList, strain = utils.getOrderedStrainDirectories(dirName)
+        epot = np.empty(0)
+        ekin = np.empty(0)
+        etot = np.empty(0)
+        length = np.empty(0)
+        for s in range(strainList.shape[0]):
+            dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+            energy = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(-4,-3,-2))) / utils.readFromParams(dirStrain, "epsilon")
+            # divide energy components by number of particles with AB interactions
+            numAB = np.empty(0)
+            dirList, _ = utils.getOrderedDirectories(dirStrain)
+            count = 0
+            for t in range(dirList.shape[0]):
+                dirSample = dirStrain + dirList[t] + os.sep
+                if(os.path.exists(dirSample)):
+                    # Collect length data at current time
+                    collect = False
+                    if (os.path.exists(dirSample + "particlePos.dat")):
+                        pos = np.loadtxt(dirSample + "particlePos.dat")
+                        rad = np.loadtxt(dirSample + "../particleRad.dat")
+                        if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
+                            collect = True
+                            if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
+                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                            currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
+                        else:
+                            print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
+                        if np.isnan(currentLength):
+                            print("Warning: NaN length found in", dirSample + "interface" + lengthType + ".dat")
+                            collect = False
+                    if collect:
+                        count += 1
+                        length = np.append(length, currentLength)
+                        # Collect energy data at current time
+                        epot = np.append(epot, energy[t,0])
+                        ekin = np.append(ekin, energy[t,1])
+                        etot = np.append(etot, (energy[t,0] + energy[t,1]))
+                        numAB = np.append(numAB, energy[t,2])
+            print(strainList[s], count)
+            #etot[-count:] = etot[-count:] / np.mean(numAB)
+            #epot[-count:] = epot[-count:] / np.mean(numAB)
+            #ekin[-count:] = ekin[-count:] / np.mean(numAB)
+        np.savetxt(dirName + os.sep + "energyAB" + lengthType + "-" + fileName + ".dat", np.column_stack((length, etot, epot, ekin)))
+    else:
+        length, etot, epot, ekin = np.loadtxt(dirName + os.sep + "energyAB" + lengthType + "-" + fileName + ".dat", unpack=True)
+        #print("Loaded data from file:", dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat")
+    #print(np.isnan(length).any(), np.isnan(etot).any(), np.isnan(epot).any(), np.isnan(ekin).any())
+    etot = epot / numParticles # + np.mean(ekin)
+    # Group length and energy data by length
+    if bin_by == 'etot':
+        length = length[np.argsort(etot)]
+        etot = np.sort(etot)
+        bin_size = (np.max(etot) - np.min(etot)) / 16
+    elif bin_by == 'epot':
+        length = length[np.argsort(epot)]
+        etot = etot[np.argsort(epot)]
+        bin_size = (np.max(epot) - np.min(epot)) / 16
+    elif bin_by == 'temp':
+        length = length[np.argsort(ekin)]
+        etot = etot[np.argsort(ekin)]
+        bin_size = (np.max(ekin) - np.min(ekin)) / 16
+    else: # Bin by length by default 
+        etot = etot[np.argsort(length)]
+        length = np.sort(length)
+        bin_size = (np.max(length) - np.min(length)) / 16
+    # Compute binned data and averages
+    bin_length, bin_etot = bin_and_average(length, etot, epot, ekin, bin_size, bin_by)
+    ax.plot(np.sort(length), etot[np.argsort(length)], color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
+    ax.errorbar(bin_length[:,0], bin_etot[:,0], bin_etot[:,1], bin_length[:,1], color='g', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label='Binned Data')
+    # Fit curve to polynomial and get first-power coefficient
+    x = bin_length[:,0]
+    y = bin_etot[:,0] # Subtract first value to normalize
+    y = y[np.argsort(x)]
+    x = np.sort(x)
+    x_fit = np.linspace(np.min(x), np.max(x), 100)
+    if degree == 1:
+        popt, pcov = curve_fit(poly1, x, y)
+        slope, intercept = popt
+        slope_err = np.sqrt(np.diag(pcov))[0]
+        y_fit = poly1(x_fit, slope, intercept)
+        print(f"Slope = {slope} ± {slope_err}")
+        temp = ekin / numParticles
+        print(f"Temperature = {np.mean(temp)} ± {np.std(temp)}, range = [{np.min(temp)} - {np.max(temp)}]")
+        saveLineTension(dirName, slope, slope_err, temp, dynamics=dynamics, dynType=dynType, mixed=mixed, ab='ab')
+        # Create interpolation function for the fitted curve
+        fit_interp = interp1d(x_fit, y_fit, kind='linear', fill_value='extrapolate')
+        # Evaluate the fit at the raw length values
+        etot_fit = fit_interp(length)
+        # Compute residuals
+        residuals = etot - etot_fit
+        # Compute standard deviation of residuals (this is your noise)
+        noise = np.std(residuals, ddof=1)
+        signal = np.max(bin_etot[:,0]) - np.min(bin_etot[:,0])
+        print("Noise in energy (std of residuals):", noise, "signal:", signal, "signal/noise:", signal/noise)
+        # Create inverse interpolation function: from energy to expected length
+        inv_fit_interp = interp1d(y_fit, x_fit, kind='linear', fill_value='extrapolate')
+        # Evaluate the expected length at each raw energy point
+        length_fit = inv_fit_interp(etot)
+        # Compute residuals in length
+        residuals_length = length - length_fit
+        # Compute standard deviation of residuals in length (noise)
+        noise_length = np.std(residuals_length, ddof=1)
+        signal_length = np.max(bin_length[:,0]) - np.min(bin_length[:,0])
+        print("Noise in length (std of residuals):", noise_length, "signal:", signal_length, "signal/noise:", signal_length/noise_length)
+        #saveSignalOverFloor(signal, noise, signal_length, noise_length, ekin, dirName, dynamics=dynamics, dynType=dynType)
+    else:
+        coeffs, cov = np.polyfit(x, y, degree, cov=True)
+        print(coeffs)
+        slope = coeffs[-2]  # Coefficient of x (first power)
+        slope_err = np.sqrt(np.diag(cov))[-2]
+        y_fit = np.polyval(coeffs, x_fit)
+    ax.plot(x_fit, y_fit, color='r', lw=1, label=f'Linear Fit, slope $\\times N$={slope*numParticles:.2f}±{slope_err*numParticles:.2f}')
+    ax.legend(loc='best', fontsize=12)
+    fig.tight_layout()
+    if show == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+
+def plotLineTension(dirName, which, mixed = 'mixed'):
+    if mixed == 'mixed':
+        data = np.loadtxt(dirName + os.sep + "lineTension-" + which + "-mixed.dat")
+    else:
+        data = np.loadtxt(dirName + os.sep + "lineTension-" + which + ".dat")
+    fig, ax = plt.subplots(figsize=(6,4.5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=20, rotation='horizontal', labelpad=20)
+    if which == 'nve':
+        #ax.set_xlim(0.525, 1.025)
+        ax.set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        x = np.linspace(0,2,100)
+    elif which == 'nve-box13':
+        #ax.set_xlim(0.525, 1.025)
+        ax.set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='c', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        data_nve = np.loadtxt(dirName + os.sep + "../../../box31/2lj/nh2/lineTension-nve-mixed.dat")
+        ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        x = np.linspace(0,2,100)
+        ax.legend(['$NVE$ $box13$', '$NVE,$ $box31$'], loc='best', fontsize=12)
+    elif which == 'nve-s1w5' or which == 'nve-s1w2':
+        ax.set_xlim(0.525, 1.025)
+        ax.set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='c', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        data_nve = np.loadtxt(dirName + os.sep + "lineTension-nve-mixed.dat")
+        ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        x = np.linspace(0,2,100)
+    elif which == 'nvt-l2':
+        data0 = np.loadtxt(dirName + os.sep + "lineTension-nve-mixed.dat")
+        ax.errorbar(1e-06, data0[1,2], data0[1,3], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        data_l2 = np.loadtxt(dirName + os.sep + "lineTension-nvt-l2-long-mixed.dat")
+        ax.errorbar(data_l2[:,-1], data_l2[:,2], data_l2[:,3], color='b', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3)
+        ax.errorbar(data[:,-1], data[:,2], data[:,3], color='g', marker='v', markersize=8, fillstyle='none', lw=1, capsize=3)
+        ax.set_xlabel("$Damping,$ $\\beta \\sigma / \\sqrt{m \\varepsilon}$", fontsize=14)
+        ax.set_xscale('log')
+        x = np.linspace(1e-06,np.max(data[:,-1]),100)
+        ax.legend(['$NVE$', '$NVT,$ $T \\simeq 0.6$ $[0,t_0]$', '$NVT,$ $T \\simeq 0.6$ $[t0,2t_0]$'], loc='best', fontsize=12)
+    elif which[:6] == 'nvtvst':
+        ax.set_xlim(0.525, 1.025)
+        ax.set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=14)
+        data_nve = np.loadtxt(dirName + os.sep + "lineTension-nve-mixed.dat")
+        ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        data_nvt = np.loadtxt(dirName + os.sep + "lineTension-nvtvst-damping1e-05-mixed.dat")
+        ax.errorbar(data_nvt[:,0], data_nvt[:,2], data_nvt[:,3], data_nvt[:,1], color='b', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='g', marker='v', markersize=8, fillstyle='none', lw=1, capsize=3)
+        x = np.linspace(0,2,100)
+        ax.legend(['$NVE$ $[0,t_0]$', '$NVT,$ $\\beta = 10^{-5}$ $[0,t_0]$', '$NVT,$ $\\beta = 10^{-5}$ $[t_0,2t_0]$'], loc='best', fontsize=12)
+    else:
+        #ax.set_xlim(0.525, 1.015)
+        ax.set_xlabel("$Temperature,$ $k_B T/\\varepsilon$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        data0 = np.loadtxt(dirName + os.sep + "lineTension-nvt-mixed.dat")
+        ax.errorbar(data0[-1,0], data0[-1,2], data0[-1,3], data0[-1,1], color='b', marker='D', markersize=10, markeredgewidth=1.5, fillstyle='none', lw=1, capsize=3)
+        x = np.linspace(np.min(data[:,0]),np.max(data[:,0]),100)
+    ax.plot(x, np.zeros(100), ls='dotted', color='k', lw=0.8)
+    plt.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/lineTension-" + which + ".png", dpi=120)
+    plt.show()
+
+def compareLineTension(dirName, figureName, mixed = 'mixed'):
+    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Line$ $tension,$ $\\gamma$", fontsize=14)
+    #ax.set_xlim(0.425, 1.025)
+    ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    dirList = np.array(["nve", "nvtvst-damping1e-07", "nvtvst-damping1e-03", "nvtvst"])
+    labelList = ["NVE", "NVT $\\beta=10^{-4}$", "NVT $\\beta=10^{-2}$", "NVT $\\beta=10^0$"]
+    colorList = ['k', 'b', 'g', 'c']
+    markerList = ['o', 's', '^', 'D']
+    for d in range(dirList.shape[0]):
+        if mixed == 'mixed':
+            data = np.loadtxt(dirName + os.sep + "lineTension-" + dirList[d] + "-mixed.dat")
+        else:
+            data = np.loadtxt(dirName + os.sep + "lineTension-" + dirList[d] + ".dat")
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color=colorList[d], marker=markerList[d], markersize=8, fillstyle='none', lw=1, capsize=3, label=labelList[d])
+    x = np.linspace(np.min(data[:,0]),np.max(data[:,0]),100)
+    ax.plot(x, np.zeros(100), ls='dotted', color='k', lw=0.8)
+    ax.legend(loc='best', fontsize=10)
+    plt.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/compareTension-" + figureName + ".png", dpi=120)
+    plt.show()
+
+def compareLineTensionVSDamping(dirName, figureName, mixed = 'mixed'):
+    fig, ax = plt.subplots(figsize=(6,4.5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Line$ $tension,$ $\\gamma$", fontsize=14)
+    #ax.set_xlim(0.425, 1.025)
+    ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    dirList = np.array(["nvt", "later-nvt", "ab-nvt", "later2-nvt"])
+    labelList = ["$t_{eq} = 10^3$", "$t_{eq} = 2 \\times 10^3$", "AB $t_{eq} = 2 \\times 10^3$", "$t_{eq} = 3 \\times 10^3$"]
+    colorList = ['k', 'b', 'g', 'k']
+    markerList = ['o', 's', '^', 'X']
+    alphaList = [0.5, 1, 1, 1]
+    for d in range(dirList.shape[0]):
+        if mixed == 'mixed':
+            data = np.loadtxt(dirName + os.sep + "lineTension-" + dirList[d] + "-mixed.dat")
+        else:
+            data = np.loadtxt(dirName + os.sep + "lineTension-" + dirList[d] + ".dat")
+        print(dirList[d], data.shape)
+        if d == dirList.shape[0]-1:
+            ax.errorbar(data[-1], data[2], data[3]/np.sqrt(20), color=colorList[d], marker=markerList[d], markersize=8, 
+                    fillstyle='none', lw=1.2, capsize=3, label=labelList[d], alpha=alphaList[d])
+        else:
+            ax.errorbar(data[:,-1], data[:,2], data[:,3], color=colorList[d], marker=markerList[d], markersize=8, 
+                    fillstyle='none', lw=1.2, capsize=3, label=labelList[d], alpha=alphaList[d])
+    data0 = np.loadtxt(dirName + os.sep + "lineTension-nve-mixed.dat")
+    dt = utils.readFromParams(dirName + os.sep + 'T1.00', 'dt')
+    ax.errorbar(dt, data0[1,2], data0[1,3], color='g', marker='*', markersize=20, markeredgewidth=1.5, fillstyle='none', lw=1, capsize=3)
+    ax.set_xscale('log')
+    ax.legend(loc='lower right', fontsize=10)
+    plt.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/compareTension-" + figureName + ".png", dpi=120)
+    plt.show()
+
+def plotSignalOverFloor(dirName, which):
+    data = np.loadtxt(dirName + os.sep + "signalFloor-" + which + ".dat")
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Signal$ $over$ $floor,$ $\\langle \\Delta W \\rangle_{i,i+1} / \\langle \\sigma_w \\rangle_i$", fontsize=14)
+    if which == 'nve':
+        ax.set_xlim(0.525, 1.015)
+        ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    elif which == 'nvt':
+        ax.set_xlabel("$Damping,$ $\\beta$", fontsize=14)
+        ax.set_xscale('log')
+    else:
+        ax.set_xlim(0.525, 1.015)
+        ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    ax.plot(data[:,0], data[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+    x = np.linspace(np.min(data[:,0]),np.max(data[:,0]),100)
+    ax.plot(x, np.zeros(100), ls='dotted', color='k', lw=0.8)
+    plt.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/signalFloor-" + which + ".png", dpi=120)
+    plt.show()
+
+def bin_and_average_pressure(length, pressure, bin_size=1.0):
+    '''
+    Bin the data by length and return the average values per bin
+    '''
+    bin_values = length
+    other_values = pressure
+    # Create bin edges
+    min_val = np.min(bin_values)
+    max_val = np.max(bin_values)
+    bins = np.arange(min_val, max_val + bin_size, bin_size)
+    # Assign each value to a bin
+    bin_indices = np.digitize(bin_values, bins) - 1  # make bins zero-indexed
+    # Store average values per bin
+    avg_bin_values = np.empty(0)
+    err_bin_values = np.empty(0)
+    avg_other_values = np.empty(0)
+    err_other_values = np.empty(0)
+
+    for i in range(len(bins) - 1):
+        in_bin = bin_indices == i
+        if np.any(in_bin):  # skip empty bins
+            avg_bin_values = np.append(avg_bin_values, np.mean(bin_values[in_bin]))
+            err_bin_values = np.append(err_bin_values, np.std(bin_values[in_bin]))
+            avg_other_values = np.append(avg_other_values, np.mean(other_values[in_bin]))
+            err_other_values = np.append(err_other_values, np.std(other_values[in_bin]))
+
+    # Always return (length, etot)
+    return np.column_stack((avg_bin_values, err_bin_values)), np.column_stack((avg_other_values, err_other_values))
+
+def savePressure(dirName, pressure, temp, dynamics='dynamics', dynType='nve'):
+        # Save line tension data
+        if dynType == 'nve':
+            file_path = os.path.join(dirName, f"../../../pressure-nve.dat")
+            data = np.array([np.mean(temp), np.std(temp), np.mean(pressure), np.std(pressure)])
+        elif dynType == 'nvt':
+            file_path = os.path.join(dirName, f"../../../pressure-nvt.dat")
+            damping = utils.readFromDynParams(dirName + os.sep + 'strain0.0100' + os.sep + dynamics, "damping")
+            data = np.array([np.mean(temp), np.std(temp), np.mean(pressure), np.std(pressure), damping])
+        else:
+            file_path = os.path.join(dirName, f"../../../pressure-" + dynType + ".dat")
+            data = np.array([np.mean(temp), np.std(temp), np.mean(pressure), np.std(pressure)])
+        # Check if file exists
+        file_exists = os.path.isfile(file_path)
+        # Open in append mode and write
+        with open(file_path, 'a') as f:
+            if not file_exists:
+                # Write header only once
+                if dynType == 'nve':
+                    f.write("# mean_temp  std_temp  press  std_press\n")
+                elif dynType == 'nvt':
+                    f.write("# damping  mean_temp  std_temp  press  std_press\n")
+                else:
+                    f.write("# mean_temp  std_temp  press  std_press\n")
+            np.savetxt(f, data.reshape(1, -1), fmt="%.6e")
+
+def groupPressureLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', mixed='mixed', spacing='3', window=2, show=False):
+    '''
+    group pressure and length data for all the values of strain and time
+    '''
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Length,$ $L$", fontsize=14)
+    ax.set_ylabel("$Pressure,$ $P$", fontsize=14)
+    if mixed == 'mixed':
+        lengthType = "MixedLength"
+    else:
+        lengthType = "Length"
+    if not(os.path.exists(dirName + os.sep + "!pressure" + lengthType + "-" + fileName + ".dat")):
+        num1 = int(utils.readFromParams(dirName, 'num1'))
+        numParticles = int(utils.readFromParams(dirName, "numParticles"))
+        epsilon = utils.readFromParams(dirName, "epsilon")
+        strainList, strain = utils.getOrderedStrainDirectories(dirName)
+        temp = np.empty(0)
+        pressure = np.empty(0)
+        length = np.empty(0)
+        for s in range(strainList.shape[0]):
+            print("strain:", strain[s])
+            dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+            # Read energy and timestep data
+            data = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(3,-1)))
+            dirList, _ = utils.getOrderedDirectories(dirStrain)
+            for t in range(dirList.shape[0]):
+                dirSample = dirStrain + dirList[t] + os.sep
+                if(os.path.exists(dirSample)):
+                    # Collect length data at current time
+                    collect = False
+                    if (os.path.exists(dirSample + "particlePos.dat")):
+                        pos = np.loadtxt(dirSample + "particlePos.dat")
+                        rad = np.loadtxt(dirSample + "../particleRad.dat")
+                        if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
+                            collect = True
+                            if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
+                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                            currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
+                        else:
+                            print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
+                        if np.isnan(currentLength):
+                            print("Warning: NaN length found in", dirSample + "interface" + lengthType + ".dat")
+                            collect = False
+                    if collect:
+                        length = np.append(length, currentLength)
+                        # Collect pressure data at current time
+                        temp = np.append(temp, data[t,0] / numParticles)
+                        pressure = np.append(pressure, data[t,1] / epsilon)
+        np.savetxt(dirName + os.sep + "pressure" + lengthType + "-" + fileName + ".dat", np.column_stack((temp, pressure)))
+    else:
+        temp, pressure = np.loadtxt(dirName + os.sep + "pressure" + lengthType + "-" + fileName + ".dat", unpack=True)
+    ax.plot(np.sort(length), pressure[np.argsort(length)], color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
+    # Group length and energy data by length
+    pressure = pressure[np.argsort(length)]
+    length = np.sort(length)
+    bin_size = (np.max(length) - np.min(length)) / 16
+    # Save average pressure and plot binned pressure data
+    savePressure(dirName, pressure, temp, dynamics=dynamics, dynType=dynType)
+    print("tempeturare:", np.mean(temp), np.std(temp))
+    print("pressure:", np.mean(pressure), np.std(pressure))
+    bin_length, bin_pressure = bin_and_average_pressure(length, pressure, bin_size)
+    ax.errorbar(bin_length[:,0], bin_pressure[:,0], bin_pressure[:,1], bin_length[:,1], color='g', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label='Binned Data')
+    ax.legend(loc='best', fontsize=12)
+    fig.tight_layout()
+    if show == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+
+def groupPressureVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', show=False):
+    '''
+    group pressure data for all the values of strain and time
+    '''
+    fig, ax = plt.subplots(figsize=(6,5), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    ax.set_ylabel("$Pressure,$ $P$", fontsize=14)
+    if not(os.path.exists(dirName + os.sep + "pressure-" + fileName + ".dat")):
+        strainList, strain = utils.getOrderedStrainDirectories(dirName)
+        temp = np.empty(0)
+        pressure = np.empty(0)
+        for s in range(strainList.shape[0]):
+            dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+            # Read energy and timestep data
+            data = np.array(np.loadtxt(dirStrain + "/energy.dat", usecols=(3,-1))) / 2#utils.readFromParams(dirStrain, "epsilon")
+            # Collect pressure data at current time
+            temp = np.append(temp, data[:,0])
+            pressure = np.append(pressure, data[:,1])
+        np.savetxt(dirName + os.sep + "pressure-" + fileName + ".dat", np.column_stack((temp, pressure)))
+    else:
+        temp, pressure = np.loadtxt(dirName + os.sep + "pressure-" + fileName + ".dat", unpack=True)
+    ax.plot(temp, pressure, color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
+    # Save average pressure and plot binned pressure data
+    savePressure(dirName, pressure, temp, dynamics=dynamics, dynType=dynType)
+    print("tempeturare:", np.mean(temp), np.std(temp))
+    print("pressure:", np.mean(pressure), np.std(pressure))
+    fig.tight_layout()
+    if show == 'show':
+        plt.show()
+    else:
+        plt.pause(0.5)
+
+def plotPressure(dirName, which, mixed = 'mixed'):
+    if mixed == 'mixed':
+        data = np.loadtxt(dirName + os.sep + "pressure-" + which + "-mixed.dat")
+    else:
+        data = np.loadtxt(dirName + os.sep + "pressure-" + which + ".dat")
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Pressure,$ $p$", fontsize=14)
+    if which == 'nve':
+        ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+    elif which == 'nvt':
+        ax.set_xlabel("$Damping,$ $\\beta$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,-2], data[:,-1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
+        ax.set_xscale('log')
+    else:
+        ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3, label='$Active,$ $\\tau/\\Delta t = 1.5$')
+        data0 = np.loadtxt(dirName + os.sep + "pressure-nvt-vsT.dat")
+        ax.errorbar(data0[:,0], data0[:,2], data0[:,3], data0[:,1], color='b', marker='D', markersize=8, fillstyle='none', lw=1, capsize=3, label='$NVT$')
+        ax.legend(loc='best', fontsize=12)
+    x = np.linspace(np.min(data[:,0]),np.max(data[:,0]),100)
+    ax.plot(x, np.zeros(100), ls='dotted', color='k', lw=0.8)
+    plt.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/pressure-" + which + ".png", dpi=120)
+    plt.show()
+
+def comparePressure(dirName, figureName, mixed = 'mixed'):
+    fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
+    ax.tick_params(axis='both', labelsize=12)
+    ax.set_ylabel("$Pressure,$ $p$", fontsize=14)
+    #ax.set_xlim(0.425, 1.025)
+    ax.set_xlabel("$Temperature,$ $T$", fontsize=14)
+    dirList = np.array(["nvtvst-damping1e-07", "nvtvst-damping1e-03", "nvtvst-damping1e01"])
+    labelList = ["NVT $\\beta=10^{-4}$", "NVT $\\beta=10^{-2}$", "NVT $\\beta=10^0$"]
+    colorList = ['b', 'g', 'c']
+    markerList = ['s', '^', 'D']
+    for d in range(dirList.shape[0]):
+        if mixed == 'mixed':
+            data = np.loadtxt(dirName + os.sep + "pressure-" + dirList[d] + "-mixed.dat")
+        else:
+            data = np.loadtxt(dirName + os.sep + "pressure-" + dirList[d] + ".dat")
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color=colorList[d], marker=markerList[d], markersize=8, fillstyle='none', lw=1, capsize=3, label=labelList[d])
+    ax.legend(loc='best', fontsize=10)
+    plt.tight_layout()
+    plt.savefig("/home/francesco/Pictures/soft/mips/comparePressure-" + figureName + ".png", dpi=120)
+    plt.show()
 
 ####################### Average cluster height interface #######################
 def getInterfaceLength(dirName, threshold=0.62, spacing=2, window=3, plot=False, lj=True):
@@ -2665,7 +4072,7 @@ def averageInterfaceCorrelation(dirName, threshold=0.3, thickness=3, plot=False,
     heightCorr = np.zeros(leftHeightCorr.shape)
     heightCorr[:,0] = np.mean(np.column_stack((leftHeightCorr[:,0],rightHeightCorr[:,0])), axis=1)
     heightCorr[:,1] = np.sqrt(np.mean(np.column_stack((leftHeightCorr[:,1]**2,rightHeightCorr[:,1]**2)), axis=1))
-    np.savetxt(dirName + os.sep + "heightCorrelation.dat", np.column_stack((distances, heightCorr)))
+    np.savetxt(dirName + os.sep + "heightCorr.dat", np.column_stack((distances, heightCorr)))
     if(plot=='plot'):
         uplot.plotCorrelation(distances[1:], heightCorr[1:,0], "$Height$ $correlation$", xlabel = "$Distance$", color='k')
         plt.pause(0.5)
@@ -3151,7 +4558,36 @@ if __name__ == '__main__':
     elif(whichCorr == "2profile"):
         num1 = int(sys.argv[3])
         plot = sys.argv[4]
-        average2DensityProfile(dirName, num1, plot)
+        average2DensityProfile(dirName, num1, plot=plot)
+
+    elif(whichCorr == "2width"):
+        num1 = int(sys.argv[3])
+        which = sys.argv[4]
+        strain = sys.argv[5]
+        damping = sys.argv[6]
+        pause = sys.argv[7]
+        plotWidth(dirName, num1, which, strain, damping, pause)
+
+    elif(whichCorr == "2widthstrain"):
+        which = sys.argv[3]
+        pause = sys.argv[4]
+        plotAverageWidth(dirName, which, pause)
+    
+    elif(whichCorr == "2widthcompare"):
+        figureName = sys.argv[3]
+        compareAverageWidth(dirName, figureName)
+
+    elif(whichCorr == "2widthlength"):
+        num1 = int(sys.argv[3])
+        dynamics = sys.argv[4]
+        pause = sys.argv[5]
+        plotWidthVSLength(dirName, num1, dynamics, pause)
+
+    elif(whichCorr == "2intercorr"):
+        num1 = int(sys.argv[3])
+        thickness = float(sys.argv[4])
+        plot = sys.argv[5]
+        average2InterfaceCorrelation(dirName, num1, thickness, plot)
 
     elif(whichCorr == "2energy"):
         num1 = int(sys.argv[3])
@@ -3191,6 +4627,11 @@ if __name__ == '__main__':
         plot = sys.argv[4]
         average2FluidsSpaceVelCorr(dirName, num1, plot)
 
+    elif(whichCorr == "mobility"):
+        delta_t = int(sys.argv[3])
+        plot = sys.argv[4]
+        computeMobilityCorrelation(dirName, delta_t, plot)
+
     elif(whichCorr == "2interface"):
         num1 = int(sys.argv[3])
         thickness = int(sys.argv[4])
@@ -3216,10 +4657,95 @@ if __name__ == '__main__':
 
     elif(whichCorr == "2interlength"):
         num1 = int(sys.argv[3])
-        spacing = float(sys.argv[4])
+        spacing = sys.argv[4]
         window = int(sys.argv[5])
         plot = sys.argv[6]
-        get2InterfaceLength(dirName, num1, spacing, window, plot)
+        get2InterfaceLength(dirName, num1, spacing, window, plot=plot)
+
+    elif(whichCorr == "lengthtime"):
+        dynamics = sys.argv[3]
+        spacing = float(sys.argv[4])
+        window = int(sys.argv[5])
+        mixed = sys.argv[6]
+        show = sys.argv[7]
+        plotLengthVSTime(dirName, dynamics, spacing, window, mixed, show)
+
+    elif(whichCorr == "groupenergy"):
+        dynamics = sys.argv[3]
+        dynType = sys.argv[4]
+        fileName = sys.argv[5]
+        spacing = float(sys.argv[6])
+        window = int(sys.argv[7])
+        bin_by = sys.argv[8]
+        mixed = sys.argv[9]
+        degree = int(sys.argv[10])
+        show = sys.argv[11]
+        groupEnergyLengthVSStrain(dirName, dynamics, dynType, fileName, spacing, window, bin_by, mixed, degree, show)
+
+    elif(whichCorr == "groupenergyab"):
+        dynamics = sys.argv[3]
+        dynType = sys.argv[4]
+        fileName = sys.argv[5]
+        spacing = float(sys.argv[6])
+        window = int(sys.argv[7])
+        bin_by = sys.argv[8]
+        mixed = sys.argv[9]
+        degree = int(sys.argv[10])
+        show = sys.argv[11]
+        groupEnergyABLengthVSStrain(dirName, dynamics, dynType, fileName, spacing, window, bin_by, mixed, degree, show)
+
+    elif(whichCorr == "plotgamma"):
+        which = sys.argv[3]
+        mixed = sys.argv[4]
+        plotLineTension(dirName, which, mixed)
+
+    elif(whichCorr == "comparegamma"):
+        figureName = sys.argv[3]
+        mixed = sys.argv[4]
+        compareLineTension(dirName, figureName, mixed)
+
+    elif(whichCorr == "gammabeta"):
+        figureName = sys.argv[3]
+        mixed = sys.argv[4]
+        compareLineTensionVSDamping(dirName, figureName, mixed)
+
+    elif(whichCorr == "grouppress"):
+        dynamics = sys.argv[3]
+        dynType = sys.argv[4]
+        fileName = sys.argv[5]
+        mixed = sys.argv[6]
+        spacing = float(sys.argv[7])
+        window = int(sys.argv[8])
+        show = sys.argv[9]
+        groupPressureLengthVSStrain(dirName, dynamics, dynType, fileName, mixed, spacing, window, show)
+
+    elif(whichCorr == "groupp"):
+        dynamics = sys.argv[3]
+        dynType = sys.argv[4]
+        fileName = sys.argv[5]
+        show = sys.argv[6]
+        groupPressureVSStrain(dirName, dynamics, dynType, fileName, show)
+
+    elif(whichCorr == "plotpress"):
+        which = sys.argv[3]
+        plotPressure(dirName, which)
+
+    elif(whichCorr == "comparepress"):
+        figureName = sys.argv[3]
+        mixed = sys.argv[4]
+        comparePressure(dirName, figureName, mixed)
+
+    elif(whichCorr == "plotfloor"):
+        which = sys.argv[3]
+        plotSignalOverFloor(dirName, which)
+
+    elif(whichCorr == "energyheight"):
+        dynamics = sys.argv[3]
+        dynType = sys.argv[4]
+        which = sys.argv[5]
+        figureName = sys.argv[6]
+        show = sys.argv[7]
+        plotEnergyVSHeight(dirName, dynamics, dynType, which, figureName, show)
 
     elif(whichCorr == "interlength"):
         threshold = float(sys.argv[3])

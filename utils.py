@@ -287,7 +287,8 @@ def computeIsoCorrFunctions(pos1, pos2, boxSize, waveVector, scale, oneDim = Fal
     msd = np.mean(delta**2)/scale
     isf = np.mean(np.sin(waveVector * delta) / (waveVector * delta))
     chi4 = np.mean((np.sin(waveVector * delta) / (waveVector * delta))**2) - isf*isf
-    return msd, isf, chi4
+    alpha2 = np.mean(delta**4)/(2*np.mean(delta**2)**2) - 1
+    return msd, isf, chi4, alpha2
 
 def computeLongShortWaveCorr(pos1, pos2, boxSize, longWave, shortWave, scale):
     #delta = pbcDistance(pos1, pos2, boxSize)
@@ -310,7 +311,8 @@ def computeLongShortWaveCorr(pos1, pos2, boxSize, longWave, shortWave, scale):
     Chi4Short = np.real(np.mean(SqShort**2) - np.mean(SqShort)**2)
     delta = np.linalg.norm(delta, axis=1)
     MSD = np.mean(delta**2)/scale**2
-    return MSD, ISFLong, ISFShort, Chi4Long, Chi4Short
+    alpha2 = np.mean(delta**4)/(2*np.mean(delta**2)**2) - 1
+    return MSD, ISFLong, ISFShort, Chi4Long, Chi4Short, alpha2
 
 def computeCorrFunctions(pos1, pos2, boxSize, waveVector, scale):
     #delta = pbcDistance(pos1, pos2, boxSize)
@@ -1231,7 +1233,9 @@ def getOrderedDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "lang2con-log" and dir != "lang2con" and dir[:2] != "tp")):
+        if(os.path.isdir(dirName + os.sep + dir) and 
+           (dir[:2] != "tp" and dir[:7] != "damping" and dir[:5] != "gamma" and dir[:5] != "l_one" and dir != "nh" and dir != "ab" and dir != "dynamics" and dir != "lang1con" and dir != "lang2con") and 
+           (dir != "vicsek" and dir != "reflect" and dir != "fixed" and dir != "rough" and dir[:5] != "rigid" and dir != "mobile")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)
@@ -1244,7 +1248,7 @@ def getOrderedStrainDirectories(dirName):
     listDir = []
     listScalar = []
     for dir in os.listdir(dirName):
-        if(os.path.isdir(dirName + os.sep + dir) and (dir != "dynamics" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
+        if(os.path.isdir(dirName + os.sep + dir) and (dir != "test" and dir != "dynamics" and dir != "dynamics-log" and dir != "affine" and dir != "extend1e-02" and dir != "augmented" and dir!="delaunayLabels" and dir!="denseFilterDelaunayLabels" and dir!="dense2FilterDelaunayLabels" and dir!="dense3FilterDelaunayLabels")):
             listDir.append(dir)
             listScalar.append(dir.strip('strain'))
     listScalar = np.array(listScalar, dtype=np.float64)
@@ -1636,27 +1640,29 @@ def shiftCOM(pos, boxSize):
 
 def centerSlab(pos, rad, boxSize, labels, maxLabel):
     slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
-    #print("loaded center of mass:", centerOfMass[0], centerOfMass[1])
-    slabPos = pos[labels==maxLabel]
-    slabHeight = 0.5*np.pi*np.sum(rad[labels==maxLabel]**2) / boxSize[1]
-    isOutside = 0
-    for i in range(slabPos.shape[0]):
-        delta = np.abs(pbcDistance(slabCenter, slabPos[i,0], boxSize[0]))
-        if(delta > slabHeight):
-            isOutside += 1
-    corrected = False
-    if(isOutside > int(slabPos.shape[0]*0.5)):
-        corrected = True
-        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5, 0)
-    slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
-    if(corrected==True):
-        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+    if np.isnan(slabCenter):
+        print("Slab center is NaN, returning original positions")
+        return pos
     else:
-        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+        slabPos = pos[labels==maxLabel]
+        slabHeight = 0.5*np.pi*np.sum(rad[labels==maxLabel]**2) / boxSize[1]
+        isOutside = 0
+        for i in range(slabPos.shape[0]):
+            delta = np.abs(pbcDistance(slabCenter, slabPos[i,0], boxSize[0]))
+            if(delta > slabHeight):
+                isOutside += 1
+        corrected = False
+        if(isOutside > int(slabPos.shape[0]*0.5)):
+            corrected = True
+            pos = shiftPositions(pos, boxSize, boxSize[0]*0.5, 0)
         slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
-        pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
-    #print("final center of mass:", np.mean(pos[labels==maxLabel], axis=0))
-    return pos
+        if(corrected==True):
+            pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+        else:
+            pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+            slabCenter = np.mean(pos[labels==maxLabel], axis=0)[0]
+            pos = shiftPositions(pos, boxSize, boxSize[0]*0.5-slabCenter, 0)
+        return pos
 
 def shiftPositions(pos, boxSize, xshift, yshift):
     pos[:,0] += xshift
@@ -1664,6 +1670,28 @@ def shiftPositions(pos, boxSize, xshift, yshift):
     pos[:,0] -= np.floor(pos[:,0]/boxSize[0]) * boxSize[0]
     pos[:,1] -= np.floor(pos[:,1]/boxSize[1]) * boxSize[1]
     return pos
+
+def shuffleParticles(dirName):
+    boxSize = np.loadtxt(dirName + '/boxSize.dat')
+    pos = np.loadtxt(dirName + '/particlePos.dat')
+    vel = np.loadtxt(dirName + '/particleVel.dat')
+    rad = np.loadtxt(dirName + '/particleRad.dat')
+    dirSave = dirName + '../shuffle/'
+    if(os.path.isdir(dirSave)==False):
+        os.mkdir(dirSave)
+    numParticles = pos.shape[0]
+    # Generate a random permutation of indices
+    indices = np.random.permutation(numParticles)
+    # Apply the same permutation to all arrays
+    pos_shuffled = pos[indices]
+    vel_shuffled = vel[indices]
+    rad_shuffled = rad[indices]
+    # Save the shuffled arrays
+    np.savetxt(dirSave + '/boxSize.dat', boxSize)
+    np.savetxt(dirSave + '/particlePos.dat', pos_shuffled)
+    np.savetxt(dirSave + '/particleVel.dat', vel_shuffled)
+    np.savetxt(dirSave + '/particleRad.dat', rad_shuffled)
+    print("Shuffled positions saved in", dirSave)
 
 def getMOD2PIAngles(fileName):
     angle = np.array(np.loadtxt(fileName), dtype=np.float64)
@@ -2210,8 +2238,6 @@ def computeNoEdgeMovingAverage(data, window=10):
     for i in range(halfWindow, len(data) - halfWindow):
         movingAvg[i] = np.mean(data[i - halfWindow : i + halfWindow + 1])
     return movingAvg
-
-import numpy as np
 
 def computeMovingAverage(data, window=10):
     """
