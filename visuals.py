@@ -333,26 +333,31 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         eps *= 2*np.mean(rad)
         labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
         uniqueLabels = np.unique(labels)
+        print("Number of labels:", uniqueLabels.shape[0])
         angle = np.arctan2(pos[:,1], pos[:,0])
         angle = np.where(angle < 0, angle + 2 * np.pi, angle)
         spread = np.empty(0)
         weight = np.empty(0)
         phi_r = np.empty(0)
-        if(uniqueLabels.shape[0] > 1):
-            for label in uniqueLabels:
-                thisangle = angle[labels==label]
-                numLabel = labels[labels==label].shape[0]
-                weight = np.append(weight, numLabel / labels.shape[0])
-                spread = np.append(spread, np.std(thisangle)/(np.pi/np.sqrt(3)))
-                # compute Kuramoto order parameter for the cluster
-                numCluster = thisangle.shape[0]
-                sumReal = 0
-                sumImag = 0
-                for i in range(numCluster):
-                    sumReal += np.cos(thisangle[i])
-                    sumImag += np.sin(thisangle[i])
-                phi_r = np.append(phi_r, np.sqrt(sumReal**2 + sumImag**2) / numCluster)
-                #print("label", label, "num particles in cluster", numLabel, "spread", spread[-1], "phi_r", phi_r[-1])
+        num = np.empty(0)
+        for label in uniqueLabels:
+            if label != -1:
+                num = np.append(num, labels[labels==label].shape[0])
+        print("average cluster size (excluding noise):", np.mean(num), "error:", np.std(num), ", number of unclustered particles:", labels[labels==-1].shape[0])
+        for label in uniqueLabels:
+            thisangle = angle[labels==label]
+            numLabel = labels[labels==label].shape[0]
+            weight = np.append(weight, numLabel / labels.shape[0])
+            spread = np.append(spread, np.std(thisangle)/(np.pi/np.sqrt(3)))
+            # compute Kuramoto order parameter for the cluster
+            numCluster = thisangle.shape[0]
+            sumReal = 0
+            sumImag = 0
+            for i in range(numCluster):
+                sumReal += np.cos(thisangle[i])
+                sumImag += np.sin(thisangle[i])
+            phi_r = np.append(phi_r, np.sqrt(sumReal**2 + sumImag**2) / numCluster)
+            #print("label", label, "num particles in cluster", numLabel, "spread", spread[-1], "phi_r", phi_r[-1])
         print("number of clusters:", np.unique(labels).shape[0], "average spread", np.mean(weight*spread)/np.mean(weight), "average phi_r", np.mean(phi_r))
         colorId = getGroupColorList(labels)
     else:

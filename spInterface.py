@@ -2638,68 +2638,408 @@ def computeMobilityCorrelation(dirName, delta_t=10, plot=False, dirSpacing=10000
 
     return r_centers, g_r
 
-####################### Average interface fluctuations in binary mixture #######################
-def average2InterfaceFluctuations(dirName, num1=0, thickness=3, plot=False, dirSpacing=100000):
-    boxSize = np.array(np.loadtxt(dirName + os.sep + "boxSize.dat"))
-    rad = np.array(np.loadtxt(dirName + os.sep + "particleRad.dat"))
-    dirList, timeList = utils.getOrderedDirectories(dirName)
-    timeList = timeList.astype(int)
-    dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    timeList = timeList[np.argwhere(timeList%dirSpacing==0)[:,0]]
-    sigma = 2 * np.mean(rad)
-    spacing = 3 * sigma
-    bins = np.arange(0, boxSize[1], spacing)
-    centers = (bins[1:] + bins[:-1]) * 0.5
-    freq = np.fft.rfftfreq(bins.shape[0]-1, spacing)
-    leftDeltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
-    leftFourierDeltaHeight = np.zeros((dirList.shape[0], freq.shape[0]))
-    rightDeltaHeight = np.zeros((dirList.shape[0], bins.shape[0]-1))
-    rightFourierDeltaHeight = np.zeros((dirList.shape[0], freq.shape[0]))
-    for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + dirList[d]
-        # load particle variables
-        pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
-        pos = utils.centerCOM1(pos, rad, boxSize, num1)
-        leftHeight = np.zeros(bins.shape[0]-1)
-        rightHeight = np.zeros(bins.shape[0]-1)
-        clusterPos = pos[:num1] #select particles of type A
-        for j in range(bins.shape[0]-1): # find particle positions in a bin
-            downMask = np.argwhere(clusterPos[:,1] > bins[j])[:,0]
-            binPos = clusterPos[downMask]
-            upMask = np.argwhere(binPos[:,1] <= bins[j+1])[:,0]
-            binPos = binPos[upMask]
-            if(binPos.shape[0] > 0):
-                center = np.mean(binPos, axis=0)[0] # center of dense cluster
-                binDistance = binPos[:,0] - center
-                leftMask = np.argsort(binDistance)
-                leftMask = np.argsort(binDistance)[:thickness]
-                leftHeight[j] = np.mean(binDistance[leftMask])
-                rightMask = np.argsort(binDistance)[-thickness:]
-                rightHeight[j] = np.mean(binDistance[rightMask])
-        # use only continuous interfaces
-        if(leftHeight[leftHeight!=0].shape[0] == leftHeight.shape[0]):
-            leftHeight -= np.mean(leftHeight)
-            leftDeltaHeight[d] = np.abs(leftHeight)**2
-            leftFourierDeltaHeight[d] = np.abs(np.fft.rfft(leftHeight))**2
-        if(rightHeight[rightHeight!=0].shape[0] == rightHeight.shape[0]):
-            rightHeight -= np.mean(rightHeight)
-            rightDeltaHeight[d] = np.abs(rightHeight)**2
-            rightFourierDeltaHeight[d] = np.abs(np.fft.rfft(rightHeight))**2
+# --- small 1D k-means implementation (k=2) ---
+def kmeans_1d_two_clusters(x, max_iter=100, tol=1e-6):
+    """
+    Simple 1D k-means for k=2. Returns cluster_means sorted (small, large).
+    x: 1D numpy array (length >= 2)
+    """
+    if x.size == 0:
+        return None
+    # init: 25th and 75th percentile
+    c1, c2 = np.percentile(x, [25, 75])
+    for _ in range(max_iter):
+        # assign
+        dist1 = np.abs(x - c1)
+        dist2 = np.abs(x - c2)
+        mask1 = dist1 <= dist2
+        mask2 = ~mask1
+        # avoid empty clusters by nudging centers if needed
+        if mask1.sum() == 0 or mask2.sum() == 0:
+            # fallback: split by median
+            med = np.median(x)
+            mask1 = x <= med
+            mask2 = x > med
+            if mask1.sum() == 0 or mask2.sum() == 0:
+                # all identical or very small sample
+                return np.array([np.min(x), np.max(x)])
+        new_c1 = x[mask1].mean()
+        new_c2 = x[mask2].mean()
+        if abs(new_c1 - c1) + abs(new_c2 - c2) < tol:
+            c1, c2 = new_c1, new_c2
+            break
+        c1, c2 = new_c1, new_c2
+    return np.sort(np.array([c1, c2]))
 
-    leftDeltaHeight = np.column_stack((np.mean(leftDeltaHeight, axis=0), np.std(leftDeltaHeight, axis=0)))
-    rightDeltaHeight = np.column_stack((np.mean(rightDeltaHeight, axis=0), np.std(rightDeltaHeight, axis=0)))
-    leftFourierDeltaHeight = np.column_stack((np.mean(leftFourierDeltaHeight, axis=0), np.std(leftFourierDeltaHeight, axis=0)))
-    rightFourierDeltaHeight = np.column_stack((np.mean(rightFourierDeltaHeight, axis=0), np.std(rightFourierDeltaHeight, axis=0)))
-    fourierDeltaHeight = np.zeros(leftFourierDeltaHeight.shape)
-    fourierDeltaHeight[:,0] = np.mean(np.column_stack((leftFourierDeltaHeight[:,0],rightFourierDeltaHeight[:,0])), axis=1)
-    fourierDeltaHeight[:,1] = np.sqrt(np.mean(np.column_stack((leftFourierDeltaHeight[:,1]**2,rightFourierDeltaHeight[:,1]**2)), axis=1))
-    
-    np.savetxt(dirName + os.sep + "fourierFluctuations.dat", np.column_stack((freq, fourierDeltaHeight)))
-    np.savetxt(dirName + os.sep + "interfaceFluctuations.dat", np.column_stack((centers, leftDeltaHeight, rightDeltaHeight)))
+
+def linear_model(logq, logA, slope):
+    return logA + slope * logq
+
+def fitFourierFluctuations(fdelta, q_max, temp, Ly, bounds=False, slope_range=1e-03):
+    print("COMPUTING")
+    # fit Fourier fluctuations
+    q = fdelta[4:,0]
+    delta_h = fdelta[4:,1]
+    fit_mask = q < q_max
+    q_fit = q[fit_mask]
+    delta_h_fit = delta_h[fit_mask]
+    logq_fit = np.log(q_fit)
+    logdelta_h_fit = np.log(delta_h_fit)
+    if bounds:
+        popt, pcov = curve_fit(linear_model, logq_fit, logdelta_h_fit, bounds=([-np.inf, -(2.0 + slope_range)], [np.inf, -(2.0 - slope_range)]))
+    else:
+        popt, pcov = curve_fit(linear_model, logq_fit, logdelta_h_fit)
+    logA, slope = popt
+    logA_err, slope_err = np.sqrt(np.diag(pcov))
+    A = np.exp(logA)
+    print(f"Fit: slope = {slope:.3f} ± {slope_err:.3f} A = {A:.3e} ± {A * logA_err:.3e}")
+    # -----------------------------------------------------
+    # Line tension extraction
+    #  A = kBT / (γ * Ly)
+    #  so γ = kBT / (A * Ly)
+    # -----------------------------------------------------
+    gamma = 0.5 * temp / (A * Ly) # divide by two because it's two interfaces
+    gamma_err = gamma * (logA_err)
+    return gamma, gamma_err, q_fit, logA, slope
+
+####################### Average interface fluctuations in binary mixture #######################
+def average2InterfaceFluctuations(dirName, compute=False, plot=False, spacing=3, min_count=10, q_max=0.2, dirSpacing=100000):
+    boxSize = np.array(np.loadtxt(os.path.join(dirName, "boxSize.dat")))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    if compute == 'compute':
+        Lx, Ly = boxSize[0], boxSize[1]
+        rad = np.array(np.loadtxt(os.path.join(dirName, "particleRad.dat")))
+        sigma = 2.0 * np.mean(rad)
+        eps = 1.4 * np.max(rad)
+        num1 = int(utils.readFromParams(dirName, "num1"))
+        dirList, timeList = utils.getOrderedDirectories(dirName)
+        timeList = timeList.astype(int)
+        # select snapshot spacing
+        indices = np.argwhere(timeList % dirSpacing == 0)[:, 0]
+        dirList = dirList[indices]
+        timeList = timeList[indices]
+        # choose bin spacing (smaller than before)
+        spacing *= sigma   # recommended spacing_factor ~ 0.5 - 1.0
+        nbins = int(np.floor(Ly / spacing))
+        if nbins < 8:
+            raise ValueError("box Ly too small or spacing too large; reduce spacing_factor.")
+        bins = np.linspace(0, Ly, nbins + 1)
+        centers = 0.5 * (bins[:-1] + bins[1:])
+        freq = 2 * np.pi * np.fft.rfftfreq(nbins, d=(Ly/nbins))
+        print("Lx:", boxSize[0], "Ly:", boxSize[1], "number of samples:", dirList.shape[0], "number of bins:", nbins)
+        # containers
+        leftDeltaHeight = []
+        leftFourierDeltaHeight = []
+        rightDeltaHeight = []
+        rightFourierDeltaHeight = []
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + os.sep + dirList[d]
+            # load particle variables
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            labels = np.zeros(numParticles)
+            labels[:num1] = 1
+            clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+            # center the slab (your provided function)
+            pos = utils.centerSlab(pos, rad, boxSize, clusterLabels, maxLabel)
+            clusterPos = pos[:num1].copy()  # type A
+            # robust center (x) of the dense slab
+            center_x = np.mean(clusterPos[:, 0])
+            # shift x to centered periodic interval [-Lx/2, Lx/2)
+            x_shifted = ((clusterPos[:, 0] - center_x + 0.5 * Lx) % Lx) - 0.5 * Lx
+            y = clusterPos[:, 1].copy()
+            leftHeight = np.full(nbins, np.nan)
+            rightHeight = np.full(nbins, np.nan)
+            # loop over y-bins
+            for j in range(nbins):
+                ylo, yhi = bins[j], bins[j + 1]
+                # select particles inside the y bin (including lower edge, excluding upper)
+                mask = (y >= ylo) & (y < yhi)
+                if mask.sum() < min_count:
+                    continue
+                x_in_bin = x_shifted[mask]
+                # apply 1D kmeans (k=2)
+                centers_2 = kmeans_1d_two_clusters(x_in_bin)
+                if centers_2 is None:
+                    continue
+                leftHeight[j], rightHeight[j] = centers_2[0], centers_2[1]
+            # require continuous interface: no NaNs across bins
+            if np.isnan(leftHeight).any() or np.isnan(rightHeight).any():
+                # skip this snapshot — conservative choice to avoid bias
+                continue
+            # subtract mean (enforce zero average)
+            leftHeight -= np.mean(leftHeight)
+            rightHeight -= np.mean(rightHeight)
+            # store heights and FT power
+            leftDeltaHeight.append(leftHeight.copy())
+            leftFourierDeltaHeight.append(np.abs(np.fft.rfft(leftHeight))**2 / nbins**2)
+            rightDeltaHeight.append(rightHeight.copy())
+            rightFourierDeltaHeight.append(np.abs(np.fft.rfft(rightHeight))**2 / nbins**2)
+        # convert to arrays
+        if len(leftDeltaHeight) + len(rightDeltaHeight) == 0:
+            raise RuntimeError("No valid snapshots passed continuity and min_count checks. Try smaller min_count or coarser spacing.")
+
+        leftDeltaHeight = np.array(leftDeltaHeight) if len(leftDeltaHeight) > 0 else np.empty((0, nbins))
+        leftFourierDeltaHeight = np.array(leftFourierDeltaHeight) if len(leftFourierDeltaHeight) > 0 else np.empty((0, freq.size))
+        rightDeltaHeight = np.array(rightDeltaHeight) if len(rightDeltaHeight) > 0 else np.empty((0, nbins))
+        rightFourierDeltaHeight = np.array(rightFourierDeltaHeight) if len(rightFourierDeltaHeight) > 0 else np.empty((0, freq.size))
+        # concatenate interfaces (if both exist)
+        deltaHeight = np.vstack([leftDeltaHeight, rightDeltaHeight]) if (leftDeltaHeight.size and rightDeltaHeight.size) else (leftDeltaHeight if leftDeltaHeight.size else rightDeltaHeight)
+        fourierDeltaHeight = np.vstack([leftFourierDeltaHeight, rightFourierDeltaHeight]) if (leftFourierDeltaHeight.size and rightFourierDeltaHeight.size) else (leftFourierDeltaHeight if leftFourierDeltaHeight.size else rightFourierDeltaHeight)
+        # compute mean and std across snapshots
+        mean_h = np.mean(deltaHeight, axis=0)
+        std_h = np.std(deltaHeight, axis=0, ddof=1) if deltaHeight.shape[0] > 1 else np.zeros_like(mean_h)
+        mean_spec = np.mean(fourierDeltaHeight, axis=0)
+        std_spec = np.std(fourierDeltaHeight, axis=0, ddof=1) if fourierDeltaHeight.shape[0] > 1 else np.zeros_like(mean_spec)
+        # save
+        np.savetxt(os.path.join(dirName, "interfaceFluctuations.dat"), np.column_stack((centers, mean_h, std_h)))
+        np.savetxt(os.path.join(dirName, "fourierFluctuations.dat"), np.column_stack((freq, mean_spec, std_spec)))
+    deltaHeight = np.loadtxt(dirName + os.sep + "interfaceFluctuations.dat")
+    fourierDelta = np.loadtxt(dirName + os.sep + "fourierFluctuations.dat")
     if(plot=='plot'):
-        uplot.plotCorrWithError(freq[1:], fourierDeltaHeight[1:,0], fourierDeltaHeight[1:,1], "$Height$ $fluctuation$", xlabel = "$Wave$ $vector$ $magnitude,$ $q$", color='k', logx=True, logy=True)
-        #uplot.plotCorrWithError(centers, leftDeltaHeight[:,0], leftDeltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='k')
-        #uplot.plotCorrWithError(centers, rightDeltaHeight[:,0], rightDeltaHeight[:,1], "$Height$ $fluctuation$", xlabel = "$y$", color='g')
+        fig, ax = plt.subplots(2, 1, figsize=(9,8), dpi=120)
+        ax[1].errorbar(deltaHeight[:,0], deltaHeight[:,1], deltaHeight[:,2], color='k', marker='s', markersize=6, fillstyle='none', lw=1, capsize=3)
+        ax[1].set_ylabel("$\\delta h(x)$", fontsize=14)
+        ax[1].set_xlabel("$x$", fontsize=14)
+        ax[1].tick_params(axis='both', labelsize=12)
+        ax[0].errorbar(fourierDelta[1:,0], fourierDelta[1:,1], fourierDelta[1:,2], color='k', marker='s', markersize=6, fillstyle='none', lw=0.8, capsize=3)
+        ax[0].set_xscale('log')
+        ax[0].set_yscale('log')
+        ax[0].set_ylabel("$|\\delta h(q)|^2$", fontsize=14)
+        ax[0].set_xlabel("$q$", fontsize=14)
+        ax[0].tick_params(axis='both', labelsize=12)
+        ax[0].set_ylim(0.0008,)
+        # fit Fourier fluctuations
+        energy = np.loadtxt(dirName + os.sep + "energy.dat")
+        epsilon = float(utils.readFromParams(dirName, "epsilon"))
+        temp = (np.mean(energy[:,3]) / numParticles) / epsilon
+        gamma, gamma_err, q_fit, logA, slope = fitFourierFluctuations(fourierDelta, q_max, temp, boxSize[1])
+        print("gamma:", gamma, "±", gamma_err)
+        # fitted line
+        q_line = np.logspace(np.log10(q_fit.min()), np.log10(q_max), 200)
+        delta_h_line = 0.1*np.exp(linear_model(np.log(q_line), logA, slope))
+        ax[0].plot(q_line, delta_h_line, 'c-', lw=2, label=f"slope = {slope:.2f}")
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.2)
+        #plt.pause(0.5)
+        plt.show()
+
+def average2InterfaceFluOverStrain(dirName, dynamics, compute=False, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000, bounds=False, slope_range=1e-03, plot=False):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    epsilon = float(utils.readFromParams(dirName, "epsilon"))
+    strainList, strain = utils.getOrderedStrainDirectories(dirName)
+    strainList = strainList[:9]
+    gamma = np.zeros(strainList.shape[0])
+    gamma_err = np.zeros(strainList.shape[0])
+    temp = np.empty(0)
+    if plot == 'plot':
+        fig, ax = plt.subplots(figsize=(6.5,3.5), dpi=120)
+        colorList = cm.get_cmap('viridis')
+    for s in range(strainList.shape[0]):
+        dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+        boxSize = np.loadtxt(dirStrain + os.sep + "boxSize.dat")
+        temp = np.append(temp, (np.mean(np.loadtxt(dirStrain + os.sep + "energy.dat")[:,3]) / numParticles) / epsilon)
+        if compute == 'compute':
+            average2InterfaceFluctuations(dirStrain, compute='compute', spacing=spacing, min_count=min_count, dirSpacing=dirSpacing)
+        else:
+            if not(os.path.exists(dirStrain + os.sep + "fourierFluctuations.dat")):
+                average2InterfaceFluctuations(dirStrain, compute='compute', spacing=spacing, min_count=min_count, dirSpacing=dirSpacing)
+        fourierDelta = np.loadtxt(dirStrain + os.sep + "fourierFluctuations.dat")
+        gamma[s], gamma_err[s], _, _, _ = fitFourierFluctuations(fourierDelta, q_max, temp[-1], boxSize[1], bounds=bounds, slope_range=slope_range)
+        print("Strain:", strain[s], "temp:", temp[-1], "gamma:", gamma[s], "±", gamma_err[s], "\n")
+        if plot == 'plot':
+            ax.errorbar(fourierDelta[1:,0], fourierDelta[1:,1], fourierDelta[1:,2], color=colorList(s/strainList.shape[0]), 
+                        marker='s', markersize=6, fillstyle='none', lw=0.8, capsize=3)
+    if plot == 'plot':
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_ylabel("$|\\delta h(q)|^2$", fontsize=14)
+        ax.set_xlabel("$q$", fontsize=14)
+        ax.tick_params(axis='both', labelsize=12)
+        ax.set_ylim(0.0008,)
+        plt.tight_layout()
+        plt.show()
+        figureName = "/home/francesco/Pictures/soft/mips/deltaHvsq-" + dynamics
+        fig.savefig(figureName + ".png", transparent=False, format = "png")
+    return np.mean(gamma), np.std(gamma), np.mean(temp), np.std(temp)
+
+def plotTensionVSTempCWT(dirName, figureName, dynamics, compute, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000):
+    if not(os.path.exists(dirName + os.sep + "lineTensionCWT-" + figureName + "!.dat")):
+        tempList = np.array(['0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00'])
+        gamma = np.zeros((tempList.shape[0],2))
+        temp = np.zeros((tempList.shape[0],2))
+        for t in range(tempList.shape[0]):
+            dirTemp = dirName + "T" + tempList[t] + "/nve/nve-biaxial-comp5e-06-tmax2e03/"
+            print("********************************************* Gathering data for T:", tempList[t], "*********************************************")
+            gamma[t,0], gamma[t,1], temp[t,0], temp[t,1] = average2InterfaceFluOverStrain(dirTemp, dynamics, compute, spacing, min_count, q_max, dirSpacing, bounds=False)
+            print("Temperature:", temp[t,0], "±", temp[t,1], "line tension:", gamma[t,0], "±", gamma[t,1])
+        np.savetxt(dirName + os.sep + "lineTensionCWT-" + figureName + ".dat", np.column_stack((temp, gamma)))
+    data = np.loadtxt(dirName + os.sep + "lineTensionCWT-" + figureName + ".dat")
+    temp = data[:,:2]
+    gamma = data[:,2:]
+    fig, ax = plt.subplots(figsize=(6,4.5), dpi=120)
+    ax.errorbar(temp[1:,0], gamma[1:,0], gamma[1:,1], temp[1:,1], color='k', marker='o', lw=1, markersize=8, capsize=3, fillstyle='none', label="$CWT$", alpha=0.5)
+    data_nve = np.loadtxt(dirName + os.sep + "../../../../box13/2lj/0.60/nh2/lineTension-nve.dat")
+    ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='b', marker='v', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Work$ $method$")
+    ax.legend(fontsize=12, loc='best')
+    ax.set_xlim(0.46, 0.96)
+    ax.plot(np.linspace(0,1,100), np.zeros(100), ls='dotted', color='k', lw=0.8)
+    ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=22, rotation='horizontal', labelpad=15)
+    ax.set_xlabel("$Temperature,$ $k_BT/\\varepsilon$", fontsize=14)
+    ax.tick_params(axis='both', labelsize=12)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/gammaCWT-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
+    plt.show()
+
+def plotTensionVSDampingCWT(dirName, figureName, dynamics, compute, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000, slope_range='1e-03'):
+    if not(os.path.exists(dirName + os.sep + "lineTensionCWT-" + figureName + "-" + slope_range + ".dat")):
+        dampList = np.array(['1e-05', '1e-03', '1e-01', '1', '1e01', '1e03'])
+        gamma = np.zeros((dampList.shape[0],2))
+        damping = dampList.astype(float)
+        for t in range(dampList.shape[0]):
+            dirDamp = dirName + "/damping" + dampList[t] + "/nvt-biaxial-comp5e-06-tmax2e03/"
+            print("********************************************* Gathering data for damping:", dampList[t], "*********************************************")
+            gamma[t,0], gamma[t,1], temp, temp_err = average2InterfaceFluOverStrain(dirDamp, dynamics + dampList[t], compute, spacing, min_count, q_max, dirSpacing, 
+                                                                                    bounds=True, slope_range=float(slope_range))
+            print("Damping:", damping[t], "line tension:", gamma[t,0], "±", gamma[t,1])
+            print("Temperature:", temp, "±", temp_err)
+        np.savetxt(dirName + os.sep + "lineTensionCWT-" + figureName + "-" + slope_range + ".dat", np.column_stack((damping, gamma)))
+    data = np.loadtxt(dirName + os.sep + "lineTensionCWT-" + figureName + "-" + slope_range + ".dat")
+    fig, ax = plt.subplots(figsize=(6,4.5), dpi=120)
+    ax.errorbar(data[:,0], data[:,1], data[:,2], color='k', marker='o', lw=1, markersize=8, capsize=3, fillstyle='none', label="$\\Delta m = 10^{-3}$")
+    data = np.loadtxt(dirName + os.sep + "lineTensionCWT-" + figureName + "-1e-02.dat")
+    ax.errorbar(data[:,0], data[:,1], data[:,2], color='b', marker='s', lw=1, markersize=8, capsize=3, fillstyle='none', label="$\\Delta m = 10^{-2}$")
+    data = np.loadtxt(dirName + os.sep + "lineTensionCWT-" + figureName + "-1e-01.dat")
+    ax.errorbar(data[:,0], data[:,1], data[:,2], color='g', marker='^', lw=1, markersize=8, capsize=3, fillstyle='none', label="$\\Delta m = 10^{-1}$")
+    data = np.loadtxt(dirName + os.sep + "lineTensionCWT-" + figureName + "-unbounded.dat")
+    ax.errorbar(data[:,0], data[:,1], data[:,2], color='c', marker='d', lw=1, markersize=8, capsize=3, fillstyle='none', label="$Unbounded$")
+    ax.legend(fontsize=12, loc='best')
+    ax.set_xscale('log')
+    ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=22, rotation='horizontal', labelpad=15)
+    ax.set_xlabel("$Damping,$ $\\beta \\sqrt{m / \\varepsilon} \\sigma$", fontsize=14)
+    ax.tick_params(axis='both', labelsize=12)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/gammaCWT-vsdamping-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
+    plt.show()
+
+def compute2InterfaceFluOverStrain(dirName, figureName, dynamics, plot=False, spacing=3, min_count=5, q_max=0.5, dirSpacing=100000):
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    num1 = int(utils.readFromParams(dirName, "num1"))
+    epsilon = float(utils.readFromParams(dirName, "epsilon"))
+    # get bins at zero strain
+    boxSize0 = np.array(np.loadtxt((dirName + os.sep + "../boxSize.dat")))
+    print("initial boxSize:", boxSize0)
+    temp = np.empty(0)
+    Lx, Ly = boxSize0[0], boxSize0[1]
+    rad = np.array(np.loadtxt(os.path.join(dirName, "particleRad.dat")))
+    sigma = 2.0 * np.mean(rad)
+    eps = 1.4 * np.max(rad)
+    # choose bin spacing (smaller than before)
+    spacing *= sigma   # recommended spacing_factor ~ 0.5 - 1.0
+    nbins = int(np.floor(Ly / spacing))
+    if nbins < 8:
+        raise ValueError("box Ly too small or spacing too large; reduce spacing_factor.")
+    bins = np.linspace(0, Ly, nbins + 1)
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    freq = 2 * np.pi * np.fft.rfftfreq(nbins, d=(Ly/nbins))
+    # containers
+    leftDeltaHeight = []
+    leftFourierDeltaHeight = []
+    rightDeltaHeight = []
+    rightFourierDeltaHeight = []
+    strainList, strain = utils.getOrderedStrainDirectories(dirName)
+    for s in range(strainList.shape[0]):
+        dirStrain = dirName + os.sep + strainList[s] + os.sep + dynamics + os.sep
+        dirList, timeList = utils.getOrderedDirectories(dirStrain)
+        timeList = timeList.astype(int)
+        # select snapshot spacing
+        indices = np.argwhere(timeList % dirSpacing == 0)[:, 0]
+        dirList = dirList[indices]
+        timeList = timeList[indices]
+        boxSize = np.array(np.loadtxt(os.path.join(dirStrain, "boxSize.dat")))
+        temp = np.append(temp, float(utils.readFromParams(dirStrain, "temperature")))
+        print("strain:", strain[s], "Ly / Lx:", boxSize[1] / boxSize[0], "T:", temp[-1])
+        for d in range(dirList.shape[0]):
+            dirSample = dirStrain + os.sep + dirList[d]
+            # load particle variables
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            labels = np.zeros(numParticles)
+            labels[:num1] = 1
+            clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+            # center the slab (your provided function)
+            pos = utils.centerSlab(pos, rad, boxSize, clusterLabels, maxLabel)
+            clusterPos = pos[:num1].copy()  # type A
+            # robust center (x) of the dense slab
+            center_x = np.mean(clusterPos[:, 0])
+            # shift x to centered periodic interval [-Lx/2, Lx/2)
+            x_shifted = ((clusterPos[:, 0] - center_x + 0.5 * Lx) % Lx) - 0.5 * Lx
+            y = clusterPos[:, 1].copy()
+            leftHeight = np.zeros(nbins)
+            rightHeight = np.zeros(nbins)
+            # loop over y-bins
+            for j in range(nbins):
+                ylo, yhi = bins[j], bins[j + 1]
+                # select particles inside the y bin (including lower edge, excluding upper)
+                mask = (y >= ylo) & (y < yhi)
+                if mask.sum() < min_count:
+                    continue
+                x_in_bin = x_shifted[mask]
+                # apply 1D kmeans (k=2)
+                centers_2 = kmeans_1d_two_clusters(x_in_bin)
+                if centers_2 is None:
+                    continue
+                leftHeight[j], rightHeight[j] = centers_2[0], centers_2[1]
+            # subtract mean (enforce zero average)
+            leftHeight -= np.mean(leftHeight)
+            rightHeight -= np.mean(rightHeight)
+            # store heights and FT power
+            leftDeltaHeight.append(leftHeight.copy())
+            leftFourierDeltaHeight.append(np.abs(np.fft.rfft(leftHeight))**2 / nbins**2)
+            rightDeltaHeight.append(rightHeight.copy())
+            rightFourierDeltaHeight.append(np.abs(np.fft.rfft(rightHeight))**2 / nbins**2)
+    # convert to arrays
+    if len(leftDeltaHeight) + len(rightDeltaHeight) == 0:
+        raise RuntimeError("No valid snapshots passed continuity and min_count checks. Try smaller min_count or coarser spacing.")
+
+    leftDeltaHeight = np.array(leftDeltaHeight) if len(leftDeltaHeight) > 0 else np.empty((0, nbins))
+    leftFourierDeltaHeight = np.array(leftFourierDeltaHeight) if len(leftFourierDeltaHeight) > 0 else np.empty((0, freq.size))
+    rightDeltaHeight = np.array(rightDeltaHeight) if len(rightDeltaHeight) > 0 else np.empty((0, nbins))
+    rightFourierDeltaHeight = np.array(rightFourierDeltaHeight) if len(rightFourierDeltaHeight) > 0 else np.empty((0, freq.size))
+    # concatenate interfaces (if both exist)
+    deltaHeight = np.vstack([leftDeltaHeight, rightDeltaHeight]) if (leftDeltaHeight.size and rightDeltaHeight.size) else (leftDeltaHeight if leftDeltaHeight.size else rightDeltaHeight)
+    fourierDeltaHeight = np.vstack([leftFourierDeltaHeight, rightFourierDeltaHeight]) if (leftFourierDeltaHeight.size and rightFourierDeltaHeight.size) else (leftFourierDeltaHeight if leftFourierDeltaHeight.size else rightFourierDeltaHeight)
+    # compute mean and std across snapshots
+    mean_h = np.mean(deltaHeight, axis=0)
+    std_h = np.std(deltaHeight, axis=0, ddof=1) if deltaHeight.shape[0] > 1 else np.zeros_like(mean_h)
+    mean_spec = np.mean(fourierDeltaHeight, axis=0)
+    std_spec = np.std(fourierDeltaHeight, axis=0, ddof=1) if fourierDeltaHeight.shape[0] > 1 else np.zeros_like(mean_spec)
+    # save
+    np.savetxt(os.path.join(dirName, "interfaceFluctuations.dat"), np.column_stack((centers, mean_h, std_h)))
+    np.savetxt(os.path.join(dirName, "fourierFluctuations.dat"), np.column_stack((freq, mean_spec, std_spec)))
+    deltaHeight = np.loadtxt(dirName + os.sep + "interfaceFluctuations.dat")
+    fourierDelta = np.loadtxt(dirName + os.sep + "fourierFluctuations.dat")
+    if(plot=='plot'):
+        fig, ax = plt.subplots(figsize=(6,4.5), dpi=120)
+        ax.errorbar(fourierDelta[2:,0], fourierDelta[2:,1], fourierDelta[2:,2], color='k', marker='s', markersize=6, fillstyle='none', lw=0.8, capsize=3)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_ylabel("$|\\delta h(q)|^2$", fontsize=14)
+        ax.set_xlabel("$q$", fontsize=14)
+        ax.tick_params(axis='both', labelsize=12)
+        ax.set_ylim(0.0008,)
+        # fit Fourier fluctuations
+        temp = np.mean(temp) / epsilon
+        print("Temperature:", temp)
+        gamma, gamma_err, q_fit, logA, slope = fitFourierFluctuations(fourierDelta, q_max, temp, boxSize0[1])
+        print(f"Line tension γ = {gamma} ± {gamma_err}")
+        # fitted line
+        q_line = np.logspace(np.log10(q_fit.min()), np.log10(q_max), 200)
+        delta_h_line = 0.1*np.exp(linear_model(np.log(q_line), logA, slope))
+        ax.plot(q_line, delta_h_line, 'c-', lw=2, label=f"slope = {slope:.2f}")
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.2)
+        plt.savefig("/home/francesco/Pictures/soft/mips/deltaH-" + figureName + ".png", dpi=120)
         #plt.pause(0.5)
         plt.show()
 
@@ -3091,9 +3431,9 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
         lengthType += f"-s{spacing}-w{window}"
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     num1 = int(utils.readFromParams(dirName, 'num1'))
-    if not(os.path.exists(dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat")):
+    if not(os.path.exists(dirName + os.sep + "energy" + lengthType + "-" + fileName + "!.dat")):
         strainList, _ = utils.getOrderedStrainDirectories(dirName)
-        strainList = strainList[:16]  # limit to first 16 strains to avoid large deformations
+        strainList = strainList[:9]  # limit to first 20 strains to avoid large deformations
         epot = np.empty(0)
         ekin = np.empty(0)
         etot = np.empty(0)
@@ -3151,26 +3491,26 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
     if bin_by == 'etot':
         length = length[np.argsort(etot)]
         etot = np.sort(etot)
-        bin_size = (np.max(etot) - np.min(etot)) / 16
+        bin_size = (np.max(etot) - np.min(etot)) / strainList.shape[0]
     elif bin_by == 'epot':
         length = length[np.argsort(epot)]
         etot = etot[np.argsort(epot)]
-        bin_size = (np.max(epot) - np.min(epot)) / 16
+        bin_size = (np.max(epot) - np.min(epot)) / strainList.shape[0]
     elif bin_by == 'ekin':
         length = length[np.argsort(ekin)]
         etot = etot[np.argsort(ekin)]
-        bin_size = (np.max(ekin) - np.min(ekin)) / 16
+        bin_size = (np.max(ekin) - np.min(ekin)) / strainList.shape[0]
     else: # Bin by length by default 
         etot = etot[np.argsort(length)]
         length = np.sort(length)
-        bin_size = (np.max(length) - np.min(length)) / 16
+        bin_size = (np.max(length) - np.min(length)) / strainList.shape[0]
     # Compute binned data and averages
     bin_length, bin_etot = bin_and_average(length, etot, epot, ekin, bin_size, bin_by)
     ax.plot(np.sort(length), etot[np.argsort(length)]/numParticles, color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
     ax.errorbar(bin_length[:,0], bin_etot[:,0]/numParticles, bin_etot[:,1]/numParticles, bin_length[:,1], color='g', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label='Binned Data')
     # Fit curve to polynomial and get first-power coefficient
-    x = bin_length[:,0]
-    y = bin_etot[:,0]  # Subtract first value to normalize
+    x = bin_length[3:-2,0]
+    y = bin_etot[3:-2,0]  # Subtract first value to normalize
     y = y[np.argsort(x)]
     x = np.sort(x)
     x_fit = np.linspace(np.min(x), np.max(x), 100)
@@ -3179,31 +3519,31 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
         slope, intercept = popt
         slope_err = np.sqrt(np.diag(pcov))[0]
         y_fit = poly1(x_fit, slope, intercept)
-        print(f"Slope = {slope} ± {slope_err}")
+        print(f"Line tension = {slope} ± {slope_err}")
         temp = ekin / numParticles
-        print(f"Temperature = {np.mean(temp)} ± {np.std(temp)}, range = [{np.min(temp)} - {np.max(temp)}]")
+        print(f"Temperature = {np.mean(temp)} ± {np.std(temp)}")#, range = [{np.min(temp)} - {np.max(temp)}]")
         ax.plot(x_fit, y_fit/numParticles, color='r', lw=1, label=f'Linear Fit, slope $\\times N$={slope:.2f}±{slope_err:.2f}')
-        #saveLineTension(dirName, slope, slope_err, temp, dynamics=dynamics, dynType=dynType, mixed=mixed)
+        saveLineTension(dirName, slope, slope_err, temp, dynamics=dynamics, dynType=dynType, mixed=mixed)
         # Create interpolation function for the fitted curve
-        fit_interp = interp1d(x_fit, y_fit, kind='linear', fill_value='extrapolate')
+        #fit_interp = interp1d(x_fit, y_fit, kind='linear', fill_value='extrapolate')
         # Evaluate the fit at the raw length values
-        etot_fit = fit_interp(length)
+        #etot_fit = fit_interp(length)
         # Compute residuals
-        residuals = etot - etot_fit
+        #residuals = etot - etot_fit
         # Compute standard deviation of residuals (this is your noise)
-        noise = np.std(residuals, ddof=1)
-        signal = np.max(bin_etot[:,0]) - np.min(bin_etot[:,0])
-        print("Noise in energy (std of residuals):", noise, "signal:", signal, "signal/noise:", signal/noise)
+        #noise = np.std(residuals, ddof=1)
+        #signal = np.max(bin_etot[:,0]) - np.min(bin_etot[:,0])
+        #print("Noise in energy (std of residuals):", noise, "signal:", signal, "signal/noise:", signal/noise)
         # Create inverse interpolation function: from energy to expected length
-        inv_fit_interp = interp1d(y_fit, x_fit, kind='linear', fill_value='extrapolate')
+        #inv_fit_interp = interp1d(y_fit, x_fit, kind='linear', fill_value='extrapolate')
         # Evaluate the expected length at each raw energy point
-        length_fit = inv_fit_interp(etot)
+        #length_fit = inv_fit_interp(etot)
         # Compute residuals in length
-        residuals_length = length - length_fit
+        #residuals_length = length - length_fit
         # Compute standard deviation of residuals in length (noise)
-        noise_length = np.std(residuals_length, ddof=1)
-        signal_length = np.max(bin_length[:,0]) - np.min(bin_length[:,0])
-        print("Noise in length (std of residuals):", noise_length, "signal:", signal_length, "signal/noise:", signal_length/noise_length)
+        #noise_length = np.std(residuals_length, ddof=1)
+        #signal_length = np.max(bin_length[:,0]) - np.min(bin_length[:,0])
+        #print("Noise in length (std of residuals):", noise_length, "signal:", signal_length, "signal/noise:", signal_length/noise_length)
         #saveSignalOverFloor(signal, noise, signal_length, noise_length, temp, dirName, dynamics=dynamics, dynType=dynType)
     else:
         coeffs, cov = np.polyfit(x, y, degree, cov=True)
@@ -3235,6 +3575,7 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
     num1 = int(utils.readFromParams(dirName, 'num1'))
     if not(os.path.exists(dirName + os.sep + "energyAB" + lengthType + "-" + fileName + ".dat")):
         strainList, strain = utils.getOrderedStrainDirectories(dirName)
+        strainList = strainList[:9]
         epot = np.empty(0)
         ekin = np.empty(0)
         etot = np.empty(0)
@@ -3281,7 +3622,7 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
         length, etot, epot, ekin = np.loadtxt(dirName + os.sep + "energyAB" + lengthType + "-" + fileName + ".dat", unpack=True)
         #print("Loaded data from file:", dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat")
     #print(np.isnan(length).any(), np.isnan(etot).any(), np.isnan(epot).any(), np.isnan(ekin).any())
-    etot = epot / numParticles # + np.mean(ekin)
+    #etot = epot # + np.mean(ekin)
     # Group length and energy data by length
     if bin_by == 'etot':
         length = length[np.argsort(etot)]
@@ -3319,25 +3660,25 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
         print(f"Temperature = {np.mean(temp)} ± {np.std(temp)}, range = [{np.min(temp)} - {np.max(temp)}]")
         saveLineTension(dirName, slope, slope_err, temp, dynamics=dynamics, dynType=dynType, mixed=mixed, ab='ab')
         # Create interpolation function for the fitted curve
-        fit_interp = interp1d(x_fit, y_fit, kind='linear', fill_value='extrapolate')
+        #fit_interp = interp1d(x_fit, y_fit, kind='linear', fill_value='extrapolate')
         # Evaluate the fit at the raw length values
-        etot_fit = fit_interp(length)
+        #etot_fit = fit_interp(length)
         # Compute residuals
-        residuals = etot - etot_fit
+        #residuals = etot - etot_fit
         # Compute standard deviation of residuals (this is your noise)
-        noise = np.std(residuals, ddof=1)
-        signal = np.max(bin_etot[:,0]) - np.min(bin_etot[:,0])
-        print("Noise in energy (std of residuals):", noise, "signal:", signal, "signal/noise:", signal/noise)
+        #noise = np.std(residuals, ddof=1)
+        #signal = np.max(bin_etot[:,0]) - np.min(bin_etot[:,0])
+        #print("Noise in energy (std of residuals):", noise, "signal:", signal, "signal/noise:", signal/noise)
         # Create inverse interpolation function: from energy to expected length
-        inv_fit_interp = interp1d(y_fit, x_fit, kind='linear', fill_value='extrapolate')
+        #inv_fit_interp = interp1d(y_fit, x_fit, kind='linear', fill_value='extrapolate')
         # Evaluate the expected length at each raw energy point
-        length_fit = inv_fit_interp(etot)
+        #length_fit = inv_fit_interp(etot)
         # Compute residuals in length
-        residuals_length = length - length_fit
+        #residuals_length = length - length_fit
         # Compute standard deviation of residuals in length (noise)
-        noise_length = np.std(residuals_length, ddof=1)
-        signal_length = np.max(bin_length[:,0]) - np.min(bin_length[:,0])
-        print("Noise in length (std of residuals):", noise_length, "signal:", signal_length, "signal/noise:", signal_length/noise_length)
+        #noise_length = np.std(residuals_length, ddof=1)
+        #signal_length = np.max(bin_length[:,0]) - np.min(bin_length[:,0])
+        #print("Noise in length (std of residuals):", noise_length, "signal:", signal_length, "signal/noise:", signal_length/noise_length)
         #saveSignalOverFloor(signal, noise, signal_length, noise_length, ekin, dirName, dynamics=dynamics, dynType=dynType)
     else:
         coeffs, cov = np.polyfit(x, y, degree, cov=True)
@@ -3345,7 +3686,7 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
         slope = coeffs[-2]  # Coefficient of x (first power)
         slope_err = np.sqrt(np.diag(cov))[-2]
         y_fit = np.polyval(coeffs, x_fit)
-    ax.plot(x_fit, y_fit, color='r', lw=1, label=f'Linear Fit, slope $\\times N$={slope*numParticles:.2f}±{slope_err*numParticles:.2f}')
+    ax.plot(x_fit, y_fit, color='r', lw=1, label=f'Linear Fit, slope $\\times N$={slope:.2f}±{slope_err:.2f}')
     ax.legend(loc='best', fontsize=12)
     fig.tight_layout()
     if show == 'show':
@@ -3355,7 +3696,10 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
 
 def plotLineTension(dirName, which, mixed = 'mixed'):
     if mixed == 'mixed':
-        data = np.loadtxt(dirName + os.sep + "lineTension-" + which + "-mixed.dat")
+        if which == 'nve-box13':
+            data = np.loadtxt(dirName + os.sep + "lineTension-nve-mixed.dat")
+        else:
+            data = np.loadtxt(dirName + os.sep + "lineTension-" + which + "-mixed.dat")
     else:
         data = np.loadtxt(dirName + os.sep + "lineTension-" + which + ".dat")
     fig, ax = plt.subplots(figsize=(6,4.5), dpi = 120)
@@ -3367,10 +3711,10 @@ def plotLineTension(dirName, which, mixed = 'mixed'):
         ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
         x = np.linspace(0,2,100)
     elif which == 'nve-box13':
-        #ax.set_xlim(0.525, 1.025)
+        ax.set_xlim(0.465, 1.025)
         ax.set_xlabel("$Temperature,$ $k_B T / \\varepsilon$", fontsize=14)
-        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='c', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
-        data_nve = np.loadtxt(dirName + os.sep + "../../../box31/2lj/nh2/lineTension-nve-mixed.dat")
+        ax.errorbar(data[:,0], data[:,2], data[:,3], data[:,1], color='c', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3)
+        data_nve = np.loadtxt(dirName + os.sep + "../../../../box31/2lj/0.60/nh2/lineTension-nve-mixed.dat")
         ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='k', marker='o', markersize=8, fillstyle='none', lw=1, capsize=3)
         x = np.linspace(0,2,100)
         ax.legend(['$NVE$ $box13$', '$NVE,$ $box31$'], loc='best', fontsize=12)
@@ -3978,7 +4322,7 @@ def sampleInterfaceFluctuations(dirPath, threshold=0.3, numSamples=30, temp="0.3
     spacing = 2*sigma
     bins = np.arange(0, boxSize[1], spacing)
     centers = (bins[1:] + bins[:-1])/2
-    freq = rfftfreq(bins.shape[0]-1, spacing)*sigma
+    freq = np.fft.rfftfreq(bins.shape[0]-1, spacing)*sigma
     dirList, timeList = utils.getOrderedDirectories(dirName)
     timeList = timeList.astype(int)
     dirList = dirList[np.argwhere(timeList%dirSpacing==0)[:,0]]
@@ -4633,10 +4977,27 @@ if __name__ == '__main__':
         computeMobilityCorrelation(dirName, delta_t, plot)
 
     elif(whichCorr == "2interface"):
-        num1 = int(sys.argv[3])
-        thickness = int(sys.argv[4])
-        plot = sys.argv[5]
-        average2InterfaceFluctuations(dirName, num1, thickness, plot)
+        compute = sys.argv[3]
+        plot = sys.argv[4]
+        average2InterfaceFluctuations(dirName, compute, plot)
+
+    elif(whichCorr == "2interstrain"):
+        dynamics = sys.argv[3]
+        plot = sys.argv[4]
+        average2InterfaceFluOverStrain(dirName, dynamics, plot=plot)
+
+    elif(whichCorr == "gammacwt"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        compute = sys.argv[5]
+        plotTensionVSTempCWT(dirName, figureName, dynamics, compute)
+
+    elif(whichCorr == "gammacwtdamping"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        compute = sys.argv[5]
+        slope_range = sys.argv[6]
+        plotTensionVSDampingCWT(dirName, figureName, dynamics, compute, slope_range=slope_range)
 
     elif(whichCorr == "wallstrain"):
         which = sys.argv[3]
