@@ -18,6 +18,8 @@ from scipy.spatial import cKDTree
 from tqdm import tqdm
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
+from scipy.interpolate import UnivariateSpline
+from scipy.stats import binned_statistic
 from numba import njit
 
 def computeClusterTemperatureVSTime(dirName, threshold=0.3, dirSpacing=1):
@@ -2671,12 +2673,11 @@ def kmeans_1d_two_clusters(x, max_iter=100, tol=1e-6):
         c1, c2 = new_c1, new_c2
     return np.sort(np.array([c1, c2]))
 
-
 def linear_model(logq, logA, slope):
     return logA + slope * logq
 
 def fitFourierFluctuations(fdelta, q_max, temp, Ly, bounds=False, slope_range=1e-03):
-    print("COMPUTING")
+    print("Fitting with bounds", bounds, "slope_range:", slope_range)
     # fit Fourier fluctuations
     q = fdelta[4:,0]
     delta_h = fdelta[4:,1]
@@ -2782,17 +2783,30 @@ def average2InterfaceFluctuations(dirName, compute=False, plot=False, spacing=3,
         leftFourierDeltaHeight = np.array(leftFourierDeltaHeight) if len(leftFourierDeltaHeight) > 0 else np.empty((0, freq.size))
         rightDeltaHeight = np.array(rightDeltaHeight) if len(rightDeltaHeight) > 0 else np.empty((0, nbins))
         rightFourierDeltaHeight = np.array(rightFourierDeltaHeight) if len(rightFourierDeltaHeight) > 0 else np.empty((0, freq.size))
-        # concatenate interfaces (if both exist)
-        deltaHeight = np.vstack([leftDeltaHeight, rightDeltaHeight]) if (leftDeltaHeight.size and rightDeltaHeight.size) else (leftDeltaHeight if leftDeltaHeight.size else rightDeltaHeight)
-        fourierDeltaHeight = np.vstack([leftFourierDeltaHeight, rightFourierDeltaHeight]) if (leftFourierDeltaHeight.size and rightFourierDeltaHeight.size) else (leftFourierDeltaHeight if leftFourierDeltaHeight.size else rightFourierDeltaHeight)
         # compute mean and std across snapshots
-        mean_h = np.mean(deltaHeight, axis=0)
-        std_h = np.std(deltaHeight, axis=0, ddof=1) if deltaHeight.shape[0] > 1 else np.zeros_like(mean_h)
-        mean_spec = np.mean(fourierDeltaHeight, axis=0)
-        std_spec = np.std(fourierDeltaHeight, axis=0, ddof=1) if fourierDeltaHeight.shape[0] > 1 else np.zeros_like(mean_spec)
+        left_mean_h = np.mean(leftDeltaHeight, axis=0)
+        left_std_h = np.std(leftDeltaHeight, axis=0, ddof=1) if leftDeltaHeight.shape[0] > 1 else np.zeros_like(left_mean_h)
+        left_mean_hq = np.mean(leftFourierDeltaHeight, axis=0)
+        left_std_hq = np.std(leftFourierDeltaHeight, axis=0, ddof=1) if leftFourierDeltaHeight.shape[0] > 1 else np.zeros_like(left_mean_hq)
+        right_mean_h = np.mean(rightDeltaHeight, axis=0)
+        right_std_h = np.std(rightDeltaHeight, axis=0, ddof=1) if rightDeltaHeight.shape[0] > 1 else np.zeros_like(right_mean_h)
+        right_mean_hq = np.mean(rightFourierDeltaHeight, axis=0)
+        right_std_hq = np.std(rightFourierDeltaHeight, axis=0, ddof=1) if rightFourierDeltaHeight.shape[0] > 1 else np.zeros_like(right_mean_hq)
+        mean_hq = np.zeros_like(left_mean_hq)
+        std_hq = np.zeros_like(left_std_hq)
+        # combine left and right interfaces
+        if leftFourierDeltaHeight.size and rightFourierDeltaHeight.size:
+            mean_hq = 0.5 * (left_mean_hq + right_mean_hq)
+            std_hq = 0.5 * np.sqrt(left_std_hq**2 + right_std_hq**2)
+        elif leftFourierDeltaHeight.size:
+            mean_hq = left_mean_hq
+            std_hq = left_std_hq
+        elif rightFourierDeltaHeight.size:
+            mean_hq = right_mean_hq
+            std_hq = right_std_hq
         # save
-        np.savetxt(os.path.join(dirName, "interfaceFluctuations.dat"), np.column_stack((centers, mean_h, std_h)))
-        np.savetxt(os.path.join(dirName, "fourierFluctuations.dat"), np.column_stack((freq, mean_spec, std_spec)))
+        np.savetxt(os.path.join(dirName, "interfaceFluctuations.dat"), np.column_stack((centers, left_mean_h, left_std_h, right_mean_h, right_std_h)))
+        np.savetxt(os.path.join(dirName, "fourierFluctuations.dat"), np.column_stack((freq, mean_hq, std_hq)))
     deltaHeight = np.loadtxt(dirName + os.sep + "interfaceFluctuations.dat")
     fourierDelta = np.loadtxt(dirName + os.sep + "fourierFluctuations.dat")
     if(plot=='plot'):
@@ -2823,7 +2837,172 @@ def average2InterfaceFluctuations(dirName, compute=False, plot=False, spacing=3,
         #plt.pause(0.5)
         plt.show()
 
-def average2InterfaceFluOverStrain(dirName, dynamics, compute=False, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000, bounds=False, slope_range=1e-03, plot=False):
+def compute_Cq_tau(hqt, max_lag=None):
+    """
+    hqt: array of shape (Nt, Nq), complex
+    returns:
+        Cqtau: array of shape (max_lag+1, Nq)
+    """
+    Nt, Nq = hqt.shape
+    if max_lag is None:
+        max_lag = Nt // 2
+
+    Cqtau = np.zeros((max_lag + 1, Nq), dtype=np.complex128)
+
+    for tau in range(max_lag + 1):
+        # average over valid time origins
+        Cqtau[tau] = np.mean(hqt[tau:] * np.conj(hqt[:Nt - tau]), axis=0)
+
+    return Cqtau
+
+####################### Average interface correlations in binary mixture #######################
+def average2InterfaceCorrelations(dirName, compute=False, plot=False, spacing=3, min_count=10, dirSpacing=20000):
+    boxSize = np.array(np.loadtxt(os.path.join(dirName, "boxSize.dat")))
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    dt = float(utils.readFromParams(dirName, "dt"))
+    # choose bin spacing (smaller than before)
+    Lx, Ly = boxSize[0], boxSize[1]
+    rad = np.array(np.loadtxt(os.path.join(dirName, "particleRad.dat")))
+    sigma = 2.0 * np.mean(rad)
+    spacing *= sigma   # recommended spacing_factor ~ 0.5 - 1.0
+    nbins = int(np.floor(Ly / spacing))
+    if nbins < 8:
+        raise ValueError("box Ly too small or spacing too large; reduce spacing_factor.")
+    bins = np.linspace(0, Ly, nbins + 1)
+    freq = 2 * np.pi * np.fft.rfftfreq(nbins, d=(Ly/nbins))
+    if compute == 'compute':
+        eps = 1.4 * np.max(rad)
+        num1 = int(utils.readFromParams(dirName, "num1"))
+        dirList, timeList = utils.getOrderedDirectories(dirName)
+        timeList = timeList.astype(int)
+        # select snapshot spacing
+        indices = np.argwhere(timeList % dirSpacing == 0)[:, 0]
+        dirList = dirList[indices]
+        timeList = timeList[indices]
+        print("Lx:", boxSize[0], "Ly:", boxSize[1], "number of samples:", dirList.shape[0], "number of bins:", nbins)
+        # containers
+        leftDeltaHeight = []
+        leftFourierDeltaHeight = []
+        rightDeltaHeight = []
+        rightFourierDeltaHeight = []
+        for d in range(dirList.shape[0]):
+            dirSample = dirName + os.sep + dirList[d]
+            # load particle variables
+            pos = utils.getPBCPositions(dirSample + "/particlePos.dat", boxSize)
+            labels = np.zeros(numParticles)
+            labels[:num1] = 1
+            clusterLabels, maxLabel = cluster.getTripleWrappedClusterLabels(pos, rad, boxSize, labels, eps)
+            # center the slab (your provided function)
+            pos = utils.centerSlab(pos, rad, boxSize, clusterLabels, maxLabel)
+            clusterPos = pos[:num1].copy()  # type A
+            # robust center (x) of the dense slab
+            center_x = np.mean(clusterPos[:, 0])
+            # shift x to centered periodic interval [-Lx/2, Lx/2)
+            x_shifted = ((clusterPos[:, 0] - center_x + 0.5 * Lx) % Lx) - 0.5 * Lx
+            y = clusterPos[:, 1].copy()
+            leftHeight = np.full(nbins, np.nan)
+            rightHeight = np.full(nbins, np.nan)
+            # loop over y-bins
+            for j in range(nbins):
+                ylo, yhi = bins[j], bins[j + 1]
+                # select particles inside the y bin (including lower edge, excluding upper)
+                mask = (y >= ylo) & (y < yhi)
+                if mask.sum() < min_count:
+                    continue
+                x_in_bin = x_shifted[mask]
+                # apply 1D kmeans (k=2)
+                centers_2 = kmeans_1d_two_clusters(x_in_bin)
+                if centers_2 is None:
+                    continue
+                leftHeight[j], rightHeight[j] = centers_2[0], centers_2[1]
+            # require continuous interface: no NaNs across bins
+            if np.isnan(leftHeight).any() or np.isnan(rightHeight).any():
+                # skip this snapshot — conservative choice to avoid bias
+                continue
+            # subtract mean (enforce zero average)
+            leftHeight -= np.mean(leftHeight)
+            rightHeight -= np.mean(rightHeight)
+            # store heights and FT power
+            leftDeltaHeight.append(leftHeight.copy())
+            leftFourierDeltaHeight.append(np.fft.rfft(leftHeight) / nbins)
+            rightDeltaHeight.append(rightHeight.copy())
+            rightFourierDeltaHeight.append(np.fft.rfft(rightHeight) / nbins)
+        # convert to arrays
+        if len(leftDeltaHeight) + len(rightDeltaHeight) == 0:
+            raise RuntimeError("No valid snapshots passed continuity and min_count checks. Try smaller min_count or coarser spacing.")
+
+        leftDeltaHeight = np.array(leftDeltaHeight) if len(leftDeltaHeight) > 0 else np.empty((0, nbins))
+        leftFourierDeltaHeight = np.array(leftFourierDeltaHeight) if len(leftFourierDeltaHeight) > 0 else np.empty((0, freq.size))
+        rightDeltaHeight = np.array(rightDeltaHeight) if len(rightDeltaHeight) > 0 else np.empty((0, nbins))
+        rightFourierDeltaHeight = np.array(rightFourierDeltaHeight) if len(rightFourierDeltaHeight) > 0 else np.empty((0, freq.size))
+        # compute correlation across snapshots
+        corrq_right = compute_Cq_tau(rightFourierDeltaHeight)
+        corrq_left = compute_Cq_tau(leftFourierDeltaHeight)
+        corrq0_right = corrq_right[0].real
+        corrq_right = corrq_right.real / corrq0_right
+        corrq0_left = corrq_left[0].real
+        corrq_left = corrq_left.real / corrq0_left
+        tau = np.arange(corrq_right.shape[0]) * dirSpacing * dt  # physical time
+        # save correlations
+        np.savetxt(os.path.join(dirName, "interfaceCorrelations.dat"), np.column_stack((tau, corrq_left, corrq_right)))
+        print("corrq_right shape:", corrq_right.shape, "number of time lags:", tau.shape[0], "number of q modes:", corrq_right.shape[1])
+    else:
+        # load correlations
+        corrData = np.loadtxt(os.path.join(dirName, "interfaceCorrelations.dat"))
+        tau = corrData[:,0]
+        corrq_left = corrData[:,1:corrData.shape[1]//2 + 1]
+        corrq_right = corrData[:,corrData.shape[1]//2 +1:]
+    # plot
+    if plot == 'plot':
+        fig, ax = plt.subplots(1, 2, figsize=(11,4.5), dpi=120)
+        colorList = cm.get_cmap('viridis')
+        qindex = np.array([1,2,3,4,5,10])
+        for i, iq in enumerate(qindex):
+            ax[0].plot(tau, corrq_right[:,iq], 'o-', color=colorList(i / qindex.shape[0]), lw=0.9, label=f'$q={freq[iq]:.3f}$', fillstyle='none')
+        # extract decay rates
+        omegaq = np.zeros(corrq_right.shape[1])
+        for iq in range(corrq_right.shape[1]):
+            # choose fitting window (avoid noise floor)
+            valid = (corrq_right[:, iq] > 0.2) & (corrq_right[:, iq] < 0.8)
+            if valid.sum() < 4:
+                omegaq[iq] = np.nan
+                continue
+            coeffs = np.polyfit(tau[valid], np.log(corrq_right[valid, iq]), 1)
+            omegaq[iq] = -coeffs[0]
+            print(f"q={freq[iq]:.4f}, omega(q)={omegaq[iq]}")
+            #if iq in qindex:
+            #    ax[0].plot(tau, np.exp(coeffs[1] + coeffs[0]*tau), ls='--', color=colorList(np.where(qindex==iq)[0][0] / qindex.shape[0]))
+        ax[0].tick_params(axis='both', labelsize=12)
+        ax[0].set_xlabel(r"$\tau$", fontsize=14)
+        ax[0].set_ylabel(r"$C(q,\tau)/C(q,0)$", fontsize=14)
+        ax[0].legend(fontsize=10, ncols=2)
+        # plot omega(q)
+        if compute == 'compute':
+            hq2_static = np.mean(np.abs(rightFourierDeltaHeight)**2, axis=0)
+            hq2_dyn = corrq0_right
+            ax[1].loglog(freq, hq2_static, 'v', lw=0.9, color='g', fillstyle='none', label='$\\langle|h(q)|^2\\rangle_{static}$')
+            ax[1].loglog(freq, hq2_dyn, marker='^', lw=0.9, color='b', fillstyle='none', label='$\\langle|h(q)|^2\\rangle_{dynamic}$')
+        ax[1].loglog(freq, omegaq, color='k', lw=0.9, marker='o', fillstyle='none', label='$\\Omega(q)$')
+        # guide to the eye
+        iq0 = 5  # for example
+        q0 = freq[iq0]
+        h0 = hq2_static[iq0]
+        guide = h0 * (freq[1:] / q0)**(-2)
+        freq = freq[1:]
+        ax[1].loglog(freq[freq<0.4], guide[freq<0.4], ls='dotted', color='c', label="$q^{-2}$")
+        ax[1].set_ylim(1.2e-3, 1.2e01)
+        # bin data for visualization
+        #bins = np.logspace(np.log10(freq[1]), np.log10(freq.max()), 15)
+        #omegaq_binned, _, _ = binned_statistic(freq, omegaq, statistic='mean', bins=bins)
+        #q_centers = np.sqrt(bins[:-1]*bins[1:])
+        #ax[1].loglog(q_centers, omegaq_binned, 'ro', fillstyle='none', label='$binned$ $data$')
+        ax[1].tick_params(axis='both', labelsize=12)
+        ax[1].set_xlabel(r"$q$", fontsize=14)
+        ax[1].legend(fontsize=10)
+        plt.tight_layout()
+        plt.show()
+
+def average2InterfaceFluOverStrain(dirName, dynamics, compute, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000, bounds=True, slope_range=1e-02, plot=False):
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
     epsilon = float(utils.readFromParams(dirName, "epsilon"))
     strainList, strain = utils.getOrderedStrainDirectories(dirName)
@@ -2862,24 +3041,43 @@ def average2InterfaceFluOverStrain(dirName, dynamics, compute=False, spacing=3, 
         fig.savefig(figureName + ".png", transparent=False, format = "png")
     return np.mean(gamma), np.std(gamma), np.mean(temp), np.std(temp)
 
-def plotTensionVSTempCWT(dirName, figureName, dynamics, compute, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000):
-    if not(os.path.exists(dirName + os.sep + "lineTensionCWT-" + figureName + "!.dat")):
-        tempList = np.array(['0.90', '1.00', '1.10', '1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00'])
+def plotTensionVSTempCWT(dirName, figureName, dynamics, compute, bounds, slope_range, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000):
+    if dynamics == 'nve':
+        label1 = "$NVE$"
+        label2 = "$NVT$ $\\gamma = 10^{-5}$"
+        fileRead = "../../../../box13/2lj/0.60/nh2/lineTensionCWT-nvt-box13.dat"
+    elif dynamics == '2lj/nve':
+        label1 = "$NVE,$ $lj$"
+        label2 = "$NVE,$ $2lj$"
+        fileRead = "../../../../box13/2lj/0.60/nh2/lineTensionCWT-nve-box13.dat"
+        #label1 = "$NVE$"
+        #label2 = "$NVT$ $\\gamma = 10^{-5}$"
+        #fileRead = "../../../../box13/lj/0.60/nh2/lineTensionCWT-nvt-box13.dat"
+    else:
+        label1 = "$NVT$ $CWT$"
+        label2 = "$NVT$ $work$ $method$"
+        fileRead = "../../../../box13/2lj/0.60/nh2/lineTension-nve.dat"
+    if not(os.path.exists(dirName + os.sep + "lineTensionCWT-" + figureName + ".dat")):
+        tempList = np.array(['1.20', '1.30', '1.40', '1.50', '1.60', '1.70', '1.80', '1.90', '2.00'])
         gamma = np.zeros((tempList.shape[0],2))
         temp = np.zeros((tempList.shape[0],2))
         for t in range(tempList.shape[0]):
             dirTemp = dirName + "T" + tempList[t] + "/nve/nve-biaxial-comp5e-06-tmax2e03/"
-            print("********************************************* Gathering data for T:", tempList[t], "*********************************************")
-            gamma[t,0], gamma[t,1], temp[t,0], temp[t,1] = average2InterfaceFluOverStrain(dirTemp, dynamics, compute, spacing, min_count, q_max, dirSpacing, bounds=False)
-            print("Temperature:", temp[t,0], "±", temp[t,1], "line tension:", gamma[t,0], "±", gamma[t,1])
+            #print("********************************************* Gathering data for T:", tempList[t], "*********************************************")
+            gamma[t,0], gamma[t,1], temp[t,0], temp[t,1] = average2InterfaceFluOverStrain(dirTemp, dynamics, compute, spacing, 
+                                                                                          min_count, q_max, dirSpacing, bounds=bounds, slope_range=slope_range)
+            #print("Temperature:", temp[t,0], "±", temp[t,1], "line tension:", gamma[t,0], "±", gamma[t,1])
         np.savetxt(dirName + os.sep + "lineTensionCWT-" + figureName + ".dat", np.column_stack((temp, gamma)))
     data = np.loadtxt(dirName + os.sep + "lineTensionCWT-" + figureName + ".dat")
     temp = data[:,:2]
     gamma = data[:,2:]
     fig, ax = plt.subplots(figsize=(6,4.5), dpi=120)
-    ax.errorbar(temp[1:,0], gamma[1:,0], gamma[1:,1], temp[1:,1], color='k', marker='o', lw=1, markersize=8, capsize=3, fillstyle='none', label="$CWT$", alpha=0.5)
-    data_nve = np.loadtxt(dirName + os.sep + "../../../../box13/2lj/0.60/nh2/lineTension-nve.dat")
-    ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='b', marker='v', markersize=8, fillstyle='none', lw=1, capsize=3, label="$Work$ $method$")
+    ax.errorbar(temp[1:,0], gamma[1:,0], gamma[1:,1], temp[1:,1], color='k', marker='o', lw=1, markersize=8, 
+                capsize=3, fillstyle='none', label=label1, alpha=0.5)
+    # comparison
+    #data_nve = np.loadtxt(dirName + os.sep + fileRead)
+    #ax.errorbar(data_nve[1:,0], data_nve[1:,2], data_nve[1:,3], data_nve[1:,1], color='b', marker='v', markersize=8, 
+    #            fillstyle='none', lw=1, capsize=3, label=label2)
     ax.legend(fontsize=12, loc='best')
     ax.set_xlim(0.46, 0.96)
     ax.plot(np.linspace(0,1,100), np.zeros(100), ls='dotted', color='k', lw=0.8)
@@ -2891,15 +3089,39 @@ def plotTensionVSTempCWT(dirName, figureName, dynamics, compute, spacing=3, min_
     fig.savefig(figureName + ".png", transparent=False, format = "png")
     plt.show()
 
+def compareTensionVSTempCWT(dirName, figureName):
+    fig, ax = plt.subplots(figsize=(6,4.5), dpi=120)
+    fileList = np.array(["2lj", "lj-2lj", "lj-2lj-nvt"])
+    labelList = np.array(["$2lj,$ $NVE$", "$lj-2lj,$ $NVE$", "$lj-2lj,$ $NVT$"])
+    colorList = ['k', 'b', 'g']
+    markerList = ['o', 's', 'v']
+    for d in range(fileList.shape[0]):
+        if d == 0: data = np.loadtxt(dirName + os.sep + "2lj/0.60/nh2/lineTensionCWT-" + fileList[d] + ".dat")
+        else: data = np.loadtxt(dirName + os.sep + "lj/0.60/nh2/lineTensionCWT-" + fileList[d] + ".dat")
+        temp = data[:,:2]
+        gamma = data[:,2:]
+        ax.errorbar(temp[1:,0], gamma[1:,0], gamma[1:,1], temp[1:,1], color=colorList[d], 
+                    marker=markerList[d], lw=1, markersize=8, capsize=3, fillstyle='none', label=labelList[d])
+    ax.legend(fontsize=10, loc='best')
+    ax.set_xlim(0.46, 0.96)
+    ax.plot(np.linspace(0,1,100), np.zeros(100), ls='dotted', color='k', lw=0.8)
+    ax.set_ylabel("$\\frac{\\gamma \\sigma}{\\varepsilon}$", fontsize=22, rotation='horizontal', labelpad=15)
+    ax.set_xlabel("$Temperature,$ $k_BT/\\varepsilon$", fontsize=14)
+    ax.tick_params(axis='both', labelsize=12)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/mips/compareCWT-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
+    plt.show()
+
 def plotTensionVSDampingCWT(dirName, figureName, dynamics, compute, spacing=3, min_count=5, q_max=0.2, dirSpacing=100000, slope_range='1e-03'):
     if not(os.path.exists(dirName + os.sep + "lineTensionCWT-" + figureName + "-" + slope_range + ".dat")):
         dampList = np.array(['1e-05', '1e-03', '1e-01', '1', '1e01', '1e03'])
         gamma = np.zeros((dampList.shape[0],2))
         damping = dampList.astype(float)
         for t in range(dampList.shape[0]):
-            dirDamp = dirName + "/damping" + dampList[t] + "/nvt-biaxial-comp5e-06-tmax2e03/"
+            dirPath = dirName + "/nve/nve-biaxial-comp5e-06-tmax2e03/"
             print("********************************************* Gathering data for damping:", dampList[t], "*********************************************")
-            gamma[t,0], gamma[t,1], temp, temp_err = average2InterfaceFluOverStrain(dirDamp, dynamics + dampList[t], compute, spacing, min_count, q_max, dirSpacing, 
+            gamma[t,0], gamma[t,1], temp, temp_err = average2InterfaceFluOverStrain(dirPath, dynamics + dampList[t], compute, spacing, min_count, q_max, dirSpacing, 
                                                                                     bounds=True, slope_range=float(slope_range))
             print("Damping:", damping[t], "line tension:", gamma[t,0], "±", gamma[t,1])
             print("Temperature:", temp, "±", temp_err)
@@ -3043,20 +3265,42 @@ def compute2InterfaceFluOverStrain(dirName, figureName, dynamics, plot=False, sp
         #plt.pause(0.5)
         plt.show()
 
+def spline_interface_length(pos, smooth=0.0):
+    """
+    pos: array of shape (N, 2) with columns [x, y]
+    smooth: spline smoothing parameter (0 = interpolate)
+    """
+    # remove empty rows
+    mask = ~np.isnan(pos[:,0])
+    pos = pos[mask]
+    if pos.shape[0] < 4:
+        return 0.0
+    # sort by y (important)
+    idx = np.argsort(pos[:,1])
+    y = pos[idx,1]
+    x = pos[idx,0]
+    # fit spline x(y)
+    spline = UnivariateSpline(y, x, s=smooth)
+    # compute arc length
+    dy = np.diff(y)
+    y_mid = 0.5 * (y[:-1] + y[1:])
+    dxdy = spline.derivative()(y_mid)
+    length = np.sum(np.sqrt(1.0 + dxdy**2) * dy)
+    return length
+
 ####################### Average cluster height interface #######################
-def get2InterfaceLength(dirName, num1=0, spacing='2', window=3, mixed=0, plot=False, lj=True):
+def get2InterfaceLength(dirName, spacing='2', mixed=0, plot=False, lj=True):
     if mixed == 'mixed':
         lengthType = "MixedLength"
     else:
         lengthType = "Length"
         mixedLength = 0
-    if spacing != 3 or window != 2:
-        lengthType += f"-s{spacing}-w{window}"
     #print(lengthType)
     sep = utils.getDirSep(dirName, "boxSize")
     boxSize = np.array(np.loadtxt(dirName + sep + "boxSize.dat"))
     rad = np.array(np.loadtxt(dirName + "../particleRad.dat"))
     numParticles = int(utils.readFromParams(dirName + sep, "numParticles"))
+    num1 = int(utils.readFromParams(dirName + sep, 'num1'))
     # load particle variables
     pos = utils.getPBCPositions(dirName + "/particlePos.dat", boxSize)
     if lj:
@@ -3095,10 +3339,11 @@ def get2InterfaceLength(dirName, num1=0, spacing='2', window=3, mixed=0, plot=Fa
             rightInterface[j] = np.mean(binDistance[rightMask])
             rightPos[j,0] = rightInterface[j]
             rightPos[j,1] = np.mean(binPos[rightMask,1])
-    if(window > 1):
-        leftPos = np.column_stack((utils.computeMovingAverage(leftPos[:,0], window), utils.computeMovingAverage(leftPos[:,1], window)))
-        rightPos = np.column_stack((utils.computeMovingAverage(rightPos[:,0], window), utils.computeMovingAverage(rightPos[:,1], window)))
-    length = 0
+    # smoothing parameter: small but nonzero reduces particle noise
+    window = 2
+    leftPos = np.column_stack((utils.computeMovingAverage(leftPos[:,0], window), utils.computeMovingAverage(leftPos[:,1], window)))
+    rightPos = np.column_stack((utils.computeMovingAverage(rightPos[:,0], window), utils.computeMovingAverage(rightPos[:,1], window)))
+    length = 0.0
     if(rightInterface[rightInterface!=0].shape[0] == rightInterface.shape[0]):
         prevPos = rightPos[0]
         for j in range(1,bins.shape[0]-1):
@@ -3143,6 +3388,13 @@ def get2InterfaceLength(dirName, num1=0, spacing='2', window=3, mixed=0, plot=Fa
     if(plot == "plot"):
         #print("Number of mixed particles:", mixedNum, "length:", mixedLength)
         print("Interface length:", length)
+        #length = 0.0
+        #spline_smooth = 0.5 * spacing   # tune if needed
+        #if np.all(rightInterface != 0):
+        #    length += spline_interface_length(rightPos, smooth=spline_smooth)
+        #if np.all(leftInterface != 0):
+        #    length += spline_interface_length(leftPos, smooth=spline_smooth)
+        #print("Interface length:", length)
         #print("Without mixed length:", length - mixedLength)
         if(boxSize[0] > boxSize[1]):
             fig, ax = plt.subplots(figsize=(2.5*boxSize[0]/boxSize[1], 3), dpi = 120)
@@ -3361,7 +3613,7 @@ def plotEnergyVSHeight(dirName, dynamics='dynamics', dynType='nve', which='etot'
     else:
         plt.pause(0.5)
 
-def plotLengthVSTime(dirName, dynamics='dynamics', spacing='3', window=2, mixed='mixed', show=False):
+def plotLengthVSTime(dirName, dynamics='dynamics', spacing='3', mixed='mixed', show=False):
     '''
     plot interface length vs time for a set of strain values
     '''
@@ -3374,7 +3626,6 @@ def plotLengthVSTime(dirName, dynamics='dynamics', spacing='3', window=2, mixed=
     else:
         lengthType = "Length"
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    num1 = int(utils.readFromParams(dirName, 'num1'))
     strainList = np.array(['strain0.0200', 'strain0.0800', 'strain0.1400'])
     colorList = ['b', 'g', 'c']
     for s in range(strainList.shape[0]):
@@ -3395,7 +3646,7 @@ def plotLengthVSTime(dirName, dynamics='dynamics', spacing='3', window=2, mixed=
                         if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
                             collect = True
                             if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
-                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                                get2InterfaceLength(dirSample, spacing, mixed=mixed)
                             currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
                         else:
                             print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
@@ -3415,7 +3666,7 @@ def plotLengthVSTime(dirName, dynamics='dynamics', spacing='3', window=2, mixed=
     else:
         plt.pause(0.5)
 
-def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', spacing='1', window=5, bin_by='length', mixed='mixed', degree=1, show=False):
+def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', spacing='1', bin_by='length', mixed='mixed', degree=1, show=False):
     '''
     group energy and length data for all the values of strain and time
     '''
@@ -3427,13 +3678,10 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
         lengthType = "MixedLength"
     else:
         lengthType = "Length"
-    if spacing != 3 or window != 2:
-        lengthType += f"-s{spacing}-w{window}"
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    num1 = int(utils.readFromParams(dirName, 'num1'))
     if not(os.path.exists(dirName + os.sep + "energy" + lengthType + "-" + fileName + "!.dat")):
         strainList, _ = utils.getOrderedStrainDirectories(dirName)
-        strainList = strainList[:9]  # limit to first 20 strains to avoid large deformations
+        strainList = strainList[:10]  # limit to first 20 strains to avoid large deformations
         epot = np.empty(0)
         ekin = np.empty(0)
         etot = np.empty(0)
@@ -3460,8 +3708,8 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
                         rad = np.loadtxt(dirSample + "../particleRad.dat")
                         if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
                             collect = True
-                            if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
-                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                            if not(os.path.exists(dirSample + "interface" + lengthType + "!.dat")):
+                                get2InterfaceLength(dirSample, spacing, mixed=mixed)
                             currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
                         else:
                             print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
@@ -3479,7 +3727,7 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
                             heat = np.append(heat, 0)
                         else:
                             heat = np.append(heat, energy[t,3])
-            print(strainList[s], count)
+            print(strainList[s], count, np.mean(length[-count:]), np.std(length[-count:]))
         np.savetxt(dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat", np.column_stack((length, etot, epot, ekin, heat)))
     else:
         length, etot, epot, ekin, heat = np.loadtxt(dirName + os.sep + "energy" + lengthType + "-" + fileName + ".dat", unpack=True)
@@ -3509,8 +3757,8 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
     ax.plot(np.sort(length), etot[np.argsort(length)]/numParticles, color='k', marker='o', markersize=4, fillstyle='none', lw=0, label='Raw Data')
     ax.errorbar(bin_length[:,0], bin_etot[:,0]/numParticles, bin_etot[:,1]/numParticles, bin_length[:,1], color='g', marker='s', markersize=8, fillstyle='none', lw=1, capsize=3, label='Binned Data')
     # Fit curve to polynomial and get first-power coefficient
-    x = bin_length[3:-2,0]
-    y = bin_etot[3:-2,0]  # Subtract first value to normalize
+    x = bin_length[:,0]
+    y = bin_etot[:,0]
     y = y[np.argsort(x)]
     x = np.sort(x)
     x_fit = np.linspace(np.min(x), np.max(x), 100)
@@ -3559,7 +3807,7 @@ def groupEnergyLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileN
     else:
         plt.pause(0.5)
 
-def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', spacing='3', window=2, bin_by='length', mixed='mixed', degree=1, show=False):
+def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', spacing='3', bin_by='length', mixed='mixed', degree=1, show=False):
     '''
     group energy and length data for all the values of strain and time
     '''
@@ -3572,7 +3820,6 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
     else:
         lengthType = "Length"
     numParticles = int(utils.readFromParams(dirName, "numParticles"))
-    num1 = int(utils.readFromParams(dirName, 'num1'))
     if not(os.path.exists(dirName + os.sep + "energyAB" + lengthType + "-" + fileName + ".dat")):
         strainList, strain = utils.getOrderedStrainDirectories(dirName)
         strainList = strainList[:9]
@@ -3598,7 +3845,7 @@ def groupEnergyABLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
                         if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
                             collect = True
                             if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
-                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                                get2InterfaceLength(dirSample, spacing, mixed=mixed)
                             currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
                         else:
                             print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
@@ -3888,7 +4135,7 @@ def savePressure(dirName, pressure, temp, dynamics='dynamics', dynType='nve'):
                     f.write("# mean_temp  std_temp  press  std_press\n")
             np.savetxt(f, data.reshape(1, -1), fmt="%.6e")
 
-def groupPressureLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', mixed='mixed', spacing='3', window=2, show=False):
+def groupPressureLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fileName='nve', mixed='mixed', spacing='3', show=False):
     '''
     group pressure and length data for all the values of strain and time
     '''
@@ -3901,7 +4148,6 @@ def groupPressureLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
     else:
         lengthType = "Length"
     if not(os.path.exists(dirName + os.sep + "!pressure" + lengthType + "-" + fileName + ".dat")):
-        num1 = int(utils.readFromParams(dirName, 'num1'))
         numParticles = int(utils.readFromParams(dirName, "numParticles"))
         epsilon = utils.readFromParams(dirName, "epsilon")
         strainList, strain = utils.getOrderedStrainDirectories(dirName)
@@ -3925,7 +4171,7 @@ def groupPressureLengthVSStrain(dirName, dynamics='dynamics', dynType='nve', fil
                         if (pos.shape[0] == numParticles and rad.shape[0] == numParticles):
                             collect = True
                             if not(os.path.exists(dirSample + "interface" + lengthType + ".dat")):
-                                get2InterfaceLength(dirSample, num1, spacing, window, mixed=mixed)
+                                get2InterfaceLength(dirSample, spacing, mixed=mixed)
                             currentLength = np.loadtxt(dirSample + "interface" + lengthType + ".dat")[0]
                         else:
                             print("Warning: number of particles changed in", dirSample, pos.shape[0], rad.shape[0])
@@ -4981,16 +5227,36 @@ if __name__ == '__main__':
         plot = sys.argv[4]
         average2InterfaceFluctuations(dirName, compute, plot)
 
+    elif(whichCorr == "2intercorrq"):
+        compute = sys.argv[3]
+        plot = sys.argv[4]
+        average2InterfaceCorrelations(dirName, compute, plot)
+
     elif(whichCorr == "2interstrain"):
         dynamics = sys.argv[3]
-        plot = sys.argv[4]
-        average2InterfaceFluOverStrain(dirName, dynamics, plot=plot)
+        compute = sys.argv[4]
+        slope_range = float(sys.argv[5])
+        if slope_range == 0:
+            bounds = False
+        else:
+            bounds = True
+        plot = sys.argv[5]
+        average2InterfaceFluOverStrain(dirName, dynamics, compute=compute, bounds=bounds, slope_range=slope_range, plot=plot)
 
     elif(whichCorr == "gammacwt"):
         figureName = sys.argv[3]
         dynamics = sys.argv[4]
         compute = sys.argv[5]
-        plotTensionVSTempCWT(dirName, figureName, dynamics, compute)
+        slope_range = float(sys.argv[6])
+        if slope_range == 0:
+            bounds = False
+        else:
+            bounds = True
+        plotTensionVSTempCWT(dirName, figureName, dynamics, compute=compute, bounds=bounds, slope_range=slope_range)
+
+    elif(whichCorr == "comparecwt"):
+        figureName = sys.argv[3]
+        compareTensionVSTempCWT(dirName, figureName)
 
     elif(whichCorr == "gammacwtdamping"):
         figureName = sys.argv[3]
@@ -5017,43 +5283,38 @@ if __name__ == '__main__':
         computeLJWallForce(dirName, LJcutoff, rangeForce, size, frac)
 
     elif(whichCorr == "2interlength"):
-        num1 = int(sys.argv[3])
-        spacing = sys.argv[4]
-        window = int(sys.argv[5])
-        plot = sys.argv[6]
-        get2InterfaceLength(dirName, num1, spacing, window, plot=plot)
+        spacing = sys.argv[3]
+        plot = sys.argv[4]
+        get2InterfaceLength(dirName, spacing, plot=plot)
 
     elif(whichCorr == "lengthtime"):
         dynamics = sys.argv[3]
         spacing = float(sys.argv[4])
-        window = int(sys.argv[5])
-        mixed = sys.argv[6]
-        show = sys.argv[7]
-        plotLengthVSTime(dirName, dynamics, spacing, window, mixed, show)
+        mixed = sys.argv[5]
+        show = sys.argv[6]
+        plotLengthVSTime(dirName, dynamics, spacing, mixed, show)
 
     elif(whichCorr == "groupenergy"):
         dynamics = sys.argv[3]
         dynType = sys.argv[4]
         fileName = sys.argv[5]
         spacing = float(sys.argv[6])
-        window = int(sys.argv[7])
-        bin_by = sys.argv[8]
-        mixed = sys.argv[9]
-        degree = int(sys.argv[10])
-        show = sys.argv[11]
-        groupEnergyLengthVSStrain(dirName, dynamics, dynType, fileName, spacing, window, bin_by, mixed, degree, show)
+        bin_by = sys.argv[7]
+        mixed = sys.argv[8]
+        degree = int(sys.argv[9])
+        show = sys.argv[10]
+        groupEnergyLengthVSStrain(dirName, dynamics, dynType, fileName, spacing, bin_by, mixed, degree, show)
 
     elif(whichCorr == "groupenergyab"):
         dynamics = sys.argv[3]
         dynType = sys.argv[4]
         fileName = sys.argv[5]
         spacing = float(sys.argv[6])
-        window = int(sys.argv[7])
-        bin_by = sys.argv[8]
-        mixed = sys.argv[9]
-        degree = int(sys.argv[10])
-        show = sys.argv[11]
-        groupEnergyABLengthVSStrain(dirName, dynamics, dynType, fileName, spacing, window, bin_by, mixed, degree, show)
+        bin_by = sys.argv[7]
+        mixed = sys.argv[8]
+        degree = int(sys.argv[9])
+        show = sys.argv[10]
+        groupEnergyABLengthVSStrain(dirName, dynamics, dynType, fileName, spacing, bin_by, mixed, degree, show)
 
     elif(whichCorr == "plotgamma"):
         which = sys.argv[3]
@@ -5076,9 +5337,8 @@ if __name__ == '__main__':
         fileName = sys.argv[5]
         mixed = sys.argv[6]
         spacing = float(sys.argv[7])
-        window = int(sys.argv[8])
-        show = sys.argv[9]
-        groupPressureLengthVSStrain(dirName, dynamics, dynType, fileName, mixed, spacing, window, show)
+        show = sys.argv[8]
+        groupPressureLengthVSStrain(dirName, dynamics, dynType, fileName, mixed, spacing, show)
 
     elif(whichCorr == "groupp"):
         dynamics = sys.argv[3]

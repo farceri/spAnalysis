@@ -8,9 +8,13 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, LogLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from scipy.interpolate import CloughTocher2DInterpolator
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import ListedColormap
+from scipy.ndimage import gaussian_filter
 from scipy.optimize import curve_fit
 from scipy.interpolate import griddata
 import sys
@@ -28,7 +32,7 @@ def getIndexYlabel(which):
     elif(which == "prad"):
         index = 4
         ylabel = "$P_r$"
-    elif(which == "ptheta"):
+    elif(which == "pphi"):
         index = 5
         ylabel = "$P_\\phi$"
     elif(which == "pos"):
@@ -43,13 +47,16 @@ def getIndexYlabel(which):
     elif(which == "corr"):
         index = -3
         ylabel = "$C_{vv}$"
-    else:
+    elif(which == "moi"):
         index = -2
-        ylabel = "$|L|$"
+        ylabel = "$\\tilde{I}$"
+    else:
+        index = -1
+        ylabel = "$\\tilde{L}$"
     return index, ylabel
 
 ########################## plot alignment in active systems ##########################
-def plotAlignment(dirName, figureName, which='corr'):
+def plotEnergyFile(dirName, figureName, which='corr'):
     if(os.path.exists(dirName + "/energy.dat")):
         energy = np.loadtxt(dirName + os.sep + "energy.dat")
         print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
@@ -60,8 +67,9 @@ def plotAlignment(dirName, figureName, which='corr'):
         ax.plot(energy[::2,0], energy[::2,index], linewidth=1.2, color='k')
         ax.tick_params(axis='both', labelsize=14)
         #ax.set_ylim(0.722, 1.022)
-        ax.set_xlabel("$Simulation$ $step$", fontsize=14)
-        ax.set_ylabel(ylabel, fontsize=14)
+        ax.set_xlabel("$Simulation$ $step$", fontsize=16)
+        if index == 2 or index == 3: ax.set_ylabel(ylabel, fontsize=24, rotation='horizontal', labelpad=15)
+        else: ax.set_ylabel(ylabel, fontsize=16, rotation='horizontal', labelpad=15)
         plt.tight_layout()
         figureName = "/home/francesco/Pictures/soft/align-" + figureName
         fig.savefig(figureName + ".png", transparent=True, format = "png")
@@ -69,30 +77,68 @@ def plotAlignment(dirName, figureName, which='corr'):
     else:
         print("no energy.dat file was found in", dirName)
 
-def compareAlignment(dirName, figureName, which='corr', dynamics='/', log=False):
-    fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
-    dirList = np.array(["vicsek-force", "vicsek-vel"])
-    colorList = ['b', 'g']
-    labelList = ["$Force$", "$Velocity$"]
+def compareAlignment(dirName, figureName, which='corr', boundary1='reflect', boundary2='fixed', dynamics='/', log=False):
+    fig, ax = plt.subplots(1,2, sharey=True, figsize=(13,6), dpi = 120)
+    dirList = np.array(["vicsek-vel", "vicsek-force"])
+    labelList = ["$Velocity$", "$Force$"]
+    linestyleList = ['solid', 'dashed']
+    colorList = ['k', 'b', 'orange', 'indianred']
     index, ylabel = getIndexYlabel(which)
+    alignList = np.array(["3", "1e04"])
+    noiseList = np.array(["1", "1e03"])
+    boxRadius = np.atleast_1d(np.loadtxt(dirName + os.sep + "boxSize.dat"))
+    maxI = boxRadius**2
+    f0 = float(utils.readFromDynParams(dirName + "vicsek-vel/reflect/damping1e02/j3-tp1/", "f0"))
+    gamma = float(utils.readFromDynParams(dirName + "vicsek-vel/reflect/damping1e02/j3-tp1/", "damping"))
+    maxL = boxRadius * (f0/gamma)
     for d in range(dirList.shape[0]):
-        dirSample = dirName + dirList[d] + os.sep + "reflect/damping1e02/j1e03-tp1e01" + dynamics
-        if(os.path.exists(dirSample + "/energy.dat")):
-            energy = np.loadtxt(dirSample + os.sep + "energy.dat")
-            print("potential energy:", np.mean(energy[:,2]), "+-", np.std(energy[:,2]))
-            print("temperature:", np.mean(energy[:,3]), "+-", np.std(energy[:,3]))
-            print("velocity alignment:", np.mean(energy[:,-2]), "+-", np.std(energy[:,-2]), "relative error:", np.std(energy[:,-2])/np.mean(energy[:,-2]))
-            ax.plot(energy[::2,0], energy[::2,index], linewidth=1.2, color=colorList[d], label=labelList[d])
-    ax.tick_params(axis='both', labelsize=14)
+        for a in range(alignList.shape[0]):
+            for n in range(noiseList.shape[0]):
+                dirSample = dirName + dirList[d] + os.sep + boundary1 + "/damping1e02/j" + alignList[a] + "-tp" + noiseList[n] + dynamics
+                label = labelList[d] + ", $J_K=$" + alignList[a] + ", $\\tau_p=$" + noiseList[n]
+                if(os.path.exists(dirSample + "/energy.dat")):
+                    energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                    if which == 'moi':
+                        energy[:,index] /= maxI
+                    elif which == 'angmom':
+                        energy[:,index] = np.abs(energy[:,index]) / maxL
+                    if which == 'corr': # correct for large fluctuations of velocity correlation
+                        energy = energy[energy[:,index]>-0.1,:]
+                        energy = energy[energy[:,index]<1.1,:]
+                    ax[0].plot(energy[energy[:,index]!=0,0], energy[energy[:,index]!=0,index], linewidth=1.2, linestyle=linestyleList[d], color=colorList[a*2+n], label=label)
+    for d in range(dirList.shape[0]):
+        for a in range(alignList.shape[0]):
+            for n in range(noiseList.shape[0]):
+                dirSample = dirName + dirList[d] + os.sep + boundary2 + "/damping1e02/j" + alignList[a] + "-tp" + noiseList[n] + dynamics
+                label = labelList[d] + ", $J_K=$" + alignList[a] + ", $\\tau_p=$" + noiseList[n]
+                if(os.path.exists(dirSample + "/energy.dat")):
+                    energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                    if which == 'moi':
+                        energy[:,index] /= maxI
+                    elif which == 'angmom':
+                        energy[:,index] = np.abs(energy[:,index]) / maxL
+                    if which == 'corr': # correct for large fluctuations of velocity correlation
+                        energy = energy[energy[:,index]>-0.1,:]
+                        energy = energy[energy[:,index]<1.1,:]
+                    ax[1].plot(energy[energy[:,index]!=0,0], energy[energy[:,index]!=0,index], linewidth=1.2, linestyle=linestyleList[d], color=colorList[a*2+n], label=label)
+    ax[0].tick_params(axis='both', labelsize=14)
+    ax[1].tick_params(axis='both', labelsize=14)
+    if boundary1 == "fixed": ax[0].set_title("$WCA$ $boundary$", fontsize=16, loc='left')
+    else: ax[0].set_title("$Smooth$ $boundary$", fontsize=16, loc='left')
+    if boundary2 == "ipl": ax[1].set_title("$IPL$ $boundary$", fontsize=16, loc='right')
+    else: ax[1].set_title("$WCA$ $boundary$", fontsize=16, loc='right')
     #ax.set_ylim(-0.022, 1.022)
-    if log == 'log':
-        ax.set_xscale('log')
-    ax.legend(fontsize=12, loc='best')
-    ax.set_xlabel("$Simulation$ $step$", fontsize=14)
-    ax.set_ylabel(ylabel, fontsize=14)
+    if log == 'log': 
+        for i in range(2): ax[i].set_yscale('log')
+    ax[1].legend(fontsize=10, ncols=2, labelcolor='linecolor', fancybox=True, shadow=True, bbox_to_anchor=(0.43, 1.28))
+    ax[0].set_xlabel("$Simulation$ $step$", fontsize=16)
+    ax[1].set_xlabel("$Simulation$ $step$", fontsize=16)
+    if index == 2 or index == 3: ax[0].set_ylabel(ylabel, fontsize=24, rotation='horizontal', labelpad=15)
+    else: ax[0].set_ylabel(ylabel, fontsize=16, rotation='horizontal', labelpad=15)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/compareAlign-" + figureName
-    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.subplots_adjust(wspace=0.05)
+    figureName = "/home/francesco/Pictures/soft/compare-" + which + "-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
     plt.show()
 
 def compareBoundary(dirName, figureName, which='corr', dynamics='/'):
@@ -174,11 +220,11 @@ def compareBoundaryAlign(dirName, figureName, which='corr', dynamics='/'):
     plt.tight_layout()
     figure1Name = "/home/francesco/Pictures/soft/boundAlign-" + which + "-" + figureName
     fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    if which == 'ptheta':
+    if which == 'pphi':
         fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
     else:
         fig, ax = plt.subplots(figsize=(5,4), dpi = 120)
-    if which == 'ptheta' or which == 'prad':
+    if which == 'pphi' or which == 'prad':
         #mean1 /= p0
         #mean2 /= p0
         f0 = 2
@@ -187,7 +233,7 @@ def compareBoundaryAlign(dirName, figureName, which='corr', dynamics='/'):
         print(p0)
     ax.errorbar(aligntime, np.abs(mean1), error1, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label='$Rough$')
     ax.plot(np.linspace(np.min(aligntime), np.max(aligntime), 100), np.zeros(100), ls='--', color='r')
-    if which == 'ptheta':
+    if which == 'pphi':
         axr = ax.twinx()
         axr.errorbar(aligntime, np.abs(mean2), error2, lw=1.2, color='b', marker='s', markersize=8, fillstyle='none', capsize=3, label='$Pinned$')
         axr.tick_params(axis='y', colors='b', labelsize=12)
@@ -201,7 +247,7 @@ def compareBoundaryAlign(dirName, figureName, which='corr', dynamics='/'):
     ax.set_xscale('log')
     #ax.set_yscale('log')
     ax.tick_params(axis='both', labelsize=12)
-    if(which == 'ptheta'):
+    if(which == 'pphi'):
         ax.set_ylabel("$|P_\\theta|$", rotation='horizontal', labelpad=15, fontsize=16)
         #ax.set_ylabel("$\\alpha_\phi$", rotation='horizontal', labelpad=15, fontsize=16)
     else:
@@ -688,17 +734,22 @@ def phaseDiagramNoiseAlignment(dirName, figureName, dynamics="/", which="vcorr",
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
-def computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=10):
+def computeMaxClusterKuramoto(dirSample, eps=3, maxCluster=10, minFraction=0.3):
     dirList, timeList = utils.getOrderedDirectories(dirSample)
+    numParticles = int(utils.readFromParams(dirSample, "numParticles"))
     eps *= 2 * np.mean(np.loadtxt(dirSample + "particleRad.dat"))
     clusterPhi_r = np.zeros((dirList.shape[0], 2))
+    numCluster = np.empty(0)
     for d in range(dirList.shape[0]):
         dirFrame = dirSample + os.sep + dirList[d] + os.sep
         pos = np.array(np.loadtxt(dirFrame + os.sep + 'particlePos.dat'))
         angles = np.arctan2(pos[:,1], pos[:,0])
         labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
         uniqueLabels = np.unique(labels)
-        if uniqueLabels.shape[0] < maxCluster and uniqueLabels.shape[0] > 1:
+        if uniqueLabels.shape[0] < maxCluster:
+            # Do not check for largest clusters if there are many clusters
+            numCluster = np.append(numCluster, uniqueLabels.shape[0])
+            # if there are few clusters, restrict computation of Kuramoto order parameter for the largest cluster
             maxLabel = -1
             numMaxLabel = 0
             for label in uniqueLabels:
@@ -707,9 +758,11 @@ def computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=10):
                 if numLabel > numMaxLabel:
                     maxLabel = label
                     numMaxLabel = numLabel
-            #print("largest cluster:", maxLabel, numMaxLabel, "particles")
-            clusterIndices = np.where(labels == maxLabel)[0]
-            angles = angles[clusterIndices]
+            fraction = labels[labels==maxLabel].shape[0] / numParticles
+            if fraction > minFraction and maxLabel != -1:
+                #print("largest cluster:", maxLabel, numMaxLabel, "particles", fraction*numParticles)
+                clusterIndices = np.where(labels == maxLabel)[0]
+                angles = angles[clusterIndices]
         numParticles = angles.shape[0]
         # compute Kuramoto order parameter for the cluster
         sumReal = 0
@@ -720,6 +773,8 @@ def computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=10):
         phi_r = np.sqrt(sumReal**2 + sumImag**2) / numParticles
         clusterPhi_r[d,0] = timeList[d]
         clusterPhi_r[d,1] = phi_r
+    if numCluster.shape[0] > 0:
+        print("Average number of clusters:", np.mean(numCluster), "number of used particles:", numParticles)
     np.savetxt(dirSample + "/clusterKuramoto.dat", clusterPhi_r)
 
 def computeClusterKuramoto(dirSample, eps=1.5, maxCluster=10):
@@ -734,30 +789,21 @@ def computeClusterKuramoto(dirSample, eps=1.5, maxCluster=10):
         angles = np.arctan2(pos[:,1], pos[:,0])
         labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
         uniqueLabels = np.unique(labels)
-        if uniqueLabels.shape[0] < maxCluster and uniqueLabels.shape[0] > 1:
-            numLabels = np.append(numLabels, uniqueLabels.shape[0])
-            phi_r = np.empty(0)
-            for label in uniqueLabels:
+        numLabels = np.append(numLabels, uniqueLabels.shape[0])
+        phi_r = np.empty(0)
+        for label in uniqueLabels:
+            if label != -1:
                 fraction = labels[labels==label].shape[0] / numParticles
-                if(fraction > 0.2):
-                    #print(dirList[d], "label", label, "num particles in cluster", fraction*numParticles)
-                    clusterAngles = angles[labels==label]
-                    numCluster = clusterAngles.shape[0]
-                    # compute Kuramoto order parameter for the cluster
-                    sumReal = 0
-                    sumImag = 0
-                    for i in range(numCluster):
-                        sumReal += np.cos(clusterAngles[i])
-                        sumImag += np.sin(clusterAngles[i])
-                    phi_r = np.append(phi_r, np.sqrt(sumReal**2 + sumImag**2) / numCluster)
-        else:
-            # compute Kuramoto order parameter for the cluster
-            sumReal = 0
-            sumImag = 0
-            for i in range(numParticles):
-                sumReal += np.cos(angles[i])
-                sumImag += np.sin(angles[i])
-            phi_r = np.sqrt(sumReal**2 + sumImag**2) / numParticles
+                #print(dirList[d], "label", label, "num particles in cluster", fraction*numParticles)
+                clusterAngles = angles[labels==label]
+                numCluster = clusterAngles.shape[0]
+                # compute Kuramoto order parameter for the cluster
+                sumReal = 0
+                sumImag = 0
+                for i in range(numCluster):
+                    sumReal += np.cos(clusterAngles[i])
+                    sumImag += np.sin(clusterAngles[i])
+                phi_r = np.append(phi_r, np.sqrt(sumReal**2 + sumImag**2) / numCluster)
         clusterPhi_r[d,0] = timeList[d]
         clusterPhi_r[d,1] = np.mean(phi_r)
         #print("Time:", timeList[d], "Num clusters:", uniqueLabels.shape[0], "Average phi_r:", clusterPhi_r[d,1])
@@ -765,122 +811,385 @@ def computeClusterKuramoto(dirSample, eps=1.5, maxCluster=10):
     if(numLabels.shape[0] != 0): print("Average number of clusters:", np.mean(numLabels))
     np.savetxt(dirSample + "/clusterKuramoto.dat", clusterPhi_r)
 
-def phaseDiagrams3(dirName, figureName, dynamics="/", cluster=False, maxCluster=6):
-    fig, ax = plt.subplots(1, 3, sharey=True, figsize=(15,4), dpi = 150)
+def plotClustersCOM(dirName, figureName, eps=1.5, maxCluster=12):
+    fig, ax = plt.subplots(2, 1, figsize=(7,6), sharex=True,dpi = 120)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    boxRadius = np.loadtxt(dirName + "boxSize.dat")
+    eps *= 2.5 * np.mean(np.loadtxt(dirName + "particleRad.dat"))
+    cluster_com1 = np.empty((0,2))
+    cluster_com2 = np.empty((0,2))
+    times = np.array([])
+    dt = float(utils.readFromParams(dirName, "dt"))
+    for d in range(dirList.shape[0]):
+        dirFrame = dirName + os.sep + dirList[d] + os.sep
+        pos = np.array(np.loadtxt(dirFrame + os.sep + 'particlePos.dat'))
+        # transform positions to polar coordinates
+        angles = np.arctan2(pos[:,1], pos[:,0])
+        radial = np.sqrt(pos[:,0]**2 + pos[:,1]**2) / boxRadius
+        polarPos = np.column_stack((radial, angles))
+        if d == 0:
+            prevPos = polarPos
+        else:
+            # account for periodicity in theta
+            deltaTheta = polarPos[:,1] - prevPos[:,1]
+            deltaTheta = (deltaTheta + np.pi) % (2 * np.pi) - np.pi
+            polarPos[:,1] = prevPos[:,1] + deltaTheta
+            prevPos = polarPos
+        labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
+        uniqueLabels = np.unique(labels)
+        #print("Time:", timeList[d], "Num clusters:", uniqueLabels.shape[0])
+        if uniqueLabels.shape[0] < maxCluster:
+            # find largest cluster and plot its COM
+            numCluster = np.empty(0)
+            clusterLabel = np.empty(0)
+            for label in uniqueLabels:
+                numCluster = np.append(numCluster, labels[labels==label].shape[0])
+                clusterLabel = np.append(clusterLabel, label)
+            maxIndex = np.argmax(numCluster)
+            maxLabel = clusterLabel[maxIndex]
+            clusterIndices1 = np.where(labels == maxLabel)[0]
+            clusterPos1 = polarPos[clusterIndices1]
+            com1 = np.mean(clusterPos1, axis=0)
+            cluster_com1 = np.vstack((cluster_com1, com1))
+            #print("largest cluster:", maxLabel, numCluster[maxIndex], "particles", com1)
+            if uniqueLabels.shape[0] > 2:
+                # find second largest cluster and plot its COM
+                numCluster[maxIndex] = -1
+                secondMaxIndex = np.argmax(numCluster)
+                secondMaxLabel = clusterLabel[secondMaxIndex]
+                clusterIndices2 = np.where(labels == secondMaxLabel)[0]
+                clusterPos2 = polarPos[clusterIndices2]
+                com2 = np.mean(clusterPos2, axis=0)
+                cluster_com2 = np.vstack((cluster_com2, com2))
+                #print("second largest cluster:", secondMaxLabel, numCluster[secondMaxIndex], "particles", com2)
+            times = np.append(times, timeList[d] * dt)
+    ax[0].plot(times, cluster_com1[:,0], color='b', lw=1)
+    ax[1].plot(times, cluster_com1[:,1], color='b', lw=1, label="$\\theta_1$")
+    #ax[1].plot(times[1:], (cluster_com1[1:,1]-cluster_com1[:-1,1])/(times[1:]-times[:-1]), color='b', lw=1, label="$Cluster$ $1$")
+    if cluster_com2.shape[0] == times.shape[0]: 
+        ax[0].plot(times, cluster_com2[:,0], color='g', lw=1)
+        ax[1].plot(times, cluster_com2[:,1], color='g', lw=1, label="$\\theta_2$")
+        #ax[1].plot(times[1:], (cluster_com2[1:,1]-cluster_com2[:-1,1])/(times[1:]-times[:-1]), color='g', lw=1, label="$Cluster$ $2$")
+        delta_theta = cluster_com1[:,1] - cluster_com2[:,1]
+        ax[1].plot(times, delta_theta, color='k', lw=1.1, ls='dashed', label="$\\theta_1 - \\theta_2$")
+    ax[1].legend(fontsize=12, loc='best')
+    ax[0].tick_params(axis='both', labelsize=14)
+    ax[1].tick_params(axis='both', labelsize=14)
+    ax[1].set_xlabel("$Time,$ $t$", fontsize=16)
+    ax[0].set_ylabel("$\\frac{r(t)}{R}$", fontsize=22, rotation='horizontal', labelpad=20)
+    #ax[1].set_ylabel("$\\theta(t)$", fontsize=16, rotation='horizontal', labelpad=20)
+    #ax[1].set_ylabel("$\\Delta \\theta(t)$", fontsize=16, rotation='horizontal', labelpad=10)
+    ax[1].set_yticks([-np.pi, 0, np.pi])
+    ax[1].set_yticklabels(['$-\\pi$', '$0$', '$\\pi$'])
+    ax[1].set_yticks([-np.pi, np.pi, 5*np.pi, 10*np.pi, 15*np.pi, 20*np.pi])
+    ax[1].set_yticklabels(['$-\\pi$', '$\\pi$', '$5\\pi$', '$10\\pi$', '$15\\pi$', '$20\\pi$'])
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0)
+    figureName = "/home/francesco/Pictures/soft/clustersCOM-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
+    plt.show()
+
+def plotClusterDensity(dirName, figureName, eps=1.5, maxCluster=5):
+    fig, ax = plt.subplots(2, 1, figsize=(7,6), sharex=True,dpi = 120)
+    dirList, timeList = utils.getOrderedDirectories(dirName)
+    numParticles = int(utils.readFromParams(dirName, "numParticles"))
+    rad = np.array(np.loadtxt(dirName + os.sep + 'particleRad.dat'))
+    eps *= 2.5 * np.mean(rad)
+    rgyr = np.empty(0)
+    density = np.empty(0)
+    times = np.empty(0)
+    theta = np.empty(0)
+    dt = float(utils.readFromParams(dirName, "dt"))
+    for d in range(dirList.shape[0]):
+        dirFrame = dirName + os.sep + dirList[d] + os.sep
+        pos = np.array(np.loadtxt(dirFrame + os.sep + 'particlePos.dat'))
+        labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
+        uniqueLabels = np.unique(labels)
+        #print("Time:", timeList[d], "Num clusters:", uniqueLabels.shape[0])
+        if uniqueLabels.shape[0] < maxCluster:
+            # find largest cluster and plot its COM
+            numCluster = np.empty(0)
+            clusterLabel = np.empty(0)
+            for label in uniqueLabels:
+                numCluster = np.append(numCluster, labels[labels==label].shape[0])
+                clusterLabel = np.append(clusterLabel, label)
+            maxIndex = np.argmax(numCluster)
+            maxLabel = clusterLabel[maxIndex]
+            clusterIndices = np.where(labels == maxLabel)[0]
+            clusterPos = pos[clusterIndices]
+            clusterRad = rad[clusterIndices]
+            com = np.mean(clusterPos, axis=0)
+            clusterPos -= com
+            rgyr = np.append(rgyr, np.mean(np.linalg.norm(clusterPos,axis=1)))
+            density = np.append(density, np.sum(clusterRad**2) / (2 * rgyr[-1]**2)) # cluster radius is sqrt(2) * rgyr
+            times = np.append(times, timeList[d] * dt)
+            #print("time:", times[-1], "radius of gyration:", rgyr[-1], "density:", density[-1])
+    ax[0].plot(times, rgyr, color='k', lw=1)
+    ax[1].plot(times, density, color='k', lw=1, label="$Cluster$ $1$")
+    ax[0].tick_params(axis='both', labelsize=14)
+    ax[1].tick_params(axis='both', labelsize=14)
+    ax[1].set_xlabel("$Time,$ $t$", fontsize=16)
+    ax[0].set_ylabel("$Radius$ $of$ $gyration,$ $R_g$", fontsize=16)
+    ax[1].set_ylabel("$Cluster$ $density,$ $\\varphi_c$", fontsize=16)
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0)
+    figureName = "/home/francesco/Pictures/soft/clustePhi-" + figureName
+    fig.savefig(figureName + ".png", transparent=False, format = "png")
+    plt.show()
+
+def phaseDiagrams3(dirName, figureName, dynamics="/", cluster=False, maxCluster=6, interpolate=False):
+    fig, ax = plt.subplots(1, 3, sharey=True, figsize=(11,3), dpi = 150)
     # get color map for each cut of the phase diagram
-    noiseList = np.array(["1e-04", "1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08", "0"])
-    alignList = np.array(["3e-02", "1e-01", "3e-01", "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+    noiseList = np.array(["1e-04", "1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])#, "0"])
+    alignList = np.array(["3e-03", "1e-02", "3e-02", "1e-01", "3e-01", "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
     aligntime = np.array([])
     noisetime = np.array([])
-    corrp = np.array([])
-    corrvp = np.array([])
-    corrvc = np.array([])
+    corr1 = np.array([])
+    corr2 = np.array([])
+    corr3 = np.array([])
+    interCut = 0
+    noiseCut = 1e03
+    boxSize = np.atleast_1d(np.loadtxt(dirName + "j1e03-tp1e03/boxSize.dat"))
+    maxI = boxSize**2
+    f0 = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "f0"))
+    gamma = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "damping"))
+    maxL = boxSize * (f0/gamma)
+    colorMap1 = 'plasma'
+    colorMap2 = 'plasma'
+    colorMap3 = 'plasma'
+    if figureName == 'smooth':
+        points = np.array(['1e-01', '3', '1e04'])
+        color1 = 'darkgrey'#[0.6,0.6,0.6]
+        color2 = 'darkviolet'
+        color3 = [1,0.7,0]
+    elif figureName == 'rough':
+        points = np.array(['1e-01', '3', '1e02'])
+        color1 = 'forestgreen'#[0,0.6,0.4]
+        color2 = 'dodgerblue'#[0.5,0.5,1]
+        color3 = [0.6,0,0.8]
     for i in range(noiseList.shape[0]):
         for d in range(alignList.shape[0]):
             dirSample = dirName + "j" + alignList[d] + "-tp" + noiseList[i] + dynamics
             if(os.path.exists(dirSample)):
                 aligntime = np.append(aligntime, 1/utils.readFromDynParams(dirSample, "Jvicsek"))
                 tp = utils.readFromDynParams(dirSample, "taup")
+                tauk = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+                if i == 0 and alignList[d] == "1e-01":
+                    interCut = tauk
+                if noiseList[i] == '1e03':
+                    if alignList[d] == points[0]: point1 = np.array([tp, tauk])
+                    elif alignList[d] == points[1]: point2 = np.array([tp, tauk])
+                    if alignList[d] == points[2]: point3 = np.array([tp, tauk])
                 data = np.loadtxt(dirSample + "energy.dat")
                 if cluster:
                     if(os.path.exists(dirSample + "/t0/")):
-                        if not(os.path.exists(dirSample + "/clusterKuramoto.dat")):
+                        if not(os.path.exists(dirSample + "/clusterKuramoto!.dat")):
                             print("tp =", noiseList[i], "j =", alignList[d])
-                            computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=maxCluster)
-                        corrp = np.append(corrp, np.mean(np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]))
+                            computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=maxCluster, minFraction=0.3)
+                        corr1 = np.append(corr1, np.mean(np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]))
                     else:
-                        corrp = np.append(corrp, np.mean(data[:,6]))
+                        corr1 = np.append(corr1, np.mean(data[:,6]))
                 else:
-                    corrp = np.append(corrp, np.mean(data[:,6]))
-                corrvp = np.append(corrvp, np.mean(data[:,8]))
-                corrvc = np.append(corrvc, np.mean(data[:,-2]))
+                    corr1 = np.append(corr1, np.mean(data[:,6]))
+                corr2 = np.append(corr2, np.mean(data[:,-2] / maxI))
+                corr3 = np.append(corr3, np.mean(np.abs(data[:,-1]) / maxL))
                 if(tp == 0):
                     tp = 1e09
                 noisetime = np.append(noisetime, tp)
-    vmin = np.min(corrvc)
+    vmin = np.min(corr3)
     if vmin < 0: vmin = 0
-    vmax = np.max(corrvc)
-    ax[0].scatter(noisetime, aligntime, c=corrp, cmap='plasma', s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
-    ax[1].scatter(noisetime, aligntime, c=corrvp, cmap='plasma', s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
-    sc_vc = ax[2].scatter(noisetime, aligntime, c=corrvc, cmap='plasma', s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
-    # create a floating inset for the colorbar, relative to the figure
-    cax = inset_axes(ax[2], width="5%", height="100%", loc='lower left', bbox_to_anchor=(1.04, 0.0, 1, 1),  # position outside right edge
-                    bbox_transform=ax[2].transAxes, borderpad=0.0)
-    cbar = plt.colorbar(sc_vc, cax=cax)
-    cbar.ax.tick_params(labelsize=14, length=0)
-    min = np.min(corrvc)
-    max = np.max(corrvc)
-    cbar.set_ticks(np.linspace(min,max,5))
-    cbar.set_ticklabels(["$0.00$", "$0.25$", "$0.50$", "$0.75$", "$1.00$"])
+    vmax = np.max(corr3)
+    if vmax > 1: vmax = 1
+    if(interpolate == 'interpolate'):
+        # Convert to log-space for interpolation
+        log_noisetime = np.log10(noisetime)
+        log_aligntime = np.log10(aligntime)
+        # Remove duplicate points
+        points = np.column_stack((log_noisetime, log_aligntime))
+        points_unique, idx = np.unique(points, axis=0, return_index=True)
+        corr1_unique = corr1[idx]
+        corr2_unique = corr2[idx]
+        corr3_unique = corr3[idx]
+        # Define log grid
+        log_tp_lin = np.linspace(points_unique[:,0].min(), points_unique[:,0].max(), 200)
+        log_tk_lin = np.linspace(points_unique[:,1].min(), points_unique[:,1].max(), 200)
+        grid_tp, grid_tk = np.meshgrid(log_tp_lin, log_tk_lin)
+        inter1 = CloughTocher2DInterpolator(points_unique, corr1_unique)
+        grid_corr1 = inter1(grid_tp, grid_tk)
+        grid_corr1 = gaussian_filter(grid_corr1, sigma=2)
+        grid_corr1 = np.clip(grid_corr1, 0, 1)
+        inter2 = CloughTocher2DInterpolator(points_unique, corr2_unique)
+        grid_corr2 = inter2(grid_tp, grid_tk)
+        grid_corr2 = gaussian_filter(grid_corr2, sigma=2)
+        grid_corr2 = np.clip(grid_corr2, 0, 1)
+        inter3 = CloughTocher2DInterpolator(points_unique, corr3_unique)
+        grid_corr3 = inter3(grid_tp, grid_tk)
+        grid_corr3 = gaussian_filter(grid_corr3, sigma=2)
+        grid_corr3 = np.clip(grid_corr3, 0, 1)
+        # Convert grid back to linear scale for plotting
+        grid_tp_lin = 10**grid_tp
+        grid_tk_lin = 10**grid_tk
+        ax[0].contourf(grid_tp_lin, grid_tk_lin, grid_corr1, levels=150, cmap=colorMap1, vmin=vmin, vmax=vmax)
+        ax[1].contourf(grid_tp_lin, grid_tk_lin, grid_corr2, levels=150, cmap=colorMap2, vmin=vmin, vmax=vmax)
+        contour = ax[2].contourf(grid_tp_lin, grid_tk_lin, grid_corr3, levels=150, cmap=colorMap3, vmin=vmin, vmax=vmax)
+        # create a floating inset for the colorbar, relative to the figure
+        cax = inset_axes(ax[2], width="5%", height="100%", loc='lower left', bbox_to_anchor=(1, 0.0, 1, 1),  # position outside right edge
+                        bbox_transform=ax[2].transAxes, borderpad=0.0)
+        cbar = plt.colorbar(contour, cax=cax)
+    else:
+        ax[0].scatter(noisetime, aligntime, c=corr1, cmap=colorMap1, s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
+        ax[1].scatter(noisetime, aligntime, c=corr2, cmap=colorMap2, s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
+        sc3 = ax[2].scatter(noisetime, aligntime, c=corr3, cmap=colorMap3, s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
+        # create a floating inset for the colorbar, relative to the figure
+        cax = inset_axes(ax[2], width="5%", height="100%", loc='lower left', bbox_to_anchor=(1, 0.0, 1, 1),  # position outside right edge
+                        bbox_transform=ax[2].transAxes, borderpad=0.0)
+        cbar = plt.colorbar(sc3, cax=cax)
+    cbar.ax.tick_params(labelsize=12, length=0)
+    cbar.set_ticks(np.linspace(vmin,vmax,3))
+    cbar.set_ticklabels(["$0.0$", "$0.5$", "$1.0$"])
     # Set log scales for proper visualization
     for i in range(3):
+        ax[i].axvline(x=noiseCut, color='aqua', linestyle='solid', lw=3)
+        ax[i].axhline(y=interCut, color='chartreuse', linestyle='solid', lw=3)
         ax[i].set_xscale('log')
         ax[i].set_yscale('log')
-        ax[i].tick_params(axis='both', labelsize=14)
-        ax[i].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=18)
-    ax[0].set_ylabel("$Alignment$ $time,$ $\\tau_K$", fontsize=18)
+        ax[i].set_xticks([1e-02, 1e01, 1e4, 1e7])
+        ax[i].tick_params(axis='both', labelsize=12)
+        ax[i].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=14)
+    for i in range(3):
+        ax[i].plot(point1[0], point1[1], marker='s', color=color1, markersize=12, markeredgecolor='k')
+        ax[i].plot(point2[0], point2[1], marker='s', color=color2, markersize=12, markeredgecolor='k')
+        if figureName == 'smooth': ax[i].plot(point3[0], point3[1], marker='s', color=color3, markersize=12, markeredgecolor='k', clip_on=False, zorder=10)
+        else: ax[i].plot(point3[0], point3[1], marker='s', color=color3, markersize=12, markeredgecolor='k')
+    ax[0].set_ylabel("$Alignment$ $time,$ $\\tau_K$", fontsize=14)
     #plt.tight_layout()
     plt.subplots_adjust(left=0.1, right=0.9, top=0.95, bottom=0.2)
-    plt.subplots_adjust(wspace=0.25)
+    plt.subplots_adjust(wspace=0.05)
     figureName = "/home/francesco/Pictures/soft/3diagrams-" + figureName
     fig.savefig(figureName + ".png", transparent=False, format = "png")
     plt.show()
 
-def phaseDiagrams2(dirName, figureName, dynamics="/", cluster=False, maxCluster=6):
-    fig, ax = plt.subplots(1, 2, sharey=True, figsize=(9,4), dpi = 150)
+def phaseDiagrams2(dirName, figureName, dynamics="/", obs='params', cluster=False, maxCluster=20, interpolate=False):
+    fig, ax = plt.subplots(1, 2, sharey=True, figsize=(9,4), dpi = 180)
     # get color map for each cut of the phase diagram
-    noiseList = np.array(["1e-04", "1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08", "0"])
-    alignList = np.array(["3e-02", "1e-01", "3e-01", "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+    noiseList = np.array(["1e-04", "1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])#,"0"
+    alignList = np.array(["3e-03", "1e-02", "3e-02", "1e-01", "3e-01", "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
     aligntime = np.array([])
     noisetime = np.array([])
     corrp = np.array([])
     corrvp = np.array([])
+    interCut = 0
+    noiseCut = 1e03
+    if obs == 'moms':
+        colorMap1 = 'plasma'
+        colorMap2 = 'plasma'
+        #colors = [
+        #    (0.0, "white"),
+        #    (0.5, 'purple'),
+        #    (0.75, 'orange'),
+        #    (1.0, 'gold')]
+        #colorMap1 = LinearSegmentedColormap.from_list("my_cmap", colors)
+        #colorMap2 = LinearSegmentedColormap.from_list("my_cmap", colors)
+        cluster = False
+        boxSize = np.atleast_1d(np.loadtxt(dirName + "j1e03-tp1e03/boxSize.dat"))
+        maxI = boxSize**2
+        f0 = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "f0"))
+        gamma = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "damping"))
+        maxL = boxSize * (f0/gamma)
+    else:
+        colorMap1 = 'plasma'
+        colorMap2 = 'plasma'
     for i in range(noiseList.shape[0]):
         for d in range(alignList.shape[0]):
             dirSample = dirName + "j" + alignList[d] + "-tp" + noiseList[i] + dynamics
+            #if noiseList[i] == '1e03' or alignList[d] == '1e-01':
+            #    dirSample = dirName + "j" + alignList[d] + "-tp" + noiseList[i] + dynamics + "dynamics/"
             if(os.path.exists(dirSample)):
                 aligntime = np.append(aligntime, 1/utils.readFromDynParams(dirSample, "Jvicsek"))
                 tp = utils.readFromDynParams(dirSample, "taup")
+                tauk = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+                if i == 0 and alignList[d] == "1e-01":
+                    interCut = tauk
                 data = np.loadtxt(dirSample + "energy.dat")
-                if cluster:
-                    if(os.path.exists(dirSample + "/t0/")):
-                        if not(os.path.exists(dirSample + "/clusterKuramoto.dat")):
-                            print("tp =", noiseList[i], "j =", alignList[d])
-                            computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=maxCluster)
-                        corrp = np.append(corrp, np.mean(np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]))
+                if obs == 'params':
+                    if cluster == 'cluster':
+                        if(os.path.exists(dirSample + "/t0/")):
+                            if not(os.path.exists(dirSample + "/clusterKuramoto.dat")):
+                                print("tp =", noiseList[i], "j =", alignList[d])
+                                computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=maxCluster)
+                            corrp = np.append(corrp, np.mean(np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]))
+                        else:
+                            corrp = np.append(corrp, np.mean(data[:,6]))
                     else:
                         corrp = np.append(corrp, np.mean(data[:,6]))
+                    corrvp = np.append(corrvp, np.mean(data[:,8]))
                 else:
-                    corrp = np.append(corrp, np.mean(data[:,6]))
-                corrvp = np.append(corrvp, np.mean(data[:,8]))
+                    corrp = np.append(corrp, np.mean(data[:,-2] / maxI))
+                    corrvp = np.append(corrvp, np.mean(np.abs(data[:,-1]) / maxL))
                 if(tp == 0):
                     tp = 1e09
                 noisetime = np.append(noisetime, tp)
     vmin = np.min(corrvp)
     if vmin < 0: vmin = 0
     vmax = np.max(corrvp)
-    ax[0].scatter(noisetime, aligntime, c=corrp, cmap='plasma', s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
-    sc_vp = ax[1].scatter(noisetime, aligntime, c=corrvp, cmap='plasma', s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
-    # create a floating inset for the colorbar, relative to the figure
-    cax = inset_axes(ax[1], width="5%", height="100%", loc='lower left', bbox_to_anchor=(1.02, 0.0, 1, 1),  # position outside right edge
-                    bbox_transform=ax[1].transAxes, borderpad=0.0)
-    cbar = plt.colorbar(sc_vp, cax=cax)
-    cbar.ax.tick_params(labelsize=14, length=0)
-    min = np.min(corrvp)
-    max = np.max(corrvp)
-    cbar.set_ticks(np.linspace(min,max,5))
-    cbar.set_ticklabels(["$0.00$", "$0.25$", "$0.50$", "$0.75$", "$1.00$"])
+    if vmax > 1: vmax = 1
+    if(interpolate == 'interpolate'):
+        # Add a small random noise to avoid numerical issues
+        #noisetime += np.random.uniform(0, 0.01, size=noisetime.shape)
+        #aligntime += np.random.uniform(0, 0.01, size=aligntime.shape)
+        # Convert to log-space for interpolation
+        log_noisetime = np.log10(noisetime)
+        log_aligntime = np.log10(aligntime)
+        # Remove duplicate points
+        points = np.column_stack((log_noisetime, log_aligntime))
+        points_unique, idx = np.unique(points, axis=0, return_index=True)
+        corrp_unique = corrp[idx]
+        corrvp_unique = corrvp[idx]
+        # Define log grid
+        log_tp_lin = np.linspace(points_unique[:,0].min(), points_unique[:,0].max(), 200)
+        log_tk_lin = np.linspace(points_unique[:,1].min(), points_unique[:,1].max(), 200)
+        grid_tp, grid_tk = np.meshgrid(log_tp_lin, log_tk_lin)
+        interp = CloughTocher2DInterpolator(points_unique, corrp_unique)
+        grid_corrp = interp(grid_tp, grid_tk)
+        grid_corrp = gaussian_filter(grid_corrp, sigma=2)
+        grid_corrp = np.clip(grid_corrp, 0, 1)
+        intervp = CloughTocher2DInterpolator(points_unique, corrvp_unique)
+        grid_corrvp = intervp(grid_tp, grid_tk)
+        grid_corrvp = gaussian_filter(grid_corrvp, sigma=2)
+        grid_corrvp = np.clip(grid_corrvp, 0, 1)
+        # Convert grid back to linear scale for plotting
+        grid_tp_lin = 10**grid_tp
+        grid_tk_lin = 10**grid_tk
+        ax[0].contourf(grid_tp_lin, grid_tk_lin, grid_corrp, levels=150, cmap=colorMap1, vmin=vmin, vmax=vmax)
+        contour = ax[1].contourf(grid_tp_lin, grid_tk_lin, grid_corrvp, levels=150, cmap=colorMap2, vmin=vmin, vmax=vmax)
+        # create a floating inset for the colorbar, relative to the figure
+        cax = inset_axes(ax[1], width="5%", height="100%", loc='lower left', bbox_to_anchor=(1, 0.0, 1, 1),  # position outside right edge
+                        bbox_transform=ax[1].transAxes, borderpad=0.0)
+        cbar = plt.colorbar(contour, cax=cax)
+    else:
+        ax[0].scatter(noisetime, aligntime, c=corrp, cmap=colorMap1, s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
+        sc_vp = ax[1].scatter(noisetime, aligntime, c=corrvp, cmap=colorMap2, s=200, edgecolors='k', marker='s', linewidths=0.4, vmin=vmin, vmax=vmax)
+        # create a floating inset for the colorbar, relative to the figure
+        cax = inset_axes(ax[1], width="5%", height="100%", loc='lower left', bbox_to_anchor=(1, 0.0, 1, 1),  # position outside right edge
+                        bbox_transform=ax[1].transAxes, borderpad=0.0)
+        cbar = plt.colorbar(sc_vp, cax=cax)
+    cbar.ax.tick_params(labelsize=18, length=0)
+    cbar.set_ticks(np.linspace(vmin,vmax,3))
+    cbar.set_ticklabels(["$0.0$", "$0.5$", "$1.0$"])
     # Set log scales for proper visualization
+    print("interCut:", interCut, "noiseCut:", noiseCut)
     for i in range(2):
+        ax[i].axvline(x=noiseCut, color='aqua', linestyle='solid', lw=3)
+        ax[i].axhline(y=interCut, color='chartreuse', linestyle='solid', lw=3)
         ax[i].set_xscale('log')
         ax[i].set_yscale('log')
-        ax[i].tick_params(axis='both', labelsize=14)
-        ax[i].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=18)
-    ax[0].set_ylabel("$Alignment$ $time,$ $\\tau_K$", fontsize=18)
-    #plt.tight_layout()
-    plt.subplots_adjust(left=0.1, right=0.9, top=0.95, bottom=0.2)
-    plt.subplots_adjust(wspace=0.1)
-    figureName = "/home/francesco/Pictures/soft/2diagrams-" + figureName
+        ax[i].set_xticks([1e-02, 1e01, 1e4, 1e7])
+        ax[i].tick_params(axis='both', labelsize=18)
+        ax[i].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=22)
+    ax[0].set_ylabel("$Alignment$ $time,$ $\\tau_K$", fontsize=22)
+    plt.subplots_adjust(left=0.12, right=0.9, top=0.95, bottom=0.2)
+    plt.subplots_adjust(wspace=0.05)
+    figureName = "/home/francesco/Pictures/soft/2diagrams-" + obs + "-" + figureName
     fig.savefig(figureName + ".png", transparent=False, format = "png")
     plt.show()
 
@@ -1293,6 +1602,8 @@ def plotOrderParamsVSInteraction(dirName, figureName, cluster=False, maxCluster=
             if(os.path.exists(dirSample)):
                 data = np.loadtxt(dirSample + "energy.dat")
                 tauk[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+                if alignList[d] == "1e02" and dirList[a] == "/rough/dynamics/":
+                    print(tauk[d])
                 if cluster == 'cluster':
                     if(os.path.exists(dirSample + "/t0/")):
                         computed = False
@@ -1331,9 +1642,9 @@ def plotOrderParamsVSInteraction(dirName, figureName, cluster=False, maxCluster=
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.0)
     if cluster == 'cluster':
-        figureName = "/home/francesco/Pictures/soft/orderParamsCluster-" + figureName
+        figureName = "/home/francesco/Pictures/soft/interParamsCluster-" + figureName
     else:
-        figureName = "/home/francesco/Pictures/soft/orderParams-" + figureName
+        figureName = "/home/francesco/Pictures/soft/interParams-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1386,7 +1697,10 @@ def plotOrderParamsVSNoise(dirName, figureName, cluster=False, maxCluster=32): #
     ax[1].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=18)
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.0)
-    figureName = "/home/francesco/Pictures/soft/noiseParams-" + figureName
+    if cluster == 'cluster':
+        figureName = "/home/francesco/Pictures/soft/noiseParamsCluster-" + figureName
+    else:
+        figureName = "/home/francesco/Pictures/soft/noiseParams-" + figureName
     fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
@@ -1469,20 +1783,20 @@ def plotBoundaryVSTime(dirName, figureName, which='corr', dynamics='/'):
     plt.show()
 
 def plotBoundaryType(dirName, figureName, versus='inter', which='pressure', dynamics='/'):
-    fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi = 120)
+    fig, ax = plt.subplots(1, 2, figsize=(9,3.5), dpi = 120)
     if versus == 'inter':
-        dirList = np.array(["1e-04", "3e-04", "1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "2e-01", "3e-01", "5e-01", 
+        dirList = np.array(["1e-04", "3e-04", "1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01",
                             "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
         xlabel = "$Alignment$ $time,$ $\\tau_K$"
     else:
-        dirList = np.array(["1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+        dirList = np.array(["1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
         xlabel = "$Persistence$ $time,$ $\\tau_p$"
     aligntime = np.zeros(dirList.shape[0])
     noisetime = np.zeros(dirList.shape[0])
     prad = np.zeros(dirList.shape[0])
     prad_err = np.zeros(dirList.shape[0])
-    ptheta = np.zeros(dirList.shape[0])
-    ptheta_err = np.zeros(dirList.shape[0])
+    pphi = np.zeros(dirList.shape[0])
+    pphi_err = np.zeros(dirList.shape[0])
     if which == 'pressure':
         index1 = 4
         index2 = 5
@@ -1491,8 +1805,13 @@ def plotBoundaryType(dirName, figureName, versus='inter', which='pressure', dyna
     elif which == 'angmom':
         index1 = -2
         index2 = -1
-        ylabel1 = "$C_{vv}$"
-        ylabel2 = "$L$"
+        ylabel1 = "$\\tilde{I}$"
+        ylabel2 = "$\\tilde{L}$"
+        boxSize = np.atleast_1d(np.loadtxt(dirName + "j1e03-tp1e03/boxSize.dat"))
+        maxI = boxSize**2
+        f0 = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "f0"))
+        gamma = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "damping"))
+        maxL = boxSize * (f0/gamma)
     else:
         index1 = 2
         index2 = 3
@@ -1507,23 +1826,30 @@ def plotBoundaryType(dirName, figureName, versus='inter', which='pressure', dyna
             aligntime[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
             noisetime[d] = utils.readFromDynParams(dirSample, "taup")
             energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+            if which == 'angmom':
+                energy[:,index1] /= maxI
+                energy[:,index2] /= maxL
             prad[d] = np.mean(energy[:,index1])
             prad_err[d] = np.std(energy[:,index1])
-            ptheta[d] = np.mean(energy[:,index2])
-            ptheta_err[d] = np.std(energy[:,index2])
+            pphi[d] = np.mean(energy[:,index2])
+            pphi_err[d] = np.std(energy[:,index2])
     #ax[0].plot(aligntime, prad, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none')
     if versus == 'inter':
         x = aligntime
     else:
         x = noisetime
     ax[0].errorbar(x[prad!=0], prad[prad!=0], prad_err[prad!=0], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-    ax[1].errorbar(x[ptheta!=0], np.abs(ptheta[ptheta!=0]), ptheta_err[ptheta!=0], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+    ax[1].errorbar(x[pphi!=0], np.abs(pphi[pphi!=0]), pphi_err[pphi!=0], lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
     ax[0].tick_params(axis='both', labelsize=14)
     ax[1].tick_params(axis='both', labelsize=14)
-    ax[0].set_xlabel(xlabel, fontsize=18)
-    ax[1].set_xlabel(xlabel, fontsize=18)
-    ax[0].set_ylabel(ylabel1, fontsize=18, rotation='horizontal', labelpad=15)
-    ax[1].set_ylabel(ylabel2, fontsize=18, rotation='horizontal', labelpad=15)
+    ax[0].set_xlabel(xlabel, fontsize=16)
+    ax[1].set_xlabel(xlabel, fontsize=16)
+    if which == 'angmom':
+        ax[0].set_ylabel(ylabel1, fontsize=18, rotation='horizontal', labelpad=15)
+        ax[1].set_ylabel(ylabel2, fontsize=18, rotation='horizontal', labelpad=15)
+    else:
+        ax[0].set_ylabel(ylabel1, fontsize=16, rotation='horizontal', labelpad=15)
+        ax[1].set_ylabel(ylabel2, fontsize=16, rotation='horizontal', labelpad=15)
     ax[0].set_xscale('log')
     ax[1].set_xscale('log')
     ax[0].yaxis.set_major_locator(MaxNLocator(nbins=5))
@@ -1539,28 +1865,28 @@ def computeNumClusterVSTime(dirSample, minNum=2, eps=1.5):
     rad = np.loadtxt(dirSample + "particleRad.dat")
     numParticles = rad.shape[0]
     eps *= 2 * np.mean(rad)
-    numLabels = np.empty(0)
-    fraction = np.empty(0)
-    free = np.empty(0)
+    numLabels = np.zeros(dirList.shape[0])
+    numInCluster = np.zeros(dirList.shape[0])
+    fraction = np.zeros(dirList.shape[0])
+    free = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         dirFrame = dirSample + os.sep + dirList[d] + os.sep
         pos = np.array(np.loadtxt(dirFrame + os.sep + 'particlePos.dat'))
         labels = utils.getDBClusterLabels(pos, eps, min_samples=2, denseList=np.ones(pos.shape[0]))
         uniqueLabels = np.unique(labels)
-        fracCluster = np.empty(0)
-        clusterNum = 0 # number of clusters with more than minNum particles
+        numClusters = 0 # number of clusters with more than minNum particles
+        fracCluster = 0
         for label in uniqueLabels:
-            if label != -1:
-                if labels[labels==label].shape[0] > minNum:
-                    numCluster = labels[labels==label].shape[0]
-                    fracCluster = np.append(fracCluster, numCluster / numParticles)
-                    clusterNum += 1
-                else:
-                    fracCluster = np.append(fracCluster, 0)
-        numLabels = np.append(numLabels, clusterNum)
-        fraction = np.append(fraction, np.mean(fracCluster))
-        free = np.append(free, labels[labels==-1].shape[0] / numParticles)
-    np.savetxt(dirSample + "/numCluster.dat", np.column_stack((timeList, numLabels, fraction, free)))
+            if label != -1 and labels[labels==label].shape[0] > minNum:
+                numClusters += 1
+                fracCluster += labels[labels==label].shape[0]
+        numLabels[d] = numClusters
+        if numClusters > 0:
+            numInCluster[d] = fracCluster / numClusters
+        fraction[d] = fracCluster / numParticles
+        free[d] = labels[labels==-1].shape[0] / numParticles
+        #print("Time:", timeList[d], "Num clusters:", numClusters, "fraction in clusters:", fraction[d], "fraction free:", free[d])
+    np.savetxt(dirSample + "/numCluster.dat", np.column_stack((timeList, numLabels, numInCluster, fraction, free)))
 
 def compareNumClusterVSTime(dirName, figureName, versus="inter", which="num", dynamics="/", minNum=2):
     fig, ax = plt.subplots(1, 2, figsize=(10,4), dpi = 120)
@@ -1582,16 +1908,20 @@ def compareNumClusterVSTime(dirName, figureName, versus="inter", which="num", dy
     numCluster3 = np.zeros((dirList.shape[0],2))
     if which == "num":
         index = 1
-        ylabel1 = "$\\langle N_C \\rangle_C$"
-        ylabel2 = "$\\langle N_C \\rangle_{C,t}$"
-    elif which == "frac":
+        ylabel1 = "$N_C$"
+        ylabel2 = "$\\langle N_C \\rangle$"
+    elif which == "numin":
         index = 2
-        ylabel1 = "$\\langle f_C \\rangle_C$"
-        ylabel2 = "$\\langle f_C \\rangle_{C,t}$"
-    else:
+        ylabel1 = "$\\bar{N}_p$"
+        ylabel2 = "$\\langle \\bar{N}_p \\rangle$"
+    elif which == "frac":
         index = 3
+        ylabel1 = "$f_C$"
+        ylabel2 = "$\\langle f_C \\rangle$"
+    else:
+        index = -1
         ylabel1 = "$f_0$"
-        ylabel2 = "$\\langle f_0 \\rangle_t$"
+        ylabel2 = "$\\langle f_0 \\rangle$"
     for d in range(dirList.shape[0]):
         if versus == "inter":
             dirSample = dirName + "j" + dirList[d] + "-tp1e03/dynamics-vel/" + dynamics
@@ -1600,16 +1930,20 @@ def compareNumClusterVSTime(dirName, figureName, versus="inter", which="num", dy
         aligntime[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
         noisetime[d] = utils.readFromDynParams(dirSample, "taup")
         if(os.path.exists(dirSample + "/t0/")):
-            if not(os.path.exists(dirSample + "/numCluster!.dat")):
+            if not(os.path.exists(dirSample + "/numCluster.dat")):
                 computeNumClusterVSTime(dirSample, minNum)
             clusterData = np.loadtxt(dirSample + "/numCluster.dat")
-            ax[1].plot(clusterData[:,0]*dt, clusterData[:,1], linewidth=1, color=colorList(d/dirList.shape[0]), label ="$J_K=$" + dirList[d])
+            ax[1].plot(clusterData[:,0]*dt, clusterData[:,index], linewidth=1, color=colorList(d/dirList.shape[0]), label ="$J_K=$" + dirList[d])
             numCluster1[d,0] = np.mean(clusterData[-20:,index])
             numCluster1[d,1] = np.std(clusterData[-20:,index])
             numCluster2[d,0] = np.mean(clusterData[-50:,index])
             numCluster2[d,1] = np.std(clusterData[-50:,index])
             numCluster3[d,0] = np.mean(clusterData[:,index])
             numCluster3[d,1] = np.std(clusterData[:,index])
+    if which == 'num':
+        upper_lim = 92
+        ax[1].set_ylim(-3,upper_lim)
+        ax[0].set_ylim(-3,upper_lim)
     colorBar = cm.ScalarMappable(cmap=colorList)
     divider = make_axes_locatable(ax[1])
     cax = divider.append_axes("right", size="5%", pad=0.)
@@ -1628,7 +1962,7 @@ def compareNumClusterVSTime(dirName, figureName, versus="inter", which="num", dy
     ax[0].tick_params(axis='both', labelsize=14)
     ax[1].tick_params(axis='both', labelsize=14)
     ax[1].set_xlabel("$Time,$ $t$", fontsize=14)
-    ax[1].set_ylabel(ylabel1, fontsize=14, rotation='horizontal', labelpad=20)
+    ax[1].set_ylabel(ylabel1, fontsize=14, rotation='horizontal', labelpad=10)
     ax[0].errorbar(x[numCluster1[:,0]!=0], numCluster1[numCluster1[:,0]!=0,0], numCluster1[numCluster1[:,0]!=0,1], 
                    lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3, label="$t > 0.8 t_{max}$")
     ax[0].errorbar(x[numCluster2[:,0]!=0], numCluster2[numCluster2[:,0]!=0,0], numCluster2[numCluster2[:,0]!=0,1], 
@@ -1639,55 +1973,330 @@ def compareNumClusterVSTime(dirName, figureName, versus="inter", which="num", dy
     ax[0].set_xscale('log')
     ax[0].tick_params(axis='both', labelsize=14)
     ax[0].set_xlabel(xlabel, fontsize=14)
-    ax[0].set_ylabel(ylabel2, fontsize=14, rotation='horizontal', labelpad=25)
+    ax[0].set_ylabel(ylabel2, fontsize=14, rotation='horizontal', labelpad=15)
     plt.tight_layout()
-    figureName = "/home/francesco/Pictures/soft/numCluster-" + figureName
+    figureName = "/home/francesco/Pictures/soft/numCluster-" + figureName + "-" + which
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotClustersVSBoundary(dirName, figureName, minNum=2):
+    fig, ax = plt.subplots(2, 2, figsize=(9,7), dpi = 200)
+    ax[0,1].sharey(ax[0,0])   # top row
+    ax[1,1].sharey(ax[1,0])   # bottom row
+    numParticles = float(utils.readFromParams(dirName + "j1e03-tp1e03", "numParticles"))
+    interList = np.array(["1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01", "1",
+                          "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+    noiseList = np.array(["1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+    aligntime = np.zeros(interList.shape[0])
+    noisetime = np.zeros(noiseList.shape[0])
+    boundary = np.array(["reflect/dynamics/", "rough/dynamics/", "fixed/dynamics/"])
+    labelList = np.array(["$Reflective$", "$Rough$", "$Fixed$"])
+    colorList = [[0.6,0.6,0.6], 'k', [0.6,0.6,1]]
+    markerList = ['o', 's', 'D']
+    index1 = 1
+    ylabel1 = "$\\langle N_c \\rangle$"
+    index2 = 2
+    ylabel2 = "$\\frac{\\langle N_p \\rangle}{N}$"
+    ax[0,0].tick_params(axis='both', labelsize=17)
+    ax[0,1].tick_params(axis='both', labelsize=17)
+    ax[1,0].tick_params(axis='both', labelsize=17)
+    ax[1,1].tick_params(axis='both', labelsize=17)
+    ax[0,0].set_ylabel(ylabel1, fontsize=24, rotation='horizontal', labelpad=35)
+    ax[1,0].set_ylabel(ylabel2, fontsize=34, rotation='horizontal', labelpad=30)
+    ax[1,0].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=22)
+    ax[1,1].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=22)
+    # collect data vs interaction strength
+    for b in range(boundary.shape[0]):
+        numCluster = np.zeros((interList.shape[0],2))
+        clusterSize = np.zeros((interList.shape[0],2))
+        for d in range(interList.shape[0]):
+            dirSample = dirName + "j" + interList[d] + "-tp1e03/dynamics-vel/" + boundary[b]
+            aligntime[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+            if interList[d] == "1e-01":
+                interCut = aligntime[d]
+            if(os.path.exists(dirSample + "/t0/")):
+                if not(os.path.exists(dirSample + "/numCluster.dat")):
+                    computeNumClusterVSTime(dirSample, minNum)
+                #if boundary[b] == "rough/dynamics/" and interList[d] == "1e04":
+                #    print("interaction:", interList[d], "aligntime:", aligntime[d])
+                #    computeNumClusterVSTime(dirSample, minNum)
+                clusterData = np.loadtxt(dirSample + "/numCluster.dat")
+                numCluster[d,0] = np.mean(clusterData[:,index1])
+                numCluster[d,1] = np.std(clusterData[:,index1])
+                clusterSize[d,0] = np.mean(clusterData[:,index2])/numParticles
+                clusterSize[d,1] = np.std(clusterData[:,index2])/numParticles
+                if interList[d] == "1e-01":
+                    numCluster_same = numCluster[d]
+                    clusterSize_same = clusterSize[d]
+                    print("clusterSize at inter cut:", clusterSize[d])
+                if interList[d] == "3e03":
+                    print("tauk:", aligntime[d])
+        ax[0,0].errorbar(aligntime[numCluster[:,0]!=0], numCluster[numCluster[:,0]!=0,0], numCluster[numCluster[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        ax[1,0].errorbar(aligntime[clusterSize[:,0]!=0], clusterSize[clusterSize[:,0]!=0,0], clusterSize[clusterSize[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        #ax[0,0].errorbar(interCut, numCluster_same[0], numCluster_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+        #ax[1,0].errorbar(interCut, clusterSize_same[0], clusterSize_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+    #ax[0,0].axvline(x=interCut, color='k', linestyle='dotted', lw=0.7)
+    #ax[1,0].axvline(x=interCut, color='k', linestyle='dotted', lw=0.7)
+    # collect data vs noise strength
+    for b in range(boundary.shape[0]):
+        numCluster = np.zeros((noiseList.shape[0],2))
+        clusterSize = np.zeros((noiseList.shape[0],2))
+        for d in range(noiseList.shape[0]):
+            dirSample = dirName + "j1e-01-tp" + noiseList[d] + "/dynamics-vel/" + boundary[b]
+            noisetime[d] = utils.readFromDynParams(dirSample, "taup")
+            if noiseList[d] == "1e03":
+                noiseCut = noisetime[d]
+            if(os.path.exists(dirSample + "/t0/")):
+                if not(os.path.exists(dirSample + "/numCluster.dat")):
+                    computeNumClusterVSTime(dirSample, minNum)
+                #if boundary[b] == "rough/dynamics/" and noiseList[d] == "1e-02":
+                #    print("noise:", noiseList[d], "noisetime:", noisetime[d])
+                #    computeNumClusterVSTime(dirSample, minNum)
+                clusterData = np.loadtxt(dirSample + "/numCluster.dat")
+                numCluster[d,0] = np.mean(clusterData[:,index1])
+                numCluster[d,1] = np.std(clusterData[:,index1])
+                clusterSize[d,0] = np.mean(clusterData[:,index2])/numParticles
+                clusterSize[d,1] = np.std(clusterData[:,index2])/numParticles
+                if noiseList[d] == "1e03":
+                    numCluster_same = numCluster[d]
+                    clusterSize_same = clusterSize[d]
+                    print("clusterSize at noise cut:", clusterSize[d])
+        ax[0,1].errorbar(noisetime[numCluster[:,0]!=0], numCluster[numCluster[:,0]!=0,0], numCluster[numCluster[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        ax[1,1].errorbar(noisetime[clusterSize[:,0]!=0], clusterSize[clusterSize[:,0]!=0,0], clusterSize[clusterSize[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        #ax[0,1].errorbar(noiseCut, numCluster_same[0], numCluster_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+        #ax[1,1].errorbar(noiseCut, clusterSize_same[0], clusterSize_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+    #ax[0,1].axvline(x=noiseCut, color='k', linestyle='dotted', lw=0.7)
+    #ax[1,1].axvline(x=noiseCut, color='k', linestyle='dotted', lw=0.7)
+    print("Interaction cut tau_K =", interCut, ", J_K =", 1/interCut, "K =", np.pi * 1.5**2/interCut)
+    print("Noise cut tau_p =", noiseCut)
+    ax[1,0].yaxis.set_major_locator(MaxNLocator(nbins=5))
+    ax[1,1].xaxis.set_major_locator(MaxNLocator(nbins=5))
+    ax[1,0].xaxis.set_major_locator(MaxNLocator(nbins=5))
+    ax[0,0].set_xscale('log')
+    ax[1,0].set_xscale('log')
+    ax[0,1].set_xscale('log')
+    ax[1,1].set_xscale('log')
+    ax[0,0].set_yscale('log')
+    ax[1,0].set_yscale('log')
+    ax[0,1].set_yscale('log')
+    ax[1,1].set_yscale('log')
+    ax[1,0].xaxis.set_major_locator(LogLocator(base=10, numticks=5))
+    ax[1,0].xaxis.set_minor_locator(LogLocator(base=10, subs='auto'))
+    ax[1,1].xaxis.set_major_locator(LogLocator(base=10, numticks=4))
+    ax[1,1].xaxis.set_minor_locator(LogLocator(base=10, subs='auto'))
+    #ax[0,1].set_ylim(0.016,)
+    #ax[1,1].set_ylim(0.000064,)
+    ax[0,1].set_ylim(0.12,)
+    ax[1,1].set_ylim(0.00034,)
+    ax[0,1].tick_params(labelleft=False)
+    ax[1,1].tick_params(labelleft=False)
+    ax[1,0].tick_params(top=True)
+    ax[1,1].tick_params(top=True)
+    ax[0,0].tick_params(labelbottom=False, bottom=True)
+    ax[0,1].tick_params(labelbottom=False, bottom=True)
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0)
+    plt.subplots_adjust(wspace=0)
+    figureName = "/home/francesco/Pictures/soft/cluster-" + figureName
     fig.savefig(figureName + ".png", transparent=False, format = "png")
     plt.show()
 
-def plotPinnedBoundary(dirName, figureName, dynamics='/'):
-    fig, ax = plt.subplots(1, 2, figsize=(9,4), dpi = 120)
+def plotMomentsVSBoundary(dirName, figureName):
+    fig, ax = plt.subplots(2, 2, figsize=(9,7), dpi = 200)
+    ax[0,1].sharey(ax[0,0])   # top row
+    ax[1,1].sharey(ax[1,0])   # bottom row
+    boxSize = np.atleast_1d(np.loadtxt(dirName + "j1e03-tp1e03/boxSize.dat"))
+    maxI = boxSize[0]**2
+    f0 = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "f0"))
+    gamma = float(utils.readFromDynParams(dirName + "j1e03-tp1e03", "damping"))
+    maxL = boxSize[0] * (f0/gamma)
+    interList = np.array(["1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01", "1",
+                          "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+    noiseList = np.array(["1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+    aligntime = np.zeros(interList.shape[0])
+    noisetime = np.zeros(noiseList.shape[0])
+    boundary = np.array(["reflect/dynamics/", "rough/dynamics/"])#, "fixed/dynamics/"])
+    labelList = np.array(["$Reflective$", "$Rough$", "$Fixed$"])
+    colorList = [[0.6,0.6,0.6], 'k', [0.6,0.6,1]]
+    markerList = ['o', 's', 'D']
+    index1 = -2
+    ylabel1 = "$\\langle \\tilde{I} \\rangle$" #"$\\frac{\\langle I \\rangle}{M R^2}$"
+    index2 = -1
+    ylabel2 = "$\\langle \\tilde{L} \\rangle$" #"$\\frac{\\langle |L| \\rangle}{M v_0 R}$"
+    ax[0,0].tick_params(axis='both', labelsize=17)
+    ax[0,1].tick_params(axis='both', labelsize=17)
+    ax[1,0].tick_params(axis='both', labelsize=17)
+    ax[1,1].tick_params(axis='both', labelsize=17)
+    ax[0,0].set_ylabel(ylabel1, fontsize=22, rotation='horizontal', labelpad=25)
+    ax[1,0].set_ylabel(ylabel2, fontsize=22, rotation='horizontal', labelpad=25)
+    ax[1,0].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=22)
+    ax[1,1].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=22)
+    # collect data vs interaction strength
+    for b in range(boundary.shape[0]):
+        plotline = True
+        MOI = np.zeros((interList.shape[0],2))
+        angMom = np.zeros((interList.shape[0],2))
+        for d in range(interList.shape[0]):
+            dirSample = dirName + "j" + interList[d] + "-tp1e03/dynamics-vel/" + boundary[b]
+            if os.path.exists(dirSample + "/energy.dat"):
+                aligntime[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+                energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                MOI[d,0] = np.abs(np.mean(energy[:,index1])) / maxI
+                MOI[d,1] = np.std(energy[:,index1]) / maxI
+                angMom[d,0] = np.abs(np.mean(energy[:,index2])) / maxL
+                angMom[d,1] = np.std(energy[:,index2]) / maxL
+                if interList[d] == "1e-01":
+                    interCut = aligntime[d]
+                    MOI_same = MOI[d]
+                    angmom_same = angMom[d]
+                    print("angular momentum at inter cut:", angMom[d])
+                    if plotline:
+                        #ax[0,0].axvline(x=interCut, color='chartreuse', linestyle='solid', lw=3)
+                        #ax[1,0].axvline(x=interCut, color='chartreuse', linestyle='solid', lw=3)
+                        ax[0,0].axhline(y=0.93, color='k', linestyle='dashed', lw=1)
+                        ax[0,1].axhline(y=0.93, color='k', linestyle='dashed', lw=1)
+                        plotline = False
+                if interList[d] == "1e04":
+                    print("boundary:", boundary[b], "ball MOI:", MOI[d])
+        ax[0,0].errorbar(aligntime[MOI[:,0]!=0], MOI[MOI[:,0]!=0,0], MOI[MOI[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        ax[1,0].errorbar(aligntime[angMom[:,0]!=0], angMom[angMom[:,0]!=0,0], angMom[angMom[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        #ax[0,0].errorbar(interCut, MOI_same[0], MOI_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+        #ax[1,0].errorbar(interCut, angmom_same[0], angmom_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+    # collect data vs noise strength
+    for b in range(boundary.shape[0]):
+        plotline = True
+        MOI = np.zeros((noiseList.shape[0],2))
+        angMom = np.zeros((noiseList.shape[0],2))
+        for d in range(noiseList.shape[0]):
+            dirSample = dirName + "j1e-01-tp" + noiseList[d] + "/dynamics-vel/" + boundary[b]
+            if os.path.exists(dirSample + "/energy.dat"):
+                noisetime[d] = utils.readFromDynParams(dirSample, "taup")
+                energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                MOI[d,0] = np.abs(np.mean(energy[:,index1])) / maxI
+                MOI[d,1] = np.std(energy[:,index1]) / maxI
+                angMom[d,0] = np.abs(np.mean(energy[:,index2])) / maxL
+                angMom[d,1] = np.std(energy[:,index2]) / maxL
+                if noiseList[d] == "1e03":
+                    noiseCut = noisetime[d]
+                    MOI_same = MOI[d]
+                    angmom_same = angMom[d]
+                    print("angular momentum at noise cut:", angMom[d])
+                    if plotline:
+                        #ax[0,1].axvline(x=noiseCut, color='aqua', linestyle='solid', lw=3)
+                        #ax[1,1].axvline(x=noiseCut, color='aqua', linestyle='solid', lw=3)
+                        plotline = False
+        ax[0,1].errorbar(noisetime[MOI[:,0]!=0], MOI[MOI[:,0]!=0,0], MOI[MOI[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        ax[1,1].errorbar(noisetime[angMom[:,0]!=0], angMom[angMom[:,0]!=0,0], angMom[angMom[:,0]!=0,1], 
+                         lw=1.1, color=colorList[b], marker=markerList[b], markersize=9, fillstyle='none', capsize=3, label=labelList[b])
+        #ax[0,1].errorbar(noiseCut, MOI_same[0], MOI_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+        #ax[1,1].errorbar(noiseCut, angmom_same[0], angmom_same[1], 
+        #                 lw=0, color=starList[b], marker=markStarList[b], markersize=18, fillstyle='full', capsize=3, markeredgecolor='k', markeredgewidth=0.7)
+    #print("Interaction cut tau_K =", interCut, ", J_K =", 1/interCut, "K =", np.pi * 1.5**2/interCut)
+    print("Noise cut tau_p =", noiseCut)
+    #ax[1,0].yaxis.set_major_locator(MaxNLocator(nbins=5))
+    #ax[1,1].xaxis.set_major_locator(MaxNLocator(nbins=5))
+    #ax[1,0].xaxis.set_major_locator(MaxNLocator(nbins=5))
+    ax[0,0].set_xscale('log')
+    ax[1,0].set_xscale('log')
+    ax[0,1].set_xscale('log')
+    ax[1,1].set_xscale('log')
+    ax[1,0].xaxis.set_major_locator(LogLocator(base=10, numticks=5))
+    ax[1,0].xaxis.set_minor_locator(LogLocator(base=10, subs='auto'))
+    ax[1,1].xaxis.set_major_locator(LogLocator(base=10, numticks=4))
+    ax[1,1].xaxis.set_minor_locator(LogLocator(base=10, subs='auto'))
+    #ax[1,0].set_yscale('log')
+    #ax[1,1].set_yscale('log')
+    ax[0,1].tick_params(labelleft=False)
+    ax[1,1].tick_params(labelleft=False)
+    ax[1,0].tick_params(top=True)
+    ax[1,1].tick_params(top=True)
+    ax[0,0].tick_params(labelbottom=False, bottom=True)
+    ax[0,1].tick_params(labelbottom=False, bottom=True)
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0)
+    plt.subplots_adjust(wspace=0)
+    figureName = "/home/francesco/Pictures/soft/moments-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotPinnedBoundary(dirName, figureName, which='viscosity', dynamics='/'):
+    if which == 'viscosity':
+        fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
+    else:
+        fig, ax = plt.subplots(1, 2, figsize=(10,4), dpi = 120)
     boxRadius = np.loadtxt(dirName + "j1e03-tp1e03/dynamics-vel/boxSize.dat")
     dirList = np.array(["1e-04", "3e-04", "1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01", "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
     aligntime = np.zeros(dirList.shape[0])
-    corr = np.zeros(dirList.shape[0])
-    corr_err = np.zeros(dirList.shape[0])
-    krot = np.zeros(dirList.shape[0])
-    krot_err = np.zeros(dirList.shape[0])
+    if which == 'viscosity':
+        eta = np.zeros(dirList.shape[0])
+        eta_err = np.zeros(dirList.shape[0])
+    else:
+        corr = np.zeros(dirList.shape[0])
+        corr_err = np.zeros(dirList.shape[0])
+        krot = np.zeros(dirList.shape[0])
+        krot_err = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
         aligntime[d] = 1/utils.readFromDynParams(dirName + "j" + dirList[d] + "-tp1e03", "Jvicsek")
         dirSample = dirName + "j" + dirList[d] + "-tp1e03/dynamics-vel/rigid" + dynamics
-        if(os.path.exists(dirSample + "/energy.dat")):
+        if(os.path.exists(dirSample + "/energy.dat") and os.path.exists(dirSample + "/wallDynamics.dat")):
             energy = np.loadtxt(dirSample + os.sep + "energy.dat")
-            corr[d] = np.mean(energy[:,5])
-            corr_err[d] = np.std(energy[:,5])
-        if(os.path.exists(dirSample + "/wallDynamics.dat")):
             angleDyn = np.loadtxt(dirSample + "wallDynamics.dat")
-            angleDyn[:,3] = 0.5 * angleDyn[:,3]**2 * boxRadius **2
-            krot[d] = np.mean(angleDyn[:,3])
-            krot_err[d] = np.std(angleDyn[:,3])
-    ax[0].errorbar(aligntime, np.abs(corr), corr_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-    ax[1].errorbar(aligntime, krot, krot_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-    ax[0].tick_params(axis='both', labelsize=14)
-    ax[1].tick_params(axis='both', labelsize=14)
-    ax[1].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=18)
-    ax[0].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=18)
-    ax[1].set_ylabel("$K_{rot}$", fontsize=18, rotation='horizontal', labelpad=15)
-    ax[0].set_ylabel("$|P_\\theta|$", fontsize=18, rotation='horizontal', labelpad=15)
-    ax[0].set_xscale('log')
-    ax[1].set_xscale('log')
-    ax[0].yaxis.set_major_locator(MaxNLocator(nbins=5))
-    ax[1].yaxis.set_major_locator(MaxNLocator(nbins=5))
+            if which == 'viscosity':
+                eta[d] = np.mean(energy[:,5] / angleDyn[:,3])
+                eta_err[d] = np.std(energy[:,5] / angleDyn[:,3])
+            else:
+                corr[d] = np.mean(np.abs(energy[:,5]))
+                corr_err[d] = np.std(np.abs(energy[:,5]))
+                angleDyn[:,3] = 0.5 * angleDyn[:,3]**2 * boxRadius**2
+                krot[d] = np.mean(angleDyn[:,3])
+                krot_err[d] = np.std(angleDyn[:,3])
+    if which == 'viscosity':
+        ax.errorbar(aligntime, eta, eta_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=16)
+        ax.set_ylabel("$Viscosity,$ $\\eta$", fontsize=16)
+        ax.set_xscale('log')
+    else:
+        ax[0].errorbar(aligntime, np.abs(corr), corr_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+        ax[1].errorbar(aligntime, krot, krot_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+        ax[0].tick_params(axis='both', labelsize=14)
+        ax[1].tick_params(axis='both', labelsize=14)
+        ax[1].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=16)
+        ax[0].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=16)
+        ax[1].set_ylabel("$K_{rot}$", fontsize=16, rotation='horizontal', labelpad=15)
+        ax[0].set_ylabel("$|P_\\theta|$", fontsize=16, rotation='horizontal', labelpad=15)
+        ax[0].set_xscale('log')
+        ax[1].set_xscale('log')
+        ax[0].yaxis.set_major_locator(MaxNLocator(nbins=5))
+        ax[1].yaxis.set_major_locator(MaxNLocator(nbins=5))
     plt.tight_layout()
     plt.subplots_adjust(hspace=0)
-    figureName = "/home/francesco/Pictures/soft/pinned-" + figureName
+    figureName = "/home/francesco/Pictures/soft/pinned-" + figureName + "-" + which
     fig.savefig(figureName + ".png", transparent=False, format = "png")
     plt.show()
 
-def compareBoundaryRoughness(dirName, figureName, which='corr', dynamics='/'):
-    fig, ax = plt.subplots(figsize=(5.5,4), dpi = 120)
+def compareBoundaryRoughness(dirName, figureName, type='rough', which='angmom', dynamics='/'):
+    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
     boxRadius = np.loadtxt(dirName + "/boxSize.dat")
-    dirList = np.array(["0.1", "0.2", "0.4", "0.6", "0.8", "1", "1.2", "1.4", "1.6", "1.8"])
+    f0 = float(utils.readFromDynParams(dirName, "f0"))
+    gamma = float(utils.readFromDynParams(dirName, "damping"))
+    maxL = boxRadius * (f0/gamma)
+    maxI = boxRadius**2
+    dirList = np.array(["0.1", "0.2", "0.4", "0.6", "0.8", "1", "1.2", "1.4", "1.6", "1.8"])#, "2", "2.4", "2.8", "3.2", "3.6", "4"])
     colorList = cm.get_cmap('viridis')
     index, ylabel = getIndexYlabel(which)
     roughness = np.zeros(dirList.shape[0])
@@ -1696,19 +2305,24 @@ def compareBoundaryRoughness(dirName, figureName, which='corr', dynamics='/'):
     krot = np.zeros(dirList.shape[0])
     krot_err = np.zeros(dirList.shape[0])
     for d in range(dirList.shape[0]):
-        roughness[d] = 2 * utils.readFromWallParams(dirName + "rigid" + dirList[d], "wallRad")
-        dirSample = dirName + "rigid" + dirList[d] + dynamics
-        #if(os.path.exists(dirSample + "/energy.dat")):
-            #energy = np.loadtxt(dirSample + os.sep + "energy.dat")
-            #ax.plot(energy[::2,0], energy[::2,index], linewidth=1.2, color=colorList(d/dirList.shape[0]))
-            #mean[d] = np.mean(np.abs(energy[:,index]))
-            #error[d] = np.std(np.abs(energy[:,index]))
-        if(os.path.exists(dirSample + "/wallDynamics.dat")):
-            angleDyn = np.loadtxt(dirSample + "wallDynamics.dat")
-            angleDyn[:,3] = 0.5 * angleDyn[:,3]**2 * boxRadius **2
-            krot[d] = np.mean(angleDyn[:,3])
-            krot_err[d] = np.std(angleDyn[:,3])
-            ax.plot(angleDyn[:,0], angleDyn[:,3], linewidth=1.2, color=colorList(d/dirList.shape[0]))
+        roughness[d] = 2 * utils.readFromWallParams(dirName + type + dirList[d], "wallRad")
+        dirSample = dirName + type + dirList[d] + dynamics
+        if(os.path.exists(dirSample + "/energy.dat")):
+            energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+            ax.plot(energy[::2,0], energy[::2,index], linewidth=1.2, color=colorList(d/dirList.shape[0]))
+            if which == "angmom":
+                energy[:,index] /= maxL
+            elif which == "moi":
+                energy[:,index] /= maxI
+            mean[d] = np.mean(np.abs(energy[:,index]))
+            error[d] = np.std(np.abs(energy[:,index]))
+        if type == 'rigid':
+            if(os.path.exists(dirSample + "/wallDynamics.dat")):
+                angleDyn = np.loadtxt(dirSample + "wallDynamics.dat")
+                angleDyn[:,3] = 0.5 * angleDyn[:,3]**2 * boxRadius **2
+                krot[d] = np.mean(angleDyn[:,3])
+                krot_err[d] = np.std(angleDyn[:,3])
+                #ax.plot(angleDyn[:,0], angleDyn[:,3], linewidth=1.2, color=colorList(d/dirList.shape[0]))
     ax.tick_params(axis='both', labelsize=14)
     #space = 0.04*np.max(energy[:,0])
     #ax.plot(np.linspace(np.min(energy[:,0])-space, np.max(energy[:,0])+space, 100), np.zeros(100), ls='dotted', color='k', lw=0.8)
@@ -1722,23 +2336,481 @@ def compareBoundaryRoughness(dirName, figureName, which='corr', dynamics='/'):
     cbar.set_ticks(np.linspace(0,1,3))
     cbar.set_ticklabels(['$0.4$', '$1$', '$1.4$'])
     ax.set_xlabel("$Simulation$ $step$", fontsize=16)
-    #ax.set_ylabel(ylabel, fontsize=14)
-    ax.set_ylabel("$K_{rot}$", fontsize=16)
+    ax.set_ylabel(ylabel, fontsize=14)
     plt.tight_layout()
-    #figure1Name = "/home/francesco/Pictures/soft/boundRough-" + which + "-" + figureName
-    #fig.savefig(figure1Name + ".png", transparent=True, format = "png")
-    fig, ax = plt.subplots(figsize=(7,5), dpi = 120)
-    #ax.errorbar(roughness, np.abs(mean), error, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
-    ax.errorbar(roughness, krot, krot_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+    figure1Name = "/home/francesco/Pictures/soft/boundRough-" + which + "-" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    # plot krot versus roughness
+    if type == 'rigid':
+        fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+        ax.errorbar(roughness, krot, krot_err, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
+        ax.set_yscale('log')
+        ax.tick_params(axis='both', labelsize=14)
+        ax.set_ylabel("$K_{rot}$", rotation='horizontal', labelpad=20, fontsize=18)
+        ax.set_xlabel("$Roughness,$ $\\sigma_m / \\sigma$", fontsize=18)
+        plt.tight_layout()
+        figure2Name = "/home/francesco/Pictures/soft/krotRough-" + figureName
+        fig.savefig(figure2Name + ".png", transparent=False, format = "png")
+    # plot angular momentum or pphi versus roughness
+    fig, ax = plt.subplots(figsize=(6,4), dpi = 120)
+    ax.errorbar(roughness, mean, error, lw=1.2, color='k', marker='o', markersize=8, fillstyle='none', capsize=3)
     #ax.set_xscale('log')
-    ax.set_yscale('log')
+    #ax.set_yscale('log')
     ax.tick_params(axis='both', labelsize=14)
-    #ax.set_ylabel("$|P_\\theta|$", rotation='horizontal', labelpad=20, fontsize=18)
-    ax.set_ylabel("$K_{rot}$", rotation='horizontal', labelpad=20, fontsize=18)
+    if which == "angmom":
+        ax.set_ylabel("$\\frac{\\langle |L| \\rangle}{v_0 R}$", fontsize=24, rotation='horizontal', labelpad=30)
+    elif which == "moi":
+        ax.set_ylabel("$\\frac{\\langle I \\rangle}{M R^2}$", fontsize=24, rotation='horizontal', labelpad=30)
+    elif which == "pphi":
+        ax.set_ylabel("$\\langle |P_\\phi| \\rangle$", fontsize=18, rotation='horizontal', labelpad=30)
+        ax.set_yscale('log')
+    else:
+        ax.set_ylabel(ylabel, fontsize=18)
     ax.set_xlabel("$Roughness,$ $\\sigma_m / \\sigma$", fontsize=18)
     plt.tight_layout()
-    figure2Name = "/home/francesco/Pictures/soft/boundRough-" + which + figureName
+    figure2Name = "/home/francesco/Pictures/soft/" + which + "Rough-" + figureName
     fig.savefig(figure2Name + ".png", transparent=False, format = "png")
+    plt.show()
+
+def comparePhaseRoughness(dirName, figureName, versus='size', which1='moi', which2='angmom', dynamics='/'):
+    fig, ax = plt.subplots(2, 1, sharex=True, figsize=(6.5,5.5), dpi = 120)
+    alignList = np.array(["1e-01", "3", "1e02", "1e04"])
+    labelList = np.array(["$7.1 \\times 10^1$", "$2.4$", "$7.1 \\times 10^{-2}$", "$7.1 \\times 10^{-4}$"])
+    labelList = np.array(["$TG$", "$PDC+G$", "$PDC$", "$LC$"])
+    colorList = ['forestgreen', 'dodgerblue', [0.6,0,0.8], [1,0.7,0]]
+    markerList = ['v', 'o', 's', '^']
+    if versus == 'size': dirList = np.array(["0", "0.1", "0.2", "0.4", "0.6", "0.8", "1", "1.2", "1.4", "1.6", "1.8"])
+    else: 
+        dirList = np.array(["1e-01", "1", "1e01", "1e02"])
+        ew = dirList.astype(float)
+    index1, ylabel1 = getIndexYlabel(which1)
+    index2, ylabel2 = getIndexYlabel(which2)
+    start = 1
+    for a in range(alignList.shape[0]):
+        obs1 = np.zeros((dirList.shape[0],2))
+        obs2 = np.zeros((dirList.shape[0],2))
+        dirPath = dirName + "j" + alignList[a] + "-tp1e03/dynamics-vel/"
+        boxRadius = np.loadtxt(dirPath + "/boxSize.dat")
+        f0 = float(utils.readFromDynParams(dirPath, "f0"))
+        gamma = float(utils.readFromDynParams(dirPath, "damping"))
+        maxI = boxRadius**2
+        maxL = boxRadius * (f0/gamma)
+        if versus == 'size':
+            roughness = np.zeros(dirList.shape[0])
+            for d in range(start, dirList.shape[0]):
+                if dirList[d] == '0': dirSample = dirPath + "fixed" + dynamics
+                else: dirSample = dirPath + "rough" + dirList[d] + dynamics
+                if os.path.exists(dirSample):
+                    if dirList[d] != '0': roughness[d] = 2 * utils.readFromWallParams(dirPath + "rough" + dirList[d], "wallRad")
+                    if(os.path.exists(dirSample + "/energy.dat")):
+                        energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                        if which1 == "moi" and which2 == "angmom":
+                            energy[:,index1] /= maxI
+                            energy[:,index2] /= maxL
+                        obs1[d,0] = np.mean(np.abs(energy[:,index1]))
+                        obs1[d,1] = np.std(np.abs(energy[:,index1]))
+                        obs2[d,0] = np.mean(np.abs(energy[:,index2]))
+                        obs2[d,1] = np.std(np.abs(energy[:,index2]))
+            # get color from value of velpos parameter
+            #obs1[1:] = np.column_stack((utils.computeMovingAverage(obs1[1:,0], 2), utils.computeMovingAverage(obs1[1:,1], 2)))
+            #obs2[1:] = np.column_stack((utils.computeMovingAverage(obs2[1:,0], 2), utils.computeMovingAverage(obs2[1:,1], 2)))
+            if which1 == "moi": colorId = 1 - (np.mean(energy[:,-2]) - 0.7) / 0.3
+            else: colorId = 1 - (np.mean(energy[:,-2]) / maxI - 0.7) / 0.3
+            print("color index:", colorId)
+            ax[0].errorbar(roughness[1:], obs1[1:,0], obs1[1:,1], lw=1.2, color=colorList[a], marker=markerList[a], 
+                        markersize=8, fillstyle='none', capsize=3, label="$\\tau_K \\approx$" + labelList[a])
+            ax[1].errorbar(roughness[1:], obs2[1:,0], obs2[1:,1], lw=1.2, color=colorList[a], marker=markerList[a], 
+                        markersize=8, fillstyle='none', capsize=3, label="$\\tau_K \\approx$" + labelList[a])
+            if start == 0:
+                ax[0].errorbar(roughness[0], obs1[0,0], obs1[0,1], lw=1.2, color=colorList[a], marker=markerList[a], markersize=8, fillstyle='none', capsize=3)
+                ax[1].errorbar(roughness[0], obs2[0,0], obs2[0,1], lw=1.2, color=colorList[a], marker=markerList[a], markersize=8, fillstyle='none', capsize=3)
+        else:
+            for d in range(dirList.shape[0]):
+                if dirList[d] == "1e01": dirSample = dirPath + "fixed" + dynamics
+                else: dirSample = dirPath + "fixed-ew" + dirList[d] + dynamics
+                if os.path.exists(dirSample):
+                    if(os.path.exists(dirSample + "/energy.dat")):
+                        energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                        if which1 == "moi" and which2 == "angmom":
+                            energy[:,index2] /= maxI
+                            energy[:,index1] /= maxL
+                        obs1[d,0] = np.mean(np.abs(energy[:,index1]))
+                        obs1[d,1] = np.std(np.abs(energy[:,index1]))
+                        obs2[d,0] = np.mean(np.abs(energy[:,index2]))
+                        obs2[d,1] = np.std(np.abs(energy[:,index2]))
+            # get color from value of velpos parameter
+            if which1 == "moi": colorId = 1 - (np.mean(energy[:,-2]) - 0.7) / 0.3
+            else: colorId = 1 - (np.mean(energy[:,-2]) / maxI - 0.7) / 0.3
+            print("color index:", colorId)
+            ax[0].errorbar(ew, obs1[:,0], obs1[:,1], lw=1.2, color=colorList(colorId), marker=markerList[a], 
+                        markersize=8, fillstyle='none', capsize=3, label="$\\tau_K \\approx$" + labelList[a])
+            ax[1].errorbar(ew, obs2[:,0], obs2[:,1], lw=1.2, color=colorList(colorId), marker=markerList[a], 
+                        markersize=8, fillstyle='none', capsize=3, label="$\\tau_K \\approx$" + labelList[a])
+    ax[0].tick_params(axis='both', labelsize=14)
+    ax[1].tick_params(axis='both', labelsize=14)
+    if which1 == "moi" and which2 == "angmom":
+        ax[0].set_ylabel("$\\frac{\\langle I \\rangle}{M R^2}$", fontsize=24, rotation='horizontal', labelpad=25)
+        ax[1].set_ylabel("$\\frac{\\langle |L| \\rangle}{M v_0 R}$", fontsize=24, rotation='horizontal', labelpad=30)
+        ax[0].set_ylabel("$\\tilde{ I }$", fontsize=18, rotation='horizontal', labelpad=25)
+        ax[1].set_ylabel("$\\tilde{ L }$", fontsize=18, rotation='horizontal', labelpad=30)
+        ax[0].set_ylim(0.47,1.06)
+        ax[1].set_ylim(-0.12,1.12)
+        ax[1].yaxis.set_major_locator(MaxNLocator(nbins=3))
+        ax[0].legend(loc='lower right', fontsize=14, ncols=2)
+    elif which1 == "pphi":
+        ax[0].set_ylabel("$|P_\\phi|$", fontsize=18, rotation='horizontal', labelpad=30)
+        ax[1].set_ylabel(ylabel2, fontsize=18, rotation='horizontal', labelpad=30)
+        ax[0].set_yscale('log')
+        ax[1].set_yscale('log')
+        ax[0].legend(loc='lower right', fontsize=12, ncols=2)
+    else:
+        ax[0].set_ylabel(ylabel1, fontsize=18, rotation='horizontal', labelpad=30)
+        ax[1].set_ylabel(ylabel2, fontsize=18, rotation='horizontal', labelpad=30)
+        ax[1].legend(loc='lower right', fontsize=12, ncols=2)
+    if versus == 'size': ax[1].set_xlabel("$Roughness,$ $\\sigma_m / \\sigma$", fontsize=16)
+    else: 
+        ax[1].set_xlabel("$Relative$ $strength,$ $\\epsilon_w / \\epsilon$", fontsize=16)
+        ax[0].set_xscale('log')
+        ax[1].set_xscale('log')
+    ax[1].tick_params(top=True)
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0)
+    figure1Name = "/home/francesco/Pictures/soft/phaseRough-" + which1 + "-" + which2 + "-" + figureName
+    fig.savefig(figure1Name + ".png", transparent=False, format = "png")
+    plt.show()
+
+def compareAngMomRoughness(dirName, figureName, dynamics='/'):
+    fig, ax = plt.subplots(figsize=(7.2,2.8), dpi = 200)
+    alignList = np.array(["1e-01", "3", "1e02", "1e04"])
+    labelList = np.array(["$7.1 \\times 10^1$", "$2.4$", "$7.1 \\times 10^{-2}$", "$7.1 \\times 10^{-4}$"])
+    labelList = np.array(["$TG$", "$PDC+G$", "$PDC$", "$LC$"])
+    colorList = ['forestgreen', 'dodgerblue', [0.6,0,0.8], [1,0.7,0]]
+    markerList = ['v', 'o', 's', '^']
+    dirList = np.array(["0.1", "0.2", "0.4", "0.6", "0.8", "1", "1.2", "1.4", "1.6", "1.8"])
+    index, ylabel = getIndexYlabel('angmom')
+    for a in range(alignList.shape[0]):
+        obs = np.zeros((dirList.shape[0],2))
+        dirPath = dirName + "j" + alignList[a] + "-tp1e03/dynamics-vel/"
+        boxRadius = np.loadtxt(dirPath + "/boxSize.dat")
+        f0 = float(utils.readFromDynParams(dirPath, "f0"))
+        gamma = float(utils.readFromDynParams(dirPath, "damping"))
+        maxL = boxRadius * (f0/gamma)
+        roughness = np.zeros(dirList.shape[0])
+        for d in range(dirList.shape[0]):
+            dirSample = dirPath + "rough" + dirList[d] + dynamics
+            if os.path.exists(dirSample):
+                roughness[d] = 2 * utils.readFromWallParams(dirPath + "rough" + dirList[d], "wallRad")
+                if(os.path.exists(dirSample + "/energy.dat")):
+                    energy = np.loadtxt(dirSample + os.sep + "energy.dat")
+                    energy[:,index] /= maxL
+                    obs[d,0] = np.mean(np.abs(energy[:,index]))
+                    obs[d,1] = np.std(np.abs(energy[:,index]))
+        obs = np.column_stack((utils.computeMovingAverage(obs[:,0], 2), utils.computeMovingAverage(obs[:,1], 2)))
+        ax.errorbar(roughness, obs[:,0], obs[:,1], lw=1.2, color=colorList[a], marker=markerList[a], 
+                    markersize=10, fillstyle='none', capsize=3, label=labelList[a])#label="$\\tau_K \\approx$" + labelList[a])
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_ylabel("$\\langle \\tilde{L} \\rangle$", fontsize=18, rotation='horizontal', labelpad=20)
+    ax.set_xlabel("$Roughness,$ $\\sigma_m / \\sigma$", fontsize=18)
+    ax.set_ylim(-0.12,1.42)
+    ax.legend(loc='upper right', fontsize=14, ncols=4, frameon=False)
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0)
+    figure1Name = "/home/francesco/Pictures/soft/angmomRough-" + figureName
+    fig.savefig(figure1Name + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotOrderParams(dirName, figureName, dynamics='reflect', cluster=False, maxCluster=10): # compute cluster is there are less then maxCluster
+    fig, ax = plt.subplots(1, 2, figsize=(11.7,4), dpi = 120)
+    alignList = np.array(["1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01",
+                        "1", "2", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+    noiseList = np.array(["1e-03", "3e-02", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+    tauk = np.zeros(alignList.shape[0])
+    taup = np.zeros(noiseList.shape[0])
+    # First make plot vs alignment time
+    corr1 = np.zeros((alignList.shape[0], 2))
+    corr2 = np.zeros((alignList.shape[0], 2))
+    corr3 = np.zeros((alignList.shape[0], 2))
+    boxRadius = np.loadtxt(dirName + "j1e-03-tp1e03/dynamics-vel/boxSize.dat")
+    maxI = boxRadius**2
+    f0 = float(utils.readFromDynParams(dirName + "j1e-03-tp1e03/dynamics-vel/", "f0"))
+    gamma = float(utils.readFromDynParams(dirName + "j1e-03-tp1e03/dynamics-vel/", "damping"))
+    maxL = boxRadius * (f0/gamma)
+    if figureName[:5] == 'rough':
+        color1 = 'forestgreen'#[0,0.6,0.4]
+        color2 = 'dodgerblue'#[0.5,0.5,1]
+        color3 = [0.6,0,0.8]
+    else:
+        color1 = 'darkgrey'#[0.6,0.6,0.6]
+        color2 = [1,0,1]
+        color3 = [1,0.7,0]
+    for d in range(alignList.shape[0]):
+        dirSample = dirName + "j" + alignList[d] + "-tp1e03/dynamics-vel/" + dynamics + "/"
+        if(os.path.exists(dirSample)):
+            data = np.loadtxt(dirSample + "energy.dat")
+            tauk[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+            if cluster == 'cluster':
+                if(os.path.exists(dirSample + "/t0/")):
+                    #computed = False
+                    if not(os.path.exists(dirSample + "/clusterKuramoto.dat")):
+                        computeMaxClusterKuramoto(dirSample, eps=3, maxCluster=maxCluster)
+                    #    computed = True
+                    corrCluster = np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]
+                    #if computed:
+                    #    print(dirList[d], tauk[d], taup[d], "computed cluster kuramoto", np.mean(corrCluster))
+                    corr1[d,0] = np.mean(corrCluster)
+                    corr1[d,1] = np.std(corrCluster)
+                else:
+                    corr1[d,0] = np.mean(data[:,6])
+                    corr1[d,1] = np.std(data[:,6])
+            else:
+                corr1[d,0] = np.mean(data[:,6])
+                corr1[d,1] = np.std(data[:,6])
+            #corr2[d,0] = np.mean(data[:,8])
+            #corr2[d,1] = np.std(data[:,8])
+            corr2[d,0] = np.mean(np.abs(data[:,-1]) / maxL)
+            corr2[d,1] = np.std(np.abs(data[:,-1]) / maxL)
+            corr3[d,0] = np.mean(data[:,-2] / maxI)
+            corr3[d,1] = np.std(data[:,-2] / maxI)
+            if figureName[:5] == 'rough':
+                if alignList[d] == "1e-01":
+                    point1 = np.array([tauk[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+                elif alignList[d] == "3":
+                    point2 = np.array([tauk[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+                elif alignList[d] == "1e02":
+                    point3 = np.array([tauk[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+            else:
+                if alignList[d] == "1e-01":
+                    point1 = np.array([tauk[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+                elif alignList[d] == "3":
+                    point2 = np.array([tauk[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+                elif alignList[d] == "1e04":
+                    point3 = np.array([tauk[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+            #print(alignList[d], tauk[d], "phi_r:", corr1[d,0], "phi_alpha:", corr2[d,0])
+    ax[0].errorbar(tauk[tauk!=0], corr1[tauk!=0,0], corr1[tauk!=0,1], color='k', marker='o', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\phi_r^C$")
+    ax[0].errorbar(tauk[tauk!=0], corr2[tauk!=0,0], corr2[tauk!=0,1], color='b', marker='s', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\tilde{L}$")
+    ax[0].errorbar(tauk[tauk!=0], corr3[tauk!=0,0], corr3[tauk!=0,1], color='g', marker='^', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\tilde{I}$")
+    ax[0].plot(point1[0], point1[1], color=color1, marker='o', markersize=14, fillstyle='full')
+    ax[0].plot(point1[0], point1[2], color=color1, marker='s', markersize=14, fillstyle='full')
+    ax[0].plot(point2[0], point2[1], color=color2, marker='o', markersize=14, fillstyle='full')
+    ax[0].plot(point2[0], point2[2], color=color2, marker='s', markersize=14, fillstyle='full')
+    ax[0].plot(point3[0], point3[1], color=color3, marker='o', markersize=14, fillstyle='full')
+    ax[0].plot(point3[0], point3[2], color=color3, marker='s', markersize=14, fillstyle='full')
+    ax[0].plot(point1[0], point1[3], color=color1, marker='^', markersize=14, fillstyle='full')
+    ax[0].plot(point2[0], point2[3], color=color2, marker='^', markersize=14, fillstyle='full')
+    ax[0].plot(point3[0], point3[3], color=color3, marker='^', markersize=14, fillstyle='full')
+    ax[0].legend(loc='best', fontsize=16, frameon=False)
+    # Second make plot vs noise time
+    corr1 = np.zeros((noiseList.shape[0], 2))
+    corr2 = np.zeros((noiseList.shape[0], 2))
+    corr3 = np.zeros((noiseList.shape[0], 2))
+    for d in range(noiseList.shape[0]):
+        dirSample = dirName + "j1e-01-tp" + noiseList[d] + "/dynamics-vel/" + dynamics + "/"
+        if(os.path.exists(dirSample)):
+            data = np.loadtxt(dirSample + "energy.dat")
+            taup[d] = utils.readFromDynParams(dirSample, "taup")
+            if cluster == 'cluster':
+                if(os.path.exists(dirSample + "/t0/")):
+                    #computed = False
+                    if not(os.path.exists(dirSample + "/clusterKuramoto.dat")):
+                        computeMaxClusterKuramoto(dirSample, eps=3, maxCluster=maxCluster)
+                    #    computed = True
+                    corrCluster = np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]
+                    #if computed:
+                    #    print(dirList[d], tauk[d], taup[d], "computed cluster kuramoto", np.mean(corrCluster))
+                    corr1[d,0] = np.mean(corrCluster)
+                    corr1[d,1] = np.std(corrCluster)
+                else:
+                    corr1[d,0] = np.mean(data[:,6])
+                    corr1[d,1] = np.std(data[:,6])
+            else:
+                corr1[d,0] = np.mean(data[:,6])
+                corr1[d,1] = np.std(data[:,6])
+            #corr2[d,0] = np.mean(data[:,8])
+            #corr2[d,1] = np.std(data[:,8])
+            corr2[d,0] = np.mean(np.abs(data[:,-1]) / maxL)
+            corr2[d,1] = np.std(np.abs(data[:,-1]) / maxL)
+            corr3[d,0] = np.mean(data[:,-2] / maxI)
+            corr3[d,1] = np.std(data[:,-2] / maxI)
+            if noiseList[d] == "1e03": point1 = np.array([taup[d], corr1[d,0], corr2[d,0], corr3[d,0]])
+            #print(noiseList[d], taup[d], "phi_r:", corr1[d,0], "phi_alpha:", corr2[d,0])
+    ax[1].errorbar(taup[taup!=0], corr1[taup!=0,0], corr1[taup!=0,1], color='k', marker='o', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\phi_r^C$")
+    ax[1].errorbar(taup[taup!=0], corr2[taup!=0,0], corr2[taup!=0,1], color='b', marker='s', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\tilde{L}$")
+    ax[1].errorbar(taup[taup!=0], corr3[taup!=0,0], corr3[taup!=0,1], color='green', marker='^', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\tilde{I}$")
+    ax[1].plot(point1[0], point1[1], color=color1, marker='o', markersize=14, fillstyle='full')
+    ax[1].plot(point1[0], point1[2], color=color1, marker='s', markersize=14, fillstyle='full')
+    ax[1].plot(point1[0], point1[3], color=color1, marker='^', markersize=14, fillstyle='full')
+    ax[1].legend(loc='best', fontsize=16, frameon=False)
+    for i in range(2):
+        ax[i].set_xscale('log')
+        ax[i].set_ylim(-0.08, 1.08)
+        ax[i].tick_params(axis='both', labelsize=16)
+    ax[0].set_xlabel("$Alignment$ $time,$ $\\tau_K$", fontsize=20)
+    ax[1].set_xlabel("$Persistence$ $time,$ $\\tau_p$", fontsize=20)
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=0.2)
+    if cluster == 'cluster':
+        figureName = "/home/francesco/Pictures/soft/orderParamsCluster-" + figureName
+    else:
+        figureName = "/home/francesco/Pictures/soft/orderParams-" + figureName
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotMoments(dirName, figureName, which='inter', dynamics='reflect'): # for maximum number of clusters to consider
+    fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
+    if which == 'inter':
+        dirList = np.array(["1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01",
+                            "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+        xlabel = "$Alignment$ $time,$ $\\tau_K$"
+    else:
+        dirList = np.array(["1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+    tauk = np.zeros(dirList.shape[0])
+    taup = np.zeros(dirList.shape[0])
+    corr1 = np.zeros((dirList.shape[0], 2))
+    corr2 = np.zeros((dirList.shape[0], 2))
+    dirPath = dirName + "j1e-01-tp1e03/dynamics-vel/"
+    boxSize = np.atleast_1d(np.loadtxt(dirName + "j1e03-tp1e03/boxSize.dat"))
+    maxI = boxSize**2
+    f0 = float(utils.readFromDynParams(dirPath, "f0"))
+    gamma = float(utils.readFromDynParams(dirPath, "damping"))
+    maxL = boxSize * (f0/gamma)
+    for d in range(dirList.shape[0]):
+        if which == 'inter': dirSample = dirName + "j" + dirList[d] + "-tp1e03/dynamics-vel/" + dynamics + "/"
+        else: dirSample = dirName + "j1e-01-tp" + dirList[d] + "/dynamics-vel/" + dynamics + "/"
+        #print(dirSample)
+        if(os.path.exists(dirSample)):
+            data = np.loadtxt(dirSample + "energy.dat")
+            tauk[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+            taup[d] = utils.readFromDynParams(dirSample, "taup")
+            corr1[d,0] = np.mean(data[:,-2]/maxI)
+            corr1[d,1] = np.std(data[:,-2]/maxI)
+            corr2[d,0] = np.mean(np.abs(data[:,-1])/maxL)
+            corr2[d,1] = np.std(np.abs(data[:,-1])/maxL)
+    if which == 'inter':
+        x = tauk
+    else:
+        x = taup
+    ax.errorbar(x[x!=0], corr1[x!=0,0], corr1[x!=0,1], color='k', marker='o', markersize=10, capsize=3, fillstyle='none', lw=1, 
+                label="$\\langle I \\rangle / M R^2$")
+    ax.errorbar(x[x!=0], corr2[x!=0,0], corr2[x!=0,1], color='b', marker='s', markersize=10, capsize=3, fillstyle='none', lw=1, 
+                label="$\\langle |L| \\rangle / M v_0 R$")
+    ax.legend(loc='best', fontsize=16)
+    ax.set_xscale('log')
+    ax.set_ylim(-0.08, 1.08)
+    ax.tick_params(axis='both', labelsize=16)
+    ax.set_xlabel(xlabel, fontsize=20)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/moments-" + figureName + "-vs" + which
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotEnergies(dirName, figureName, which='inter', dynamics='reflect'): # for maximum number of clusters to consider
+    fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
+    if which == 'inter':
+        dirList = np.array(["1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01",
+                            "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+        xlabel = "$Alignment$ $time,$ $\\tau_K$"
+    else:
+        dirList = np.array(["1e-04", "1e-03", "1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+    tauk = np.zeros(dirList.shape[0])
+    taup = np.zeros(dirList.shape[0])
+    corr1 = np.zeros((dirList.shape[0], 2))
+    corr2 = np.zeros((dirList.shape[0], 2))
+    for d in range(dirList.shape[0]):
+        if which == 'inter': dirSample = dirName + "j" + dirList[d] + "-tp1e03/dynamics-vel/" + dynamics + "/"
+        else: dirSample = dirName + "j1e-01-tp" + dirList[d] + "/dynamics-vel/" + dynamics + "/"
+        #print(dirSample)
+        if(os.path.exists(dirSample)):
+            data = np.loadtxt(dirSample + "energy.dat")
+            tauk[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+            taup[d] = utils.readFromDynParams(dirSample, "taup")
+            corr1[d,0] = np.mean(data[:,2])
+            corr1[d,1] = np.std(data[:,2])
+            corr2[d,0] = np.mean(data[:,3])
+            corr2[d,1] = np.std(data[:,3])
+    if which == 'inter':
+        x = tauk
+    else:
+        x = taup
+    ax.errorbar(x[x!=0], corr1[x!=0,0], corr1[x!=0,1], color='k', marker='o', markersize=10, capsize=3, fillstyle='none', lw=1, 
+                label="$U / N$")
+    ax.errorbar(x[x!=0], corr2[x!=0,0], corr2[x!=0,1], color='b', marker='s', markersize=10, capsize=3, fillstyle='none', lw=1, 
+                label="$K / N$")
+    ax.legend(loc='best', fontsize=16)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.tick_params(axis='both', labelsize=16)
+    ax.set_xlabel(xlabel, fontsize=20)
+    plt.tight_layout()
+    figureName = "/home/francesco/Pictures/soft/energies-" + figureName + "-vs" + which
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
+    plt.show()
+
+def plotMomentAndOrderParams(dirName, figureName, which='inter', dynamics='reflect', cluster=False, maxCluster=32): # for maximum number of clusters to consider
+    fig, ax = plt.subplots(figsize=(6.5,4.5), dpi = 120)
+    if which == 'inter':
+        dirList = np.array(["1e-03", "3e-03", "1e-02", "3e-02", "1e-01", "3e-01",
+                            "1", "3", "1e01", "3e01", "1e02", "3e02", "1e03", "3e03", "1e04"])
+        xlabel = "$Alignment$ $time,$ $\\tau_K$"
+    else:
+        dirList = np.array(["1e-02", "1e-01", "1", "1e01", "1e02", "1e03", "1e04", "1e05", "1e06", "1e07", "1e08"])
+        xlabel = "$Persistence$ $time,$ $\\tau_p$"
+    tauk = np.zeros(dirList.shape[0])
+    taup = np.zeros(dirList.shape[0])
+    corr1 = np.zeros((dirList.shape[0], 2))
+    corr2 = np.zeros((dirList.shape[0], 2))
+    corr3 = np.zeros((dirList.shape[0], 2))
+    dirPath = dirName + "j1e-01-tp1e03/dynamics-vel/"
+    boxRadius = np.loadtxt(dirPath + "/boxSize.dat")
+    maxI = boxRadius**2
+    for d in range(dirList.shape[0]):
+        if which == 'inter': dirSample = dirName + "j" + dirList[d] + "-tp1e03/dynamics-vel/" + dynamics + "/"
+        else: dirSample = dirName + "j1e-01-tp" + dirList[d] + "/dynamics-vel/" + dynamics + "/"
+        #print(dirSample)
+        if(os.path.exists(dirSample)):
+            data = np.loadtxt(dirSample + "energy.dat")
+            tauk[d] = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+            taup[d] = utils.readFromDynParams(dirSample, "taup")
+            if cluster == 'cluster':
+                if(os.path.exists(dirSample + "/t0/")):
+                    computed = False
+                    if not(os.path.exists(dirSample + "/clusterKuramoto.dat")):
+                        computeMaxClusterKuramoto(dirSample, eps=1.5, maxCluster=maxCluster)
+                        computed = True
+                    corrCluster = np.loadtxt(dirSample + "/clusterKuramoto.dat")[:,1]
+                    if computed:
+                        print(dirList[d], tauk[d], taup[d], "computed cluster kuramoto", np.mean(corrCluster))
+                    corr1[d,0] = np.mean(corrCluster)
+                    corr1[d,1] = np.std(corrCluster)
+                else:
+                    corr1[d,0] = np.mean(data[:,6])
+                    corr1[d,1] = np.std(data[:,6])
+            else:
+                corr1[d,0] = np.mean(data[:,6])
+                corr1[d,1] = np.std(data[:,6])
+            corr2[d,0] = np.mean(data[:,8])
+            corr2[d,1] = np.std(data[:,8])
+            corr3[d,0] = np.mean(data[:,-2]/maxI)
+            corr3[d,1] = np.std(data[:,-2]/maxI)
+    if which == 'inter':
+        x = tauk
+    else:
+        x = taup
+    ax.errorbar(x[x!=0], corr1[x!=0,0], corr1[x!=0,1], color='k', marker='o', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\phi_r^C$")
+    ax.errorbar(x[x!=0], corr2[x!=0,0], corr2[x!=0,1], color='b', marker='s', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\phi_\\alpha$")
+    ax.errorbar(x[x!=0], corr3[x!=0,0], corr3[x!=0,1], color='g', marker='v', markersize=10, capsize=3, fillstyle='none', lw=1, label="$\\tilde{I}$")
+    ax.legend(loc='best', fontsize=16)
+    ax.set_xscale('log')
+    ax.set_ylim(-0.08, 1.08)
+    ax.tick_params(axis='both', labelsize=16)
+    ax.set_xlabel(xlabel, fontsize=20)
+    plt.tight_layout()
+    if cluster == 'cluster':
+        figureName = "/home/francesco/Pictures/soft/paramsMomCluster-" + figureName + "-vs" + which
+    else:
+        figureName = "/home/francesco/Pictures/soft/paramsMom-" + figureName + "-vs" + which
+    fig.savefig(figureName + ".png", transparent=True, format = "png")
     plt.show()
 
 
@@ -1746,17 +2818,19 @@ if __name__ == '__main__':
     dirName = sys.argv[1]
     whichPlot = sys.argv[2]
 
-    if(whichPlot == "align"):
+    if(whichPlot == "energy"):
         figureName = sys.argv[3]
         which = sys.argv[4]
-        plotAlignment(dirName, figureName, which)
+        plotEnergyFile(dirName, figureName, which)
     
     elif(whichPlot == "compare"):
         figureName = sys.argv[3]
         which = sys.argv[4]
-        dynamics = sys.argv[5]
-        log = sys.argv[6]
-        compareAlignment(dirName, figureName, which, dynamics, log)
+        boundary1 = sys.argv[5]
+        boundary2 = sys.argv[6]
+        dynamics = sys.argv[7]
+        log = sys.argv[8]
+        compareAlignment(dirName, figureName, which, boundary1, boundary2, dynamics, log)
 
     elif(whichPlot == "boundary"):
         figureName = sys.argv[3]
@@ -1839,15 +2913,22 @@ if __name__ == '__main__':
         figureName = sys.argv[3]
         dynamics = sys.argv[4]
         cluster = sys.argv[5]
+        if cluster == 'cluster':
+            cluster = True
+        else:
+            cluster = False
         maxCluster = int(sys.argv[6])
-        phaseDiagrams3(dirName, figureName, dynamics, cluster, maxCluster)
+        interpolate = sys.argv[7]
+        phaseDiagrams3(dirName, figureName, dynamics, cluster, maxCluster, interpolate)
 
     elif(whichPlot == "2diagrams"):
         figureName = sys.argv[3]
         dynamics = sys.argv[4]
-        cluster = sys.argv[5]
-        maxCluster = int(sys.argv[6])
-        phaseDiagrams2(dirName, figureName, dynamics, cluster, maxCluster)
+        obs = sys.argv[5]
+        cluster = sys.argv[6]
+        maxCluster = int(sys.argv[7])
+        interpolate = sys.argv[8]
+        phaseDiagrams2(dirName, figureName, dynamics, obs, cluster, maxCluster, interpolate)
 
     elif(whichPlot == "pdangle"):
         figureName = sys.argv[3]
@@ -1896,7 +2977,7 @@ if __name__ == '__main__':
         which = sys.argv[4]
         compareWallDynamicsDamping(dirName, figureName, which)
 
-    elif(whichPlot == "orderparams"):
+    elif(whichPlot == "interparams"):
         figureName = sys.argv[3]
         cluster = sys.argv[4]
         maxCluster = int(sys.argv[5])
@@ -1920,11 +3001,13 @@ if __name__ == '__main__':
         dynamics = sys.argv[5]
         plotBoundaryVSTime(dirName, figureName, which, dynamics)
 
-    elif(whichPlot == "boundrough"):
+    elif(whichPlot == "clustercom"):
         figureName = sys.argv[3]
-        which = sys.argv[4]
-        dynamics = sys.argv[5]
-        compareBoundaryRoughness(dirName, figureName, which, dynamics)
+        plotClustersCOM(dirName, figureName)
+
+    elif(whichPlot == "clusterphi"):
+        figureName = sys.argv[3]
+        plotClusterDensity(dirName, figureName)
 
     elif(whichPlot == "numcluster"):
         figureName = sys.argv[3]
@@ -1933,6 +3016,15 @@ if __name__ == '__main__':
         dynamics = sys.argv[6]
         minNum = float(sys.argv[7])
         compareNumClusterVSTime(dirName, figureName, versus, which, dynamics, minNum)
+
+    elif(whichPlot == "clusterbound"):
+        figureName = sys.argv[3]
+        minNum = float(sys.argv[4])
+        plotClustersVSBoundary(dirName, figureName, minNum)
+
+    elif(whichPlot == "momsbound"):
+        figureName = sys.argv[3]
+        plotMomentsVSBoundary(dirName, figureName)
 
     elif(whichPlot == "boundtype"):
         figureName = sys.argv[3]
@@ -1943,8 +3035,56 @@ if __name__ == '__main__':
 
     elif(whichPlot == "pinned"):
         figureName = sys.argv[3]
+        which = sys.argv[4]
+        dynamics = sys.argv[5]
+        plotPinnedBoundary(dirName, figureName, which, dynamics)
+
+    elif(whichPlot == "boundrough"):
+        figureName = sys.argv[3]
+        type = sys.argv[4]
+        which = sys.argv[5]
+        dynamics = sys.argv[6]
+        compareBoundaryRoughness(dirName, figureName, type, which, dynamics)
+
+    elif(whichPlot == "phaserough"):
+        figureName = sys.argv[3]
+        versus = sys.argv[4]
+        which1 = sys.argv[5]
+        which2 = sys.argv[6]
+        dynamics = sys.argv[7]
+        comparePhaseRoughness(dirName, figureName, versus, which1, which2, dynamics)
+
+    elif(whichPlot == "angmomrough"):
+        figureName = sys.argv[3]
         dynamics = sys.argv[4]
-        plotPinnedBoundary(dirName, figureName, dynamics)
+        compareAngMomRoughness(dirName, figureName, dynamics)
+
+    elif(whichPlot == "orderparams"):
+        figureName = sys.argv[3]
+        dynamics = sys.argv[4]
+        cluster = sys.argv[5]
+        maxCluster = int(sys.argv[6])
+        plotOrderParams(dirName, figureName, dynamics, cluster, maxCluster)
+
+    elif(whichPlot == "moments"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        dynamics = sys.argv[5]
+        plotMoments(dirName, figureName, which, dynamics)
+
+    elif(whichPlot == "energies"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        dynamics = sys.argv[5]
+        plotEnergies(dirName, figureName, which, dynamics)
+
+    elif(whichPlot == "momparams"):
+        figureName = sys.argv[3]
+        which = sys.argv[4]
+        dynamics = sys.argv[5]
+        cluster = sys.argv[6]
+        maxCluster = int(sys.argv[7])
+        plotMomentAndOrderParams(dirName, figureName, which, dynamics, cluster, maxCluster)
 
     else:
         print("Please specify the type of plot you want")

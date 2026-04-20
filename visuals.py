@@ -228,7 +228,7 @@ def getClusterColorList(labels, maxLabel):
 
 def getGroupColorList(labels):
     uniqueLabels = np.unique(labels)
-    colorList = cm.get_cmap('prism', uniqueLabels.shape[0])
+    colorList = cm.get_cmap('plasma', uniqueLabels.shape[0])
     colorId = np.zeros((labels.shape[0], 4))
     count = 0
     for labelId in uniqueLabels:
@@ -343,7 +343,9 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
         for label in uniqueLabels:
             if label != -1:
                 num = np.append(num, labels[labels==label].shape[0])
-        print("average cluster size (excluding noise):", np.mean(num), "error:", np.std(num), ", number of unclustered particles:", labels[labels==-1].shape[0])
+        print("average cluster size (-1 label):", np.mean(num), "error:", np.std(num), ", number of unclustered particles:", labels[labels==-1].shape[0])
+        maxLabel = -1
+        numMaxCluster = 0
         for label in uniqueLabels:
             thisangle = angle[labels==label]
             numLabel = labels[labels==label].shape[0]
@@ -357,14 +359,19 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
                 sumReal += np.cos(thisangle[i])
                 sumImag += np.sin(thisangle[i])
             phi_r = np.append(phi_r, np.sqrt(sumReal**2 + sumImag**2) / numCluster)
+            if numCluster > numMaxCluster:
+                numMaxCluster = numCluster
+                maxLabel = label
+                maxPhi_r = phi_r[-1]
             #print("label", label, "num particles in cluster", numLabel, "spread", spread[-1], "phi_r", phi_r[-1])
         print("number of clusters:", np.unique(labels).shape[0], "average spread", np.mean(weight*spread)/np.mean(weight), "average phi_r", np.mean(phi_r))
+        print("largest cluster:", maxLabel, numMaxCluster, "particles, spread", spread[uniqueLabels==maxLabel][0], "phi_r", maxPhi_r)
         colorId = getGroupColorList(labels)
     else:
         colorId = getRadColorList(rad)
     if quiver:
         vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
-        colorId = getAngleColorList(vel)
+        if group == False: colorId = getAngleColorList(vel)
     for particleId in range(rad.shape[0]):
         x = pos[particleId,0]
         y = pos[particleId,1]
@@ -375,7 +382,7 @@ def plotSPPacking(dirName, figureName, fixed=False, shear=False, lj=False, ekmap
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
             vx = vel[particleId,0]
             vy = vel[particleId,1]
-            ax.quiver(x, y, vx, vy, facecolor='k', linewidth=0.1, width=0.001, scale=80, headlength=5, headaxislength=5, headwidth=5, alpha=0.6)
+            ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.001, scale=80, headlength=5, headaxislength=5, headwidth=5, alpha=0.6)
         else:
             ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
             if roundBox:
@@ -427,24 +434,27 @@ def plotAnglePacking(dirName, figureName, lj=False, quiver=True, alpha=0.8):
         if quiver:
             vx = vel[particleId,0]
             vy = vel[particleId,1]
-            ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.002, scale=100, headlength=5, headaxislength=5, headwidth=5, alpha=0.6)
+            ax.quiver(x, y, vx, vy, facecolor='k', linewidth=0.1, width=0.003, scale=30, headlength=5, headaxislength=5, headwidth=5, alpha=0.4)
         r = rad[particleId]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.2))
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.2))
     # Create a polar axis for the circular colorbar
-    ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.6], polar=True)  # Position for the colorbar
-    colorMap = cm.get_cmap('hsv')  # Set the color map
-    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    #ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.6], polar=True)  # Position for the colorbar
+    #colorMap = cm.get_cmap('hsv')  # Set the color map
+    #makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
     figureName = '/home/francesco/Pictures/soft/packings/angle-' + figureName + '.png'
     plt.tight_layout()
-    plt.savefig(figureName, transparent=False)
+    plt.savefig(figureName, transparent=True)
     plt.show()
 
-def plot3AnglePackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
-    dirList = np.array(['3e-02', '3e01', '3e03'])
+def plot3ReflectPackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
+    dirList = np.array(['1e-01', '3', '1e04'])
     # make figure
-    fig, ax = plt.subplots(figsize=(9,3), dpi=200)
+    fig, ax = plt.subplots(figsize=(9,2.7), dpi=200)
     for d in range(dirList.shape[0]):
-        dirSample = dirName + os.sep + 'j' + dirList[d] + '-tp1e02/dynamics-vel/'
+        dirSample = dirName + os.sep + 'j' + dirList[d] + '-tp1e03/dynamics-vel/reflect/dynamics/'
+        aligntime = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+        noisetime = utils.readFromDynParams(dirSample, "taup")
+        print("tauK:", aligntime, "taup:", noisetime)
         sep = utils.getDirSep(dirSample, 'boxSize')
         boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
         print(boxSize)
@@ -458,7 +468,7 @@ def plot3AnglePackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
         if lj:
             rad *= 2**(1/6)
         print('Center of mass:', np.mean(pos, axis=0))
-        vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
+        if quiver: vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
         colorId = getAngleColorList(vel)
         ax.add_artist(plt.Circle([originList[d], 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.5))
         for particleId in range(rad.shape[0]):
@@ -474,9 +484,52 @@ def plot3AnglePackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
     ax_cb = fig.add_axes([0.86, 0.6, 0.05, 0.3], polar=True)  # Position for the colorbar
     colorMap = cm.get_cmap('hsv')  # Set the color map
     makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
-    figureName = '/home/francesco/Pictures/soft/packings/3angle-' + figureName + '.png'
+    figureName = '/home/francesco/Pictures/soft/packings/3reflect-' + figureName + '.png'
     #plt.tight_layout()
-    plt.savefig(figureName, transparent=False)
+    plt.savefig(figureName, transparent=True)
+    plt.show()
+
+def plot3RoughPackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
+    dirList = np.array(['1e-01', '3', '1e02'])
+    # make figure
+    fig, ax = plt.subplots(figsize=(9,2.7), dpi=200)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + 'j' + dirList[d] + '-tp1e03/dynamics-vel/rough/dynamics/'
+        aligntime = 1/utils.readFromDynParams(dirSample, "Jvicsek")
+        noisetime = utils.readFromDynParams(dirSample, "taup")
+        print("tauK:", aligntime, "taup:", noisetime)
+        sep = utils.getDirSep(dirSample, 'boxSize')
+        boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+        print(boxSize)
+        if d == 0:
+            sep = utils.getDirSep(dirSample, 'boxSize')
+            rad = np.array(np.loadtxt(dirSample + sep + 'particleRad.dat'))
+            boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+            set3InvisiblePackingAxes(boxSize, ax)
+            originList = np.array([-2.3,0,2.3]) * boxSize
+        pos = np.array(np.loadtxt(dirSample + os.sep + 'particlePos.dat'))
+        if lj:
+            rad *= 2**(1/6)
+        print('Center of mass:', np.mean(pos, axis=0))
+        if quiver: vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
+        colorId = getAngleColorList(vel)
+        ax.add_artist(plt.Circle([originList[d], 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.5))
+        for particleId in range(rad.shape[0]):
+            x = pos[particleId,0] + originList[d]
+            y = pos[particleId,1]
+            if quiver:
+                vx = vel[particleId,0]
+                vy = vel[particleId,1]
+                ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.001, scale=250, headlength=4, headaxislength=4, headwidth=4, alpha=0.6)
+            r = rad[particleId]
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.2))
+    # Create a polar axis for the circular colorbar
+    ax_cb = fig.add_axes([0.86, 0.6, 0.05, 0.3], polar=True)  # Position for the colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
+    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    figureName = '/home/francesco/Pictures/soft/packings/3rough-' + figureName + '.png'
+    #plt.tight_layout()
+    plt.savefig(figureName, transparent=True)
     plt.show()
 
 def plotWallPacking(dirName, figureName, lj=False, colorAngle=False, alpha=0.6):
@@ -506,8 +559,8 @@ def plotWallPacking(dirName, figureName, lj=False, colorAngle=False, alpha=0.6):
         ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=[0.9,0.9,0.9], alpha=alpha, linewidth=0.3))
         #ax.annotate(str(wallId), xy=(x, y), fontsize=3, verticalalignment='center', horizontalalignment='center')
     # choose color map and plot particles
+    vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
     if colorAngle:
-        vel = np.array(np.loadtxt(dirName + os.sep + 'particleVel.dat'))
         colorId = getAngleColorList(vel)
         print("Coloring particles by velocity angle")
     else:
@@ -516,11 +569,14 @@ def plotWallPacking(dirName, figureName, lj=False, colorAngle=False, alpha=0.6):
         x = pos[particleId,0]
         y = pos[particleId,1]
         r = rad[particleId]
-        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.3))
+        ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor='k', alpha=alpha, linewidth=0.3))
+        vx = vel[particleId,0]
+        vy = vel[particleId,1]
+        ax.quiver(x, y, vx, vy, facecolor='k', linewidth=0.1, width=0.003, scale=30, headlength=5, headaxislength=5, headwidth=5, alpha=0.4)
         #ax.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
     figureName = '/home/francesco/Pictures/soft/packings/wall-' + figureName + '.png'
     plt.tight_layout()
-    plt.savefig(figureName, transparent=False)
+    plt.savefig(figureName, transparent=True)
     plt.show()
 
 def getStressColorList(stress, which='total', potential='lj'):
@@ -1057,7 +1113,7 @@ def plotSoftParticlesWithAngles(axFrame, pos, vel, rad, colorMap, scale = 100, a
         r = rad[particleId]
         vx = vel[particleId,0]
         vy = vel[particleId,1]
-        axFrame.quiver(x, y, vx, vy, facecolor=colorId[particleId], edgecolor='k', linewidth=lw, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
+        if rad.shape[0] < 2**11: axFrame.quiver(x, y, vx, vy, facecolor=colorId[particleId], edgecolor='k', linewidth=lw, width=0.001, scale=scale, headlength=5, headaxislength=5, headwidth=5, alpha=0.5)#width=0.003, scale=1, headwidth=5)
         axFrame.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=lw))
         if annotate:
             axFrame.annotate(str(particleId), xy=(x, y), fontsize=4, verticalalignment='center', horizontalalignment='center')
@@ -1187,6 +1243,9 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
         print("entering log spaced")
         stepList = utils.getLogSpacedStepList(minDecade=5, maxDecade=9)
         numFrames = stepList.shape[0]
+    # repeat first frame
+    stepList = np.insert(stepList, 0, stepList[0])
+    stepList = np.insert(stepList, 0, stepList[0])
     print('Time list:', stepList)
 
     boxSize = np.atleast_1d(np.loadtxt(dirName + os.sep + 'boxSize.dat'))
@@ -1198,6 +1257,14 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
 
     # Initialize figure and axis
     fig, ax = plt.subplots(dpi=200)
+    title = False
+    if figureName == 'mp4/smooth-j1e-01-tp1e03': title = '$Gas$'
+    elif figureName == 'mp4/smooth-j3-tp1e03': title = '$DC$ $phase$'
+    elif figureName == 'mp4/smooth-j1e04-tp1e03': title = '$LC$ $phase$'
+    elif figureName == 'mp4/smooth-j1e-01-tp1e04': title = '$DC$ $phase,$ $weak$ $alignment$'
+    elif figureName == 'mp4/smooth-j1e04-tp1e-01': title = '$LC$ $phase,$ $low$ $persistence$'
+    elif figureName == 'mp4/smooth-j1e03-tp1e03' or figureName == 'mp4/smooth-j3e02-tp1e01': title = '$LC$ $phase,$ $multiple$ $clusters$'
+    if title: fig.suptitle(title, fontsize=14, y=0.94)
     if angle:
         # Set background to transparent
         fig.patch.set_facecolor('white')
@@ -1205,9 +1272,9 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
             spine.set_visible(False)
 
     # Create a polar axis for the circular colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
     if angle:
         ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.6], polar=True)  # Position for the colorbar
-        colorMap = cm.get_cmap('hsv')  # Set the color map
         makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
     
     # Create animation
@@ -1219,7 +1286,7 @@ def makeSPPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFreq=
 
     # Save the animation
     anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
-    #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
+    #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mp4', writer='ffmpeg', dpi=fig.dpi)
 
 def makeRelativeClusterFrame(axFrame, dirSample, rad, colorMap, scale = 100, eps = 1.5, alpha = 0.6, lw = 0.3, annotate = False):
     pos = np.array(np.loadtxt(dirSample + os.sep + 'particlePos.dat'))
@@ -1402,15 +1469,22 @@ def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFre
 
     # Initialize figure and axis
     fig, ax = plt.subplots(dpi=200)
+    title = False
+    if figureName == 'mp4/rough-j1e-01-tp1e-01': title = '$Gas$'
+    elif figureName == 'mp4/rough-j1e-01-tp1e03': title = '$TG$ $phase$'
+    elif figureName == 'mp4/rough-j3-tp1e03': title = '$Coexistence$ $between$ $gas$ $and$ $PDC$ $phase$'
+    elif figureName == 'mp4/rough-j1e02-tp1e03': title = '$PDC$ $phase$'
+    elif figureName == 'mp4/rough-j1e04-tp1e03': title = '$LC$ $phase$'
+    if title: fig.suptitle(title, fontsize=14, y=0.94)
     # Set background to transparent
-    fig.patch.set_facecolor('white')
+    fig.patch.set_facecolor('none')
     for spine in ax.spines.values():
         spine.set_visible(False)
 
     # Create a polar axis for the circular colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
     if angle:
         ax_cb = fig.add_axes([0.8, 0.6, 0.1, 0.6], polar=True)  # Position for the colorbar
-        colorMap = cm.get_cmap('hsv')  # Set the color map
         makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
     
     # Create animation
@@ -1421,8 +1495,8 @@ def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFre
     fig.patch.set_facecolor('none')
 
     # Save the animation
-    anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
-    #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mov', writer='ffmpeg', dpi=fig.dpi)
+    #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
+    anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mp4', writer='ffmpeg', dpi=fig.dpi)
 
 def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=False):
     def animate(i):
@@ -1734,7 +1808,7 @@ if __name__ == '__main__':
         plotSPPacking(dirName, figureName, lj=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), center=sys.argv[6])
 
     elif(whichPlot == 'ljcluster'):
-        plotSPPacking(dirName, figureName, lj=True, group=True, eps=float(sys.argv[4]))
+        plotSPPacking(dirName, figureName, lj=True, quiver=False, group=True, eps=float(sys.argv[4]))
 
     elif(whichPlot == 'ljvel'):
         plotSPPacking(dirName, figureName, lj=True, quiver=True, shiftx=float(sys.argv[4]), shifty=float(sys.argv[5]), center=sys.argv[6])
@@ -1742,8 +1816,14 @@ if __name__ == '__main__':
     elif(whichPlot == 'angle'):
         plotAnglePacking(dirName, figureName, lj=True, quiver=True)
 
-    elif(whichPlot == '3angle'):
-        plot3AnglePackings(dirName, figureName, lj=True, quiver=True)
+    elif(whichPlot == '3reflect'):
+        plot3ReflectPackings(dirName, figureName, lj=True, quiver=True)
+
+    elif(whichPlot == '3cluster'):
+        plot3ClusterPackings(dirName, figureName, eps=float(sys.argv[4]), lj=True, quiver=False)
+
+    elif(whichPlot == '3rough'):
+        plot3RoughPackings(dirName, figureName, lj=True, quiver=True)
 
     elif(whichPlot == 'wall'):
         plotWallPacking(dirName, figureName, lj=True, colorAngle=False)

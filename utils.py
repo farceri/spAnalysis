@@ -1235,7 +1235,7 @@ def getOrderedDirectories(dirName):
     for dir in os.listdir(dirName):
         if(os.path.isdir(dirName + os.sep + dir) and 
            (dir[:2] != "tp" and dir[:7] != "damping" and dir[:5] != "gamma" and dir[:5] != "l_one" and dir != "nh" and dir != "ab" and dir != "dynamics" and dir != "lang1con" and dir != "lang2con") and 
-           (dir != "vicsek" and dir != "reflect" and dir != "fixed" and dir != "rough" and dir[:5] != "rigid" and dir != "mobile")):
+           (dir != "vicsek" and dir != "reflect" and dir[:5] != "fixed" and dir[:5] != "rough" and dir[:5] != "rigid" and dir != "mobile" and dir != "long")):
             listDir.append(dir)
             listScalar.append(dir.strip('t'))
     listScalar = np.array(listScalar, dtype=np.int64)
@@ -1744,8 +1744,7 @@ def shiftToOrigin(dirName, dirSave):
     np.savetxt(dirSave + '/particleRad.dat', rad)
 
 def relabelPacking(dirName, dirSave, nDim=2):
-    # label particles to the left of the center from 0 to N/2
-    # and the particles to right of the center from N/2 + 1 to N
+    # run a binary search to relabel particles to the left and right of the center
     boxSize = np.loadtxt(dirName + '/boxSize.dat')
     pos = np.loadtxt(dirName + '/particlePos.dat')
     vel = np.loadtxt(dirName + '/particleVel.dat')
@@ -1753,22 +1752,39 @@ def relabelPacking(dirName, dirSave, nDim=2):
     for i in range(nDim):
         pos[:,i] -= np.floor(pos[:,i]/boxSize[i]) * boxSize[i]
     center = boxSize[0] * 0.5
-    rightIndices = np.argwhere(pos[:,0]>center)[:,0]
-    leftIndices = np.argwhere(pos[:,0]<=center)[:,0]
-    leftNum = leftIndices.shape[0]
-    rightNum = rightIndices.shape[0]
-    print("Number of left particles:", leftNum)
-    print("Number of right particles:", rightNum)
-    print("Total number of particles:", leftNum + rightNum)
+    # find the center that divides the particles in half
+    type1 = np.argwhere(pos[:,0] <= center / 2)[:,0]
+    #print("Initial center:", center, "number of type 1 particles:", type1.shape[0])
+    factor = 8
+    tempNum = type1.shape[0]
+    targetNum = int(pos.shape[0] // 2)
+    #print("Target number of type 1 particles:", targetNum)
+    tempCenter = center / 2
+    while tempNum != targetNum:
+        type1 = np.argwhere(pos[:,0] <= (tempCenter + (center / factor)))[:,0]
+        #print("Trying center:", tempCenter + (center / factor), "number of type 1 particles:", type1.shape[0])
+        if type1.shape[0] <= targetNum:
+            tempCenter += (center / factor)
+            tempNum = type1.shape[0]
+            #print("Ok move, center location:", tempCenter, "number of type 1 particles:", tempNum)
+        else:
+            factor *= 2
+            #print("Move too big, decrease the step size to:", center / factor)
+    center = tempCenter
+    type1 = np.argwhere(pos[:,0]<=center)[:,0]
+    print("Number of type 1 particles:", type1.shape[0])
+    type2 = np.argwhere(pos[:,0]>center)[:,0]
+    print("Number of type 2 particles:", type2.shape[0])
+    print("Total number of particles:", type1.shape[0] + type2.shape[0])
     newPos = np.zeros(pos.shape)
     newRad = np.zeros(rad.shape)
     newVel = np.zeros(vel.shape)
-    newPos[:leftNum] = pos[leftIndices]
-    newPos[leftNum:] = pos[rightIndices]
-    newRad[:leftNum] = rad[leftIndices]
-    newRad[leftNum:] = rad[rightIndices]
-    newVel[:leftNum] = vel[leftIndices]
-    newVel[leftNum:] = vel[rightIndices]
+    newPos[:type1.shape[0]] = pos[type1]
+    newPos[type1.shape[0]:] = pos[type2]
+    newRad[:type1.shape[0]] = rad[type1]
+    newRad[type1.shape[0]:] = rad[type2]
+    newVel[:type1.shape[0]] = vel[type1]
+    newVel[type1.shape[0]:] = vel[type2]
     if(os.path.isdir(dirSave)==False):
         os.mkdir(dirSave)
     np.savetxt(dirSave + '/boxSize.dat', boxSize)
