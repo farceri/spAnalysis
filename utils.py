@@ -1343,12 +1343,20 @@ def saveInParams(dirName, paramName, paramString):
     file.write(newFileContent)
     file.close()
 
-def readFromDynParams(dirName, paramName):
+def readFromDynParams(dirName, paramNames):
+    # allow either a single string or a list of names
+    if isinstance(paramNames, str):
+        paramNames = [paramNames]
     with open(dirName + os.sep + "dynParams.dat") as file:
         for line in file:
             name, scalarString = line.strip().split("\t")
-            if(name == paramName):
-                return float(scalarString)
+            if name in paramNames:
+                try:
+                    return float(scalarString)
+                except ValueError:
+                    # skip non-scalar entries
+                    pass
+    raise ValueError(f"None of {paramNames} found as scalar values")
             
 def readFromWallParams(dirName, paramName):
     with open(dirName + os.sep + "wallParams.dat") as file:

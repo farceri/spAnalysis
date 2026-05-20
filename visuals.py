@@ -1819,9 +1819,6 @@ if __name__ == '__main__':
     elif(whichPlot == '3reflect'):
         plot3ReflectPackings(dirName, figureName, lj=True, quiver=True)
 
-    elif(whichPlot == '3cluster'):
-        plot3ClusterPackings(dirName, figureName, eps=float(sys.argv[4]), lj=True, quiver=False)
-
     elif(whichPlot == '3rough'):
         plot3RoughPackings(dirName, figureName, lj=True, quiver=True)
 
@@ -1950,26 +1947,22 @@ if __name__ == '__main__':
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        fixed = sys.argv[7]
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, fixed=fixed)
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq)
 
     elif(whichPlot == 'spvelvideo'):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        fixed = sys.argv[7]
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, fixed=fixed, quiver=True)
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, quiver=True)
 
     elif(whichPlot == 'spcompvideo'):
-        fixed = sys.argv[4]
-        makeSPCompressionVideo(dirName, figureName, fixed)
+        makeSPCompressionVideo(dirName, figureName)
 
     elif(whichPlot == 'ljvideo'):
         numFrames = int(sys.argv[4])
         firstStep = float(sys.argv[5])
         stepFreq = float(sys.argv[6])
-        fixed = sys.argv[7]
-        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, fixed=fixed, lj=True)
+        makeSPPackingVideo(dirName, figureName, numFrames, firstStep, stepFreq, lj=True)
 
     elif(whichPlot == 'ljvelvideo'):
         numFrames = int(sys.argv[4])
