@@ -446,6 +446,86 @@ def plotAnglePacking(dirName, figureName, lj=False, quiver=True, alpha=0.8):
     plt.savefig(figureName, transparent=True)
     plt.show()
 
+def plot3DampingPackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
+    dirList = np.array(['1e01', '1', '1e-01'])
+    # make figure
+    fig, ax = plt.subplots(figsize=(9,2.7), dpi=200)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + 'langevin' + dirList[d] + '/T' + figureName + '/dynamics-log/'
+        sep = utils.getDirSep(dirSample, 'boxSize')
+        boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+        print(boxSize)
+        if d == 0:
+            sep = utils.getDirSep(dirSample, 'boxSize')
+            rad = np.array(np.loadtxt(dirSample + sep + 'particleRad.dat'))
+            boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+            set3InvisiblePackingAxes(boxSize, ax)
+            originList = np.array([-2.3,0,2.3]) * boxSize
+        pos = np.array(np.loadtxt(dirSample + os.sep + 'particlePos.dat'))
+        if lj:
+            rad *= 2**(1/6)
+        print('Center of mass:', np.mean(pos, axis=0))
+        vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
+        colorId = getAngleColorList(vel)
+        ax.add_artist(plt.Circle([originList[d], 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.2))
+        for particleId in range(rad.shape[0]):
+            x = pos[particleId,0] + originList[d]
+            y = pos[particleId,1]
+            if quiver:
+                vx = vel[particleId,0]
+                vy = vel[particleId,1]
+                ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.001, scale=300, headlength=4, headaxislength=4, headwidth=4, alpha=0.6)
+            r = rad[particleId]
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.05))
+    # Create a polar axis for the circular colorbar
+    ax_cb = fig.add_axes([0.86, 0.6, 0.05, 0.3], polar=True)  # Position for the colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
+    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    figureName = '/home/francesco/Pictures/soft/packings/3damping-T' + figureName + '.png'
+    #plt.tight_layout()
+    plt.savefig(figureName, transparent=True)
+    plt.show()
+
+def plot3NoisePackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
+    dirList = np.array(['1e-03', '1e-01', '2e-01'])
+    # make figure
+    fig, ax = plt.subplots(figsize=(9,2.7), dpi=200)
+    for d in range(dirList.shape[0]):
+        dirSample = dirName + os.sep + 'langevin' + figureName + '/T' + dirList[d] + '/dynamics-log/'
+        sep = utils.getDirSep(dirSample, 'boxSize')
+        boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+        print(boxSize)
+        if d == 0:
+            sep = utils.getDirSep(dirSample, 'boxSize')
+            rad = np.array(np.loadtxt(dirSample + sep + 'particleRad.dat'))
+            boxSize = np.atleast_1d(np.loadtxt(dirSample + sep + 'boxSize.dat'))
+            set3InvisiblePackingAxes(boxSize, ax)
+            originList = np.array([-2.3,0,2.3]) * boxSize
+        pos = np.array(np.loadtxt(dirSample + os.sep + 'particlePos.dat'))
+        if lj:
+            rad *= 2**(1/6)
+        print('Center of mass:', np.mean(pos, axis=0))
+        vel = np.array(np.loadtxt(dirSample + os.sep + 'particleVel.dat'))
+        colorId = getAngleColorList(vel)
+        ax.add_artist(plt.Circle([originList[d], 0], boxSize, edgecolor='k', facecolor=[1,1,1], linewidth=0.2))
+        for particleId in range(rad.shape[0]):
+            x = pos[particleId,0] + originList[d]
+            y = pos[particleId,1]
+            if quiver:
+                vx = vel[particleId,0]
+                vy = vel[particleId,1]
+                ax.quiver(x, y, vx, vy, facecolor=colorId[particleId], linewidth=0.1, width=0.001, scale=300, headlength=4, headaxislength=4, headwidth=4, alpha=0.6)
+            r = rad[particleId]
+            ax.add_artist(plt.Circle([x, y], r, edgecolor='k', facecolor=colorId[particleId], alpha=alpha, linewidth=0.05))
+    # Create a polar axis for the circular colorbar
+    ax_cb = fig.add_axes([0.86, 0.6, 0.05, 0.3], polar=True)  # Position for the colorbar
+    colorMap = cm.get_cmap('hsv')  # Set the color map
+    makeCircularColorBar(ax_cb, colorMap)  # Create the colorbar once
+    figureName = '/home/francesco/Pictures/soft/packings/3noise-gamma' + figureName + '.png'
+    #plt.tight_layout()
+    plt.savefig(figureName, transparent=True)
+    plt.show()
+
 def plot3ReflectPackings(dirName, figureName, lj=False, quiver=True, alpha=0.8):
     dirList = np.array(['1e-01', '3', '1e04'])
     # make figure
@@ -1495,8 +1575,8 @@ def makeWallPackingVideo(dirName, figureName, numFrames=20, firstStep=0, stepFre
     fig.patch.set_facecolor('none')
 
     # Save the animation
-    #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
-    anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mp4', writer='ffmpeg', dpi=fig.dpi)
+    anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.gif', writer='pillow', dpi=fig.dpi)
+    #anim.save(f'/home/francesco/Pictures/soft/packings/{figureName}.mp4', writer='ffmpeg', dpi=fig.dpi)
 
 def makeSPCompressionVideo(dirName, figureName, quiver=False, fixed='fixed', lj=False):
     def animate(i):
@@ -1815,6 +1895,12 @@ if __name__ == '__main__':
 
     elif(whichPlot == 'angle'):
         plotAnglePacking(dirName, figureName, lj=True, quiver=True)
+
+    elif(whichPlot == '3damping'):
+        plot3DampingPackings(dirName, figureName, lj=True, quiver=False)
+
+    elif(whichPlot == '3noise'):
+        plot3NoisePackings(dirName, figureName, lj=True, quiver=False)
 
     elif(whichPlot == '3reflect'):
         plot3ReflectPackings(dirName, figureName, lj=True, quiver=True)

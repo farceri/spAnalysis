@@ -7,7 +7,6 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from scipy.optimize import curve_fit
-from scipy.spatial import Delaunay
 import sys
 import os
 import utils
